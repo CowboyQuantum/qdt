@@ -4,58 +4,61 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `main` (sessions 3–4 pushed; CI fix `step-1/ci-fix` merged locally, not pushed — pushing stays manual)
-**Last session:** 2026-10-11 — session (4): Flight Deck v0 scaffold, decoder, sources, WebGL heatmap, CI job; ADR 0012.
+**Branch:** `step-1/flightdeck-benchmark` (not yet merged to `main`; pushing stays manual)
+**Last session:** 2026-10-11 — session (5): renderer benchmark, #9 closed (ADR 0013, Analysis 0002), browser pixel test, CI target assertion.
+
+## Step 1 exit criteria
+| Criterion | State |
+|---|---|
+| Contract frozen with ADR; TS types generated in CI | TS types generated + drift-checked in CI ✔ · freeze ✘ (waits on Probe 01) |
+| Flight Deck renders a 2048² map live from the synthetic source within the latency target | ✔ steady-state p95 17 ms (RTX 4090) / 11 ms (SwiftShader) vs ≤ 50 ms; asserted in CI |
+| Contract-freeze ADR cites Probe 01 findings; #9 choice recorded | #9 ✔ (ADR 0013) · freeze ADR ✘ (Probe 01) |
+| L1: Probe 01 run; Findings filled; CSVs in `bench/fixtures/probe01/` | ✘ needs lab access |
+
+**Everything in Step 1 that does not need the lab is done.** The remaining exit items are Probe 01 and the
+freeze ADR that cites it.
 
 ## Done
-- Step 0 complete. ADR 0001–0012. Analysis 0001 + ADR 0008: WebSocket + Arrow IPC, WebGL 2D. ADR 0011: UI work
-  proceeds against the drafted contract; the freeze gates Step 1 exit only.
-- Probe 01 spec and scripts written (`docs/probes/01-stream-semantics.md`, `bench/probes/probe01/`), **not run**.
-- **Contract draft** `qdt_schemas/data.py` (ADR 0009) + wire wrappers; JSON Schema export
-  `packages/qdt-schemas/exports/jsonschema/data.schema.json` with drift check in `check_all.sh`.
+- ADR 0001–0013. Analysis 0001 (stream budget) and 0002 (renderer benchmark).
+- **Contract draft** `qdt_schemas/data.py` (ADR 0009) + wire wrappers; JSON Schema export with drift check.
 - **`qdt_lab/stream/`** (ADR 0010): Arrow IPC wire codec, history-backed `StreamServer` (`feed` publishes the
-  Dataset, its annotations, then frames), reference client, `.qdtrec` recordings + `ReplaySource`,
-  `SyntheticMap`/`SyntheticRecords`, `assemble`. CLI: `uv run python -m qdt_lab.stream [--size N --rate PTS/S
-  --replay FILE --speed X(0=unpaced)]` on `ws://127.0.0.1:8765`.
-- **Fixtures** `packages/qdt-lab/tests/fixtures/stream/`: two `.qdtrec` + `.expected.json` content oracles
-  (sha256 per assembled array). Regenerate both: `uv run python scripts/make_stream_fixtures.py`.
-- **`apps/flightdeck`** (ADR 0012): pnpm 9.15.9 via corepack (`packageManager`), Vite, TS, Vitest.
-  - `pnpm gen:types` / `check:types`: `src/schema/data.ts` generated from the JSON Schema export.
-  - `src/stream/`: decoder (Arrow + JSON, `payloadShapes` port), `.qdtrec` parser, `DatasetStore`.
-  - `src/sources/`: one `Decoder` behind `ReplaySource` and `WebSocketSource`; `consume()`.
-  - `src/render/`: raw WebGL2 heatmap (R32F, `texSubImage2D` per dirty row, viridis in GLSL), CPU reference
-    renderer, canvas-2D trace. `src/view.ts`: view by shape only; annotation overlay in data coordinates.
-  - `src/main.ts`: `pnpm -C apps/flightdeck dev`, opens `?ws=` (default `ws://127.0.0.1:8765`) or a `.qdtrec` file.
-  - Verified visually 2026-10-11: headless Chrome (`--use-angle=swiftshader`) rendered a 512² synthetic map
-    streamed from the Python server through the WebGL path.
-- **CI:** new `flightdeck` job (uv sync for the e2e test, Node 24, corepack, check:types, typecheck, test, build).
-- **Tests:** Python 77; Flight Deck 21 — decoder == Python oracle bit-for-bit, source equivalence across replay /
-  WebSocket / real Python server, CPU render snapshot, rule-8 grep. `check_all.sh` green.
+  Dataset, its annotations, then frames; `wait_for_client`), reference client, `.qdtrec` + `ReplaySource`,
+  synthetic sources. CLI: `uv run python -m qdt_lab.stream [--size N --rate PTS/S --replay FILE --speed X
+  (0=unpaced) --wait-for-client]` on `ws://127.0.0.1:8765`.
+- **Fixtures** `packages/qdt-lab/tests/fixtures/stream/` (`.qdtrec` + `.expected.json` oracles);
+  regenerate with `uv run python scripts/make_stream_fixtures.py`.
+- **`apps/flightdeck`** (ADR 0011, 0012, 0013) — run pnpm from `apps/flightdeck` (corepack pins 9.15.9):
+  - generated types; decoder; `DatasetStore`; replay and WebSocket sources behind one `Decoder`.
+  - `render/map.ts`: `MapRenderer` interface — `webgl2` (raw, default) and `cpu` (fallback/reference);
+    canvas-2D 1D trace (visually checked on the records fixture 2026-10-11).
+  - URL params: `?ws=`, `?replay=<url>&speed=`, `?renderer=webgl2|cpu`, `?bench=1`.
+  - `pnpm test` (21 unit), `pnpm test:e2e` (browser pixel test, WebGL vs CPU reference, needs `pnpm build`;
+    verified to fail on a flipped image), `pnpm bench [--gpu hardware|swiftshader] [--assert] [--out …]`.
+- **CI:** `l0` (Python 78 tests + check_all), extras matrix, `flightdeck` (types drift, typecheck, unit, build,
+  e2e, `bench --assert` at 2048² / 10⁶ pts/s on SwiftShader).
 
 ## In flight
-- Nothing uncommitted. First CI run of sessions 3–4 (run 38178034894) failed; fixed locally, awaiting push:
-  - `flightdeck` job: corepack ran from the repo root and fetched the latest pnpm (12) instead of the pinned
-    9.15.9 → job now runs with `working-directory: apps/flightdeck`. Run pnpm from that directory locally too.
-  - `l0`: recording-vs-regenerated synthetic comparisons failed on Linux for float64 records (fixtures recorded
-    on Windows; libm `exp`/`cos` last-ulp differences) → those comparisons now use `rtol=1e-12`; same-bytes
-    transport comparisons stay exact. The cross-language oracles hash recorded data, so they are unaffected.
+- Nothing uncommitted. Branch awaits merge; CI has not yet run the new e2e/bench steps.
 
 ## Known broken / not yet real
-- Probe 01 unrun → contract cannot freeze (per-record scope time axis; OPX partial-buffer visibility).
-- GPU output is not tested in CI (CPU path only); no throughput/latency test in a real browser yet.
-- No axes, colorbar, cursors, line cuts, zoom; 1D trace untested visually; only the first Dataset is shown.
+- Probe 01 unrun → no freeze (per-record scope time axis; OPX partial-buffer visibility; point-wise chunk rate).
+- First-frame latency spike ~100 ms (GPU) / ~290 ms (SwiftShader): texture allocation + shader compile on
+  the first chunk. Steady state is fine; pre-allocating on Dataset announce would remove it.
+- Flight Deck has no axes, colorbar, cursors, line cuts or zoom; only the first Dataset is shown.
+- `bench --assert` and wall-clock tests may be flaky on slow CI runners (watch the first runs).
 - Server history unbounded; server ignores client messages ("up" edge is Step 6).
-- Wall-clock tests (Python pacing/rate, TS paced replay) may be flaky on slow CI runners.
-- `FINISH_LINE.md` TODO open: human to confirm/adjust the design targets.
+- `FINISH_LINE.md` TODO open: human to confirm/adjust the design targets (now measured: Analysis 0002).
 - Probe scripts' `qm-qua` API names unverified. `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-Step 1 session (5), on `step-1/flightdeck-benchmark`: the browser benchmark that closes #9 and the live exit
-criterion — Playwright (or headless Chrome via CDP) driving Flight Deck against `python -m qdt_lab.stream` at the
-design targets (2048², 10⁶ pts/s), measuring render latency (chunk `produced_at` → frame drawn) and sustained
-rate; raw WebGL2 baseline vs one or two library candidates; record the choice by ADR; add a browser pixel
-snapshot of the WebGL path. Then axes/colorbar and the 1D trace check.
+**Human decision needed:** Step 1 is blocked only on lab access (Probe 01 → freeze ADR). Choose one:
+1. Run Probe 01 when lab time is available, then a session writes the freeze ADR and closes Step 1.
+2. Meanwhile, a Flight Deck polish session on a new `step-1/flightdeck-axes` branch: axes and colorbar
+   (canvas overlay, coordinate labels from `axis()`), texture pre-allocation on Dataset announce, cursor
+   readout. In Step 1 scope; no exit criterion depends on it.
+3. Start Step 2 (`docs/steps/02-experiments-over-simulated-device.md`) before Step 1 formally exits. This
+   departs from the one-step-at-a-time plan and would need an ADR.
 
 ## Decisions pending (see plan §12)
-#9 WebGL library (benchmark next session; raw WebGL2 is the baseline). Contract freeze (after Probe 01;
-revisits ADR 0009/0010). #10 DUT design — by Step 5 entry.
+Contract freeze (after Probe 01; revisits ADR 0009/0010). Whether to start Step 2 before Probe 01 (above).
+#10 DUT design — by Step 5 entry.
