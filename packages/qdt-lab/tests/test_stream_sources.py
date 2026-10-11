@@ -237,3 +237,18 @@ def test_feed_publishes_replayed_annotations():
     replay = ReplaySource(FIXTURES / "synthetic_map_64.qdtrec")
     received = live(replay)
     assert [a.annotation_id for a in received.annotations] == ["transition-0"]
+
+
+def test_wait_for_client_returns_on_first_connection():
+    async def run():
+        async with StreamServer() as server:
+            waiting = asyncio.create_task(server.wait_for_client())
+            await asyncio.sleep(0.05)
+            assert not waiting.done()
+            src = SyntheticMap(n_outer=2, n_inner=4, points_per_second=None)
+            listening = asyncio.create_task(collect(server.url))
+            await asyncio.wait_for(waiting, 5)
+            await server.feed(src)
+            return await listening
+
+    assert len(asyncio.run(run())) == 1

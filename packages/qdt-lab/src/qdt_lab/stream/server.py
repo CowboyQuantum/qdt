@@ -28,6 +28,7 @@ class StreamServer:
         self._history: list[str | bytes] = []
         self._datasets: dict[str, Dataset] = {}
         self._changed = asyncio.Event()
+        self._client_seen = asyncio.Event()
         self._server: Server | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -41,6 +42,10 @@ class StreamServer:
         self._server = await serve(self._handle, self.host, self.port, compression=None)
         self.port = self._server.sockets[0].getsockname()[1]
         return self
+
+    async def wait_for_client(self) -> None:
+        """Return once at least one client has connected (e.g. to measure a live stream, not history)."""
+        await self._client_seen.wait()
 
     async def __aexit__(self, *exc: object) -> None:
         assert self._server is not None
@@ -106,6 +111,7 @@ class StreamServer:
         changed.set()
 
     async def _handle(self, ws: ServerConnection) -> None:
+        self._client_seen.set()
         sent = 0
         closed = asyncio.ensure_future(ws.wait_closed())
         try:

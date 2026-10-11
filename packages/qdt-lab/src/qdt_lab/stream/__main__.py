@@ -23,6 +23,9 @@ async def main(args: argparse.Namespace) -> None:
         )
     async with StreamServer(args.host, args.port) as server:
         print(f"serving {source.dataset.name!r} on {server.url}", flush=True)
+        if args.wait_for_client:
+            await server.wait_for_client()
+            print("client connected; streaming", flush=True)
         await server.feed(source)
         print("source finished; still serving history (Ctrl+C to stop)", flush=True)
         await asyncio.Future()
@@ -37,6 +40,11 @@ def cli() -> None:
     p.add_argument("--points-per-chunk", type=int, default=None, help="default: one line")
     p.add_argument("--replay", help="serve a .qdtrec recording instead of the synthetic map")
     p.add_argument("--speed", type=float, default=1.0, help="replay speed factor; 0 = unpaced")
+    p.add_argument(
+        "--wait-for-client",
+        action="store_true",
+        help="start the source only after the first client connects (live measurement, not history)",
+    )
     try:
         asyncio.run(main(p.parse_args()))
     except KeyboardInterrupt:
