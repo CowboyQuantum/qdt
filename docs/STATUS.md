@@ -4,8 +4,8 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `step-1/flightdeck-benchmark` (not yet merged to `main`; pushing stays manual)
-**Last session:** 2026-10-11 — session (5): renderer benchmark, #9 closed (ADR 0013, Analysis 0002), browser pixel test, CI target assertion.
+**Branch:** `step-1/probe01-scripts` (on top of the unmerged `step-1/flightdeck-benchmark`; neither merged to `main`; pushing stays manual)
+**Last session:** 2026-10-11 — session (5): renderer benchmark, #9 closed (ADR 0013, Analysis 0002), browser pixel test, CI target assertion; then Probe 01 scripts reviewed and rewritten for OPX1000 / HD304MSO.
 
 ## Step 1 exit criteria
 | Criterion | State |
@@ -20,6 +20,13 @@ freeze ADR that cites it.
 
 ## Done
 - ADR 0001–0013. Analysis 0001 (stream budget) and 0002 (renderer benchmark).
+- **Probe 01 ready to run** (`bench/probes/probe01/README.md` is the run sheet). Rewritten 2026-10-11 for the
+  lab's OPX1000 (LF-FEM; API v2 with v1 fallbacks; `qm-qua` deprecations handled) and Keysight HD304MSO:
+  5 s runs on a 10³–10⁶ pts/s + unpaced ladder per line and per point, fetch cost, data loss; whole-frame
+  partial visibility; one compiled program re-run with new step count / step / averaging via input streams,
+  IO1 via pause/resume; timestamp-stream cost; scope acquire vs transfer and per-capture time-axis origin.
+  `--offline-check` builds every QUA program and validates the config without hardware (passes with
+  qm-qua 1.4.1; verified to fail on a bad config). Rate-ladder rationale in the probe doc.
 - **Contract draft** `qdt_schemas/data.py` (ADR 0009) + wire wrappers; JSON Schema export with drift check.
 - **`qdt_lab/stream/`** (ADR 0010): Arrow IPC wire codec, history-backed `StreamServer` (`feed` publishes the
   Dataset, its annotations, then frames; `wait_for_client`), reference client, `.qdtrec` + `ReplaySource`,
@@ -48,16 +55,14 @@ freeze ADR that cites it.
 - `bench --assert` and wall-clock tests may be flaky on slow CI runners (watch the first runs).
 - Server history unbounded; server ignores client messages ("up" edge is Step 6).
 - `FINISH_LINE.md` TODO open: human to confirm/adjust the design targets (now measured: Analysis 0002).
-- Probe scripts' `qm-qua` API names unverified. `docs/BENCH.md` skeleton. Surrogate DUT not built.
+- Probe scripts verified offline only; execution-time APIs (result handles, input-stream push, IO, pause/resume) are first exercised in the lab — run `--quick` first. `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-**Human decision needed:** Step 1 is blocked only on lab access (Probe 01 → freeze ADR). Choose one:
-1. Run Probe 01 when lab time is available, then a session writes the freeze ADR and closes Step 1.
-2. Meanwhile, a Flight Deck polish session on a new `step-1/flightdeck-axes` branch: axes and colorbar
-   (canvas overlay, coordinate labels from `axis()`), texture pre-allocation on Dataset announce, cursor
-   readout. In Step 1 scope; no exit criterion depends on it.
-3. Start Step 2 (`docs/steps/02-experiments-over-simulated-device.md`) before Step 1 formally exits. This
-   departs from the one-step-at-a-time plan and would need an ADR.
+**Human, in the lab:** run Probe 01 per `bench/probes/probe01/README.md` (QOP version → matching `qm-qua` →
+offline check → `--quick` → full OPX run → scope run → commit `bench/fixtures/probe01/`). Then a session on
+`step-1/contract-freeze` reads the findings, fills the probe doc's Findings table, revisits ADR 0009/0010
+against them (per-record scope time axis, OPX partial-buffer visibility, point-wise rates), writes the freeze
+ADR, and closes Step 1. The human chose to wait for the lab rather than polish Flight Deck or start Step 2.
 
 ## Decisions pending (see plan §12)
 Contract freeze (after Probe 01; revisits ADR 0009/0010). Whether to start Step 2 before Probe 01 (above).
