@@ -176,8 +176,8 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | 5 | Manager sign-off | Pending as of Oct 2026. **Gates Step 7 only.** Steps 0–6 proceed on personal hardware and bench. |
 | 6 | Lab PC OS | Resolve via IT ask at Step 7 |
 | 7 | Bluefors log access mode | Resolve via IT ask at Step 7 |
-| 8 | Stream transport for `Dataset` | WebSocket + Arrow chunks (proposed) vs. gRPC/Arrow Flight; decide at Step 1 with the throughput benchmark as the test |
-| 9 | Flight Deck stack | TypeScript; framework/plotting library chosen at Step 1 against the 2D-heatmap throughput benchmark |
+| 8 | Stream transport for `Dataset` | RESOLVED (ADR 0008): WebSocket + Arrow IPC; see `docs/analysis/0001-stream-budget.md` |
+| 9 | Flight Deck stack | TypeScript; 2D renderer is WebGL (ADR 0008); library chosen at Step 1 by benchmark as tie-breaker |
 | 10 | Surrogate DUT design | Resistor divider + RC leg + diode (proposed); finalize in `BENCH.md` by Step 5 entry |
 
 ## 13. Success criteria

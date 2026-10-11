@@ -64,6 +64,8 @@ pnpm -C apps/flightdeck test              # front end (from Step 2)
 | Need | Read |
 |---|---|
 | Why is it built this way | `docs/adr/` (numbered; read before proposing architecture changes) |
+| The numbers behind a decision | `docs/analysis/` (analysis notes an ADR cites; no decisions live here) |
+| One-off measurements that gate a freeze | `docs/probes/` (specs) and `bench/probes/` (scripts) |
 | What is next | `docs/STATUS.md` |
 | The current step's spec | `docs/steps/<NN-name>.md` (index: `docs/steps/README.md`) |
 | The roadmap narrative and test ladder | `docs/DEVELOPMENT_PLAN.md` (§7.1 ladder, §7.2 index) |

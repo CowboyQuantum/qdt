@@ -1,6 +1,6 @@
 # Flight Deck — Finish-Line Sketch
 
-**Status:** SKELETON — human-authored before any UI code (Step 2 entry gate).
+**Status:** AUTHORED 2026-10-11 — human-owned; Step 1 entry gate. Revise rows by ADR, not silently.
 **Purpose:** This is *not scope*. It is the requirements document for the `Dataset` /
 `DatasetChunk` / `Annotation` stream contract and the front end's source/view architecture.
 Each row states an end-state capability and the constraint it imposes on the contract *now*.
@@ -15,5 +15,17 @@ Each row states an end-state capability and the constraint it imposes on the con
 | Side-by-side compare across cooldowns | Datasets addressable by registry ref, not file path | Step 4 |
 | Tune-up / DAG state display | Lifecycle state is a schema object, rendered, never stored in the UI | Step 6 |
 
+## Design targets (Analysis 0001, ADR 0008)
+Ceiling of plausible dot-tuning need. The synthetic source emulates this envelope; the L0 throughput test asserts it.
+
+| Target | Value | Why |
+|---|---|---|
+| Largest 2D map | 2048 × 2048, float32 | ~4× linear over a typical high-resolution stability diagram |
+| Sustained stream rate | 10⁶ points/s | ~10× over practical OPX processed-result rates |
+| Live-mode latency | ≤ 50 ms glass-to-glass | below the threshold at which a live map feels laggy |
+
+These replace the former "open inputs" (largest map, fastest chunk). Those are *sizes*, boundable by arithmetic; what still needs measurement is *shape* — see `docs/probes/01-stream-semantics.md`.
+
 ## TODO (human)
 - [X] Add rows for anything the prior Flight Deck / gatepick work did that is still wanted. Reference only; nothing is imported.
+- [ ] Confirm or adjust the design targets above against your own expectation of the largest map you will tune with.
