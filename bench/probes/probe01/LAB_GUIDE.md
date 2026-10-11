@@ -36,7 +36,11 @@ The script runs **10³, 10⁴, 10⁵, 10⁶ points/s and unpaced** (as fast as t
 is 10⁶ points/s.
 
 ## Before the lab day (any machine, no hardware)
-From the repo root:
+**Get the probe code onto `main` and push it.** The lab laptop clones or pulls from GitHub, so these
+scripts must be on the remote. At the time of writing they sit on unmerged local branches
+(`step-1/flightdeck-benchmark`, `step-1/probe01-scripts`). Merge them and push, and check that CI passes.
+
+Then, from the repo root:
 ```
 uv run --no-project --with qm-qua --with numpy python bench/probes/probe01/opx_probe.py --offline-check
 ```
@@ -49,6 +53,60 @@ the OPX1000 config without connecting to anything.
 - The **QOP version** running on the OPX1000, from the same place.
 - The **slot number of an LF-FEM**, and ideally one of its analog outputs with nothing connected.
 - The **scope's IP address**. LAN is simpler than USB: USB with the pure-Python VISA backend needs extra drivers.
+- **Claude Code** on the laptop, logged in, with internet access. Lab networks sometimes block outbound
+  traffic, so check before the day (see below).
+
+## Working with Claude in the lab
+Claude can run the probe commands, read the errors and fix the scripts while you watch. Set this up first.
+
+### Starting the session
+1. On the lab laptop, get the latest code:
+   ```
+   cd <path-to>/qdt
+   git checkout main && git pull
+   uv sync --all-packages
+   ```
+2. Start Claude Code in the repo root (`claude`, or open the folder in VS Code with the Claude extension).
+3. Run `/session-start`. Claude reads `CLAUDE.md` and `docs/STATUS.md`. STATUS.md's next action is the
+   Probe 01 lab run, so it should say so and create a branch such as `step-1/probe01-lab`.
+4. Paste the opening message below, filling in the blanks you know.
+
+### Opening message (copy, fill in, paste)
+```
+I'm in the lab at the OPX1000 and the HD304MSO, running Probe 01. Help me run and debug it, following
+bench/probes/probe01/LAB_GUIDE.md.
+
+Known so far:
+- OPX1000 host: ___   cluster name: ___   QOP version: ___
+- LF-FEM slot: ___    analog output to use: ___ (nothing connected: yes/no)
+- Scope resource: TCPIP::___::INSTR
+
+How to work:
+- Run the guide's commands yourself, one step at a time, and show me each summary.
+- Start with the offline check, then --quick. Do the full runs only once --quick is clean.
+- When a section fails, read the traceback, inspect the installed qm-qua API (uv run --no-project
+  --with qm-qua==<version> python -c ...), fix bench/probes/probe01/*.py, rerun --offline-check, then
+  rerun only the failing section (--sections ...).
+- Hardware rules: run only the probe scripts. Never play a non-zero amplitude or change any output other
+  than the agreed LF-FEM port. Ask me before anything that would open another quantum machine, change the
+  OPX config beyond the probe's, or send SCPI commands not in scope_probe.py.
+- Don't change production code (packages/, apps/) today. Probe scripts and docs only.
+- Commit script fixes as fix(bench): ... and results as bench: Probe 01 results. At the end, fill the
+  Findings table in docs/probes/01-stream-semantics.md from the printed summaries and rewrite STATUS.md.
+```
+
+### Tips while debugging
+- **Prefer the quick loop.** `--quick` plus `--sections <name>` reruns one section in seconds. Full runs
+  take ~2 minutes each.
+- **Paste whole tracebacks.** If you run something outside Claude, paste the full output, not a summary.
+  Version-specific API names are usually visible only in the traceback.
+- **Record versions early.** The OPX script prints `qm-qua` and the server version first. Make sure they
+  go into the results.
+- **Partial results are fine.** If time runs out, commit what you have, including failures. The next
+  session can finish from the JSON files.
+- **If the laptop can't reach Claude** (blocked network), run the commands yourself and commit the outputs.
+  Afterwards, start a session anywhere and say: "Probe 01 results are in bench/fixtures/probe01; some
+  sections failed — read opx_findings.json and fix the scripts."
 
 ## Steps
 Run everything from the repo root. Replace `X.Y.Z` with the `qm-qua` version, `<ip>` with the host,

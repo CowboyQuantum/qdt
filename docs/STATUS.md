@@ -58,8 +58,13 @@ freeze ADR that cites it.
 - Probe scripts verified offline only; execution-time APIs (result handles, input-stream push, IO, pause/resume) are first exercised in the lab — run `--quick` first. `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-**Human, in the lab:** run Probe 01 per `bench/probes/probe01/LAB_GUIDE.md` (QOP version → matching `qm-qua` →
-offline check → `--quick` → full OPX run → scope run → commit `bench/fixtures/probe01/`). Then a session on
+**Before the lab day:** merge `step-1/flightdeck-benchmark` and `step-1/probe01-scripts` to `main`, push, confirm CI
+green (the lab laptop pulls from GitHub).
+**Human, in the lab, with a Claude session on the lab laptop:** run Probe 01 per
+`bench/probes/probe01/LAB_GUIDE.md` ("Working with Claude in the lab" has the start-up steps and an opening
+message). Order: QOP version → matching `qm-qua` → offline check → `--quick` → full OPX run → scope run →
+commit `bench/fixtures/probe01/`. A lab session works on `step-1/probe01-lab`, may change only probe scripts and
+docs, and follows the hardware rules in the guide's opening message. Then a session on
 `step-1/contract-freeze` reads the findings, fills the probe doc's Findings table, revisits ADR 0009/0010
 against them (per-record scope time axis, OPX partial-buffer visibility, point-wise rates), writes the freeze
 ADR, and closes Step 1. The human chose to wait for the lab rather than polish Flight Deck or start Step 2.
