@@ -1,6 +1,6 @@
 # Probe 01 scripts
 
-Use this sheet for one-off measurements for `docs/probes/01-stream-semantics.md`. None of this is
+One-off measurement scripts for `docs/probes/01-stream-semantics.md`. None of this is
 production code, and nothing imports it. The scripts touch no device, play only zero-amplitude pulses, and
 need nothing connected to the instruments.
 
