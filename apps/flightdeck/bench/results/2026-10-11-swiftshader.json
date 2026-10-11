@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-11T22:07:47.722Z",
+  "platform": "win32 x64",
+  "chrome": "154.0.8037.98",
+  "gpu_mode": "swiftshader",
+  "targets": {
+    "size": 2048,
+    "rate": 1000000,
+    "latency_ms": 50
+  },
+  "points_per_chunk": 2048,
+  "results": [
+    {
+      "renderer": "webgl2",
+      "gl_renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "chunks": 2048,
+      "frames": 471,
+      "points": 4194304,
+      "latency_ms": {
+        "p50": 7,
+        "p95": 115,
+        "p99": 256,
+        "max": 290
+      },
+      "steady_latency_ms": {
+        "p50": 7,
+        "p95": 11,
+        "p99": 11,
+        "max": 13
+      },
+      "worst_chunks": [
+        {
+          "latency_ms": 290,
+          "at_ms": 0
+        },
+        {
+          "latency_ms": 287,
+          "at_ms": 3
+        },
+        {
+          "latency_ms": 286,
+          "at_ms": 4
+        },
+        {
+          "latency_ms": 283,
+          "at_ms": 7
+        },
+        {
+          "latency_ms": 282,
+          "at_ms": 8
+        }
+      ],
+      "producer_rate_pts_s": 1000550,
+      "rendered_rate_pts_s": 999834,
+      "tail_ms": 3
+    },
+    {
+      "renderer": "regl",
+      "gl_renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "chunks": 2048,
+      "frames": 497,
+      "points": 4194304,
+      "latency_ms": {
+        "p50": 7,
+        "p95": 11,
+        "p99": 41,
+        "max": 74
+      },
+      "steady_latency_ms": {
+        "p50": 7,
+        "p95": 10,
+        "p99": 11,
+        "max": 13
+      },
+      "worst_chunks": [
+        {
+          "latency_ms": 74,
+          "at_ms": 0
+        },
+        {
+          "latency_ms": 71,
+          "at_ms": 3
+        },
+        {
+          "latency_ms": 70,
+          "at_ms": 4
+        },
+        {
+          "latency_ms": 68,
+          "at_ms": 6
+        },
+        {
+          "latency_ms": 66,
+          "at_ms": 8
+        }
+      ],
+      "producer_rate_pts_s": 1000550,
+      "rendered_rate_pts_s": 998644,
+      "tail_ms": 8
+    },
+    {
+      "renderer": "cpu",
+      "gl_renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "chunks": 2048,
+      "frames": 375,
+      "points": 4194304,
+      "latency_ms": {
+        "p50": 10,
+        "p95": 186,
+        "p99": 241,
+        "max": 272
+      },
+      "steady_latency_ms": {
+        "p50": 9,
+        "p95": 193,
+        "p99": 244,
+        "max": 272
+      },
+      "worst_chunks": [
+        {
+          "latency_ms": 272,
+          "at_ms": 1436
+        },
+        {
+          "latency_ms": 270,
+          "at_ms": 1438
+        },
+        {
+          "latency_ms": 268,
+          "at_ms": 1440
+        },
+        {
+          "latency_ms": 266,
+          "at_ms": 1442
+        },
+        {
+          "latency_ms": 264,
+          "at_ms": 1444
+        }
+      ],
+      "producer_rate_pts_s": 1000550,
+      "rendered_rate_pts_s": 999120,
+      "tail_ms": 6
+    }
+  ]
+}

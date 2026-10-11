@@ -1,7 +1,12 @@
-// Flight Deck v0: one source, first Dataset, live heatmap or trace, annotation overlay, stream stats.
-// URL: ?ws=ws://127.0.0.1:8765 (default) — or load a .qdtrec file with the file picker.
-import { finiteRange, type Range, renderRGBA } from "./render/cpu";
-import { Heatmap } from "./render/heatmap";
+// Flight Deck v0: one source, first Dataset, live map or trace, annotation overlay, stream stats.
+// URL parameters:
+//   ?ws=ws://127.0.0.1:8765   WebSocket source (default)
+//   ?replay=<url>&speed=1     replay a .qdtrec fetched from <url> (speed omitted = unpaced)
+//   ?renderer=webgl2|regl|cpu 2D renderer (default webgl2, falling back to cpu)
+//   ?bench=1                  record per-chunk latency in window.__flightdeck (benchmark harness)
+// A .qdtrec can also be loaded with the file picker.
+import { finiteRange, type Range } from "./render/cpu";
+import { createMapRenderer, defaultMapRenderer, type MapRenderer, RENDERERS, type RendererName } from "./render/map";
 import { drawTrace } from "./render/trace";
 import { ReplaySource } from "./sources/replay";
 import { consume, type Source } from "./sources/source";
@@ -14,6 +19,24 @@ const plot = $<HTMLCanvasElement>("plot");
 const overlay = $<HTMLCanvasElement>("overlay");
 const status = $<HTMLDivElement>("status");
 const title = $<HTMLDivElement>("title");
+const params = new URLSearchParams(location.search);
+const bench = params.get("bench") === "1";
+
+/** Benchmark record, read by apps/flightdeck/bench/run.mjs. Times are epoch ms (same clock as the producer). */
+export interface BenchState {
+  renderer: string;
+  /** [chunk produced_at, frame drawn (after GPU finish), points in chunk] per chunk */
+  samples: [number, number, number][];
+  frames: number;
+  complete: boolean;
+  error: string | null;
+}
+declare global {
+  interface Window {
+    __flightdeck?: BenchState;
+    __flightdeckRenderer?: MapRenderer;
+  }
+}
 
 let abort: AbortController | null = null;
 
@@ -31,7 +54,16 @@ function start(source: Source): void {
       }
     },
     abort.signal,
-  ).catch((e: unknown) => (status.textContent = `error: ${String(e)}`));
+  ).catch((e: unknown) => {
+    status.textContent = `error: ${String(e)}`;
+    if (window.__flightdeck) window.__flightdeck.error = String(e);
+  });
+}
+
+function makeRenderer(): MapRenderer {
+  const name = params.get("renderer");
+  if (name && (RENDERERS as readonly string[]).includes(name)) return createMapRenderer(name as RendererName, plot);
+  return defaultMapRenderer(plot);
 }
 
 function show(store: DatasetStore, signal: AbortSignal): void {
@@ -40,7 +72,13 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     status.textContent = `${store.dataset.name}: no v0 view for this shape`;
     return;
   }
+  const renderer = view.kind === "heatmap" ? makeRenderer() : null;
+  const state: BenchState = { renderer: renderer?.name ?? "trace", samples: [], frames: 0, complete: false, error: null };
+  if (bench) window.__flightdeck = state;
+  if (renderer) window.__flightdeckRenderer = renderer;
+
   let dirty: [number, number] | null = null;
+  let pending: [number, number][] = []; // [produced_at ms, points] of chunks not yet drawn
   let points = 0;
   let latency = NaN;
   const recent: [number, number][] = []; // [time ms, points]
@@ -51,47 +89,47 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     const n = u.region.reduce((a, s) => a * (s.stop - s.start), 1);
     points += n;
     recent.push([performance.now(), n]);
-    // age of the newest chunk: glass-to-glass latency while live; data age for history on late join
-    latency = Date.now() - Date.parse(u.producedAt);
+    pending.push([Date.parse(u.producedAt), n]);
   });
 
-  const gl = view.kind === "heatmap" && Heatmap.supported(plot) ? new Heatmap(plot) : null;
   let range: Range | null = null;
 
   const frame = () => {
     if (signal.aborted) return;
     if (dirty) {
       const data = store.get(view.variable);
-      if (view.kind === "heatmap") {
+      if (view.kind === "heatmap" && renderer) {
         const [rows, cols] = data.shape as [number, number];
         const r = finiteRange(data.values.subarray(dirty[0] * cols, dirty[1] * cols));
         if (r) range = range ? { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) } : r;
-        if (gl) {
-          if (gl.shape[0] !== rows || gl.shape[1] !== cols) {
-            gl.resize(rows, cols);
-            gl.upload(data.values, 0, rows);
-          } else gl.upload(data.values, dirty[0], dirty[1]);
-          if (range) gl.draw(range);
-        } else if (range) {
-          plot.width = cols;
-          plot.height = rows;
-          plot.getContext("2d")!.putImageData(new ImageData(renderRGBA(data.values, [rows, cols], range) as Uint8ClampedArray<ArrayBuffer>, cols, rows), 0, 0);
-        }
+        if (renderer.shape[0] !== rows || renderer.shape[1] !== cols) {
+          renderer.resize(rows, cols);
+          renderer.upload(data.values, 0, rows);
+        } else renderer.upload(data.values, dirty[0], dirty[1]);
+        if (range) renderer.draw(range);
+        if (bench) renderer.finish();
         drawAnnotations(store, view);
-      } else {
+      } else if (view.kind === "trace") {
         const x = axis(store, view.xDim).values;
         const n = view.latestAlong ? data.shape[1]! : data.values.length;
         const last = view.latestAlong ? data.shape[0]! - 1 : 0;
         if (last >= 0) drawTrace(plot, x as never, data.values.subarray(last * n, (last + 1) * n));
       }
+      const drawn = Date.now();
+      // age of the newest chunk: glass-to-glass latency while live; data age for history on late join
+      if (pending.length) latency = drawn - pending[pending.length - 1]![0];
+      if (bench) for (const [produced, n] of pending) state.samples.push([produced, drawn, n]);
+      pending = [];
+      state.frames++;
+      state.complete = store.complete;
       dirty = null;
     }
     const now = performance.now();
     while (recent.length && recent[0]![0] < now - 1000) recent.shift();
     const rate = recent.reduce((a, [, n]) => a + n, 0);
     status.textContent =
-      `${store.dataset.name} · ${view.kind} · seq ${store.lastSeq}${store.complete ? " (complete)" : ""}` +
-      ` · ${points.toLocaleString()} pts · ${rate.toLocaleString()} pts/s` +
+      `${store.dataset.name} · ${view.kind}${renderer ? ` (${renderer.name})` : ""} · seq ${store.lastSeq}` +
+      `${store.complete ? " (complete)" : ""} · ${points.toLocaleString()} pts · ${rate.toLocaleString()} pts/s` +
       (Number.isFinite(latency) ? ` · last chunk age ${latency.toFixed(0)} ms` : "");
     requestAnimationFrame(frame);
   };
@@ -123,5 +161,13 @@ $<HTMLInputElement>("file").addEventListener("change", async (e) => {
   if (file) start(new ReplaySource(new Uint8Array(await file.arrayBuffer()), file.name, 1));
 });
 
-const ws = new URLSearchParams(location.search).get("ws") ?? "ws://127.0.0.1:8765";
-start(new WebSocketSource(ws));
+const replay = params.get("replay");
+if (replay) {
+  const speed = params.get("speed");
+  fetch(replay)
+    .then((r) => r.arrayBuffer())
+    .then((b) => start(new ReplaySource(new Uint8Array(b), replay, speed ? Number(speed) : null)))
+    .catch((e: unknown) => (status.textContent = `error: ${String(e)}`));
+} else {
+  start(new WebSocketSource(params.get("ws") ?? "ws://127.0.0.1:8765"));
+}

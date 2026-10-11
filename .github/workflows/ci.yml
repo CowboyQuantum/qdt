@@ -40,3 +40,6 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm test:e2e  # GPU pixels vs CPU reference in the runner's Chrome (SwiftShader)
+      # Analysis 0001 targets, live from the Python stream server: 2048², 10^6 pts/s, steady p95 <= 50 ms
+      - run: pnpm bench --size 2048 --renderers webgl2 --gpu swiftshader --assert

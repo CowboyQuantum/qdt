@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-11T22:07:31.947Z",
+  "platform": "win32 x64",
+  "chrome": "154.0.8037.98",
+  "gpu_mode": "hardware",
+  "targets": {
+    "size": 2048,
+    "rate": 1000000,
+    "latency_ms": 50
+  },
+  "points_per_chunk": 2048,
+  "results": [
+    {
+      "renderer": "webgl2",
+      "gl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "chunks": 2048,
+      "frames": 248,
+      "points": 4194304,
+      "latency_ms": {
+        "p50": 10,
+        "p95": 18,
+        "p99": 54,
+        "max": 95
+      },
+      "steady_latency_ms": {
+        "p50": 10,
+        "p95": 17,
+        "p99": 18,
+        "max": 18
+      },
+      "worst_chunks": [
+        {
+          "latency_ms": 95,
+          "at_ms": 0
+        },
+        {
+          "latency_ms": 93,
+          "at_ms": 2
+        },
+        {
+          "latency_ms": 91,
+          "at_ms": 4
+        },
+        {
+          "latency_ms": 89,
+          "at_ms": 6
+        },
+        {
+          "latency_ms": 87,
+          "at_ms": 8
+        }
+      ],
+      "producer_rate_pts_s": 1000550,
+      "rendered_rate_pts_s": 999834,
+      "tail_ms": 3
+    },
+    {
+      "renderer": "regl",
+      "gl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "chunks": 2048,
+      "frames": 249,
+      "points": 4194304,
+      "latency_ms": {
+        "p50": 10,
+        "p95": 18,
+        "p99": 58,
+        "max": 90
+      },
+      "steady_latency_ms": {
+        "p50": 10,
+        "p95": 18,
+        "p99": 19,
+        "max": 19
+      },
+      "worst_chunks": [
+        {
+          "latency_ms": 90,
+          "at_ms": 0
+        },
+        {
+          "latency_ms": 87,
+          "at_ms": 3
+        },
+        {
+          "latency_ms": 85,
+          "at_ms": 5
+        },
+        {
+          "latency_ms": 83,
+          "at_ms": 7
+        },
+        {
+          "latency_ms": 81,
+          "at_ms": 9
+        }
+      ],
+      "producer_rate_pts_s": 1000311,
+      "rendered_rate_pts_s": 999596,
+      "tail_ms": 3
+    },
+    {
+      "renderer": "cpu",
+      "gl_renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "chunks": 2048,
+      "frames": 196,
+      "points": 4194304,
+      "latency_ms": {
+        "p50": 16,
+        "p95": 236,
+        "p99": 332,
+        "max": 373
+      },
+      "steady_latency_ms": {
+        "p50": 15,
+        "p95": 242,
+        "p99": 336,
+        "max": 373
+      },
+      "worst_chunks": [
+        {
+          "latency_ms": 373,
+          "at_ms": 1327
+        },
+        {
+          "latency_ms": 371,
+          "at_ms": 1329
+        },
+        {
+          "latency_ms": 369,
+          "at_ms": 1331
+        },
+        {
+          "latency_ms": 367,
+          "at_ms": 1333
+        },
+        {
+          "latency_ms": 365,
+          "at_ms": 1335
+        }
+      ],
+      "producer_rate_pts_s": 1000550,
+      "rendered_rate_pts_s": 996508,
+      "tail_ms": 17
+    }
+  ]
+}

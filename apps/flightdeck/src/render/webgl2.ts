@@ -1,9 +1,9 @@
-// WebGL2 2D heatmap (ADR 0008): the map lives in an R32F texture; live updates upload only the changed
-// rows with texSubImage2D; colour mapping happens in the fragment shader. Raw WebGL2, no library —
-// the library choice (Open Decision #9) is settled by the Step 1 benchmark.
+// Raw WebGL2 2D map renderer (ADR 0008, 0012): the map lives in an R32F texture; live updates upload only
+// the changed rows with texSubImage2D; colour mapping happens in the fragment shader. No library.
 import type { TypedArray } from "../stream/decode";
 import { GLSL_VIRIDIS, MISSING } from "./colormap";
 import type { Range } from "./cpu";
+import type { MapRenderer } from "./map";
 
 const VERTEX = `#version 300 es
 in vec2 pos;
@@ -34,17 +34,14 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
   return s;
 }
 
-export class Heatmap {
+export class WebGL2Map implements MapRenderer {
+  readonly name = "webgl2";
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
   private readonly texture: WebGLTexture;
   private rows = 0;
   private cols = 0;
   private scratch = new Float32Array(0);
-
-  static supported(canvas: HTMLCanvasElement): boolean {
-    return canvas.getContext("webgl2") !== null;
-  }
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", { antialias: false, preserveDrawingBuffer: true });
@@ -108,6 +105,21 @@ export class Heatmap {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  /** Block until the GPU has finished the last draw (a 1-pixel readback forces the sync). */
+  finish(): void {
+    this.gl.readPixels(0, 0, 1, 1, this.gl.RGBA, this.gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+
+  /** The drawn canvas as RGBA, top row first (for pixel tests). */
+  pixels(): Uint8Array {
+    const { width: w, height: h } = this.gl.canvas;
+    const raw = new Uint8Array(w * h * 4);
+    this.gl.readPixels(0, 0, w, h, this.gl.RGBA, this.gl.UNSIGNED_BYTE, raw);
+    const out = new Uint8Array(raw.length);
+    for (let y = 0; y < h; y++) out.set(raw.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+    return out;
   }
 
   get shape(): [number, number] {
