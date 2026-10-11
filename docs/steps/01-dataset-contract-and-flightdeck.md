@@ -34,6 +34,8 @@ Freeze the `Dataset` stream contract against the finish-line sketch and measured
 ## Open decisions
 - #8 stream transport
 - #9 Flight Deck stack
+- Open input: largest 2D map to render (shape, dtype). Needs lab access; until measured, the benchmark uses a provisional value marked as such.
+- Open input: fastest OPX chunk rate (chunks/s, chunk shape). Needs lab access (L1 probe); same provisional treatment.
 
 ## Status
-NOT STARTED
+IN PROGRESS

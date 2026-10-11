@@ -32,4 +32,4 @@ None. `QdtModel` base only.
 - #10 surrogate DUT design — may be deferred to Step 5 entry
 
 ## Status
-IN PROGRESS
+DONE (2026-10-11)

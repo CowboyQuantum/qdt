@@ -4,8 +4,8 @@ One file per roadmap step, fixed headings. `STATUS.md` points at the current one
 
 | Step | File | Status |
 |---|---|---|
-| 0 | [Bootstrap](00-bootstrap.md) | IN PROGRESS |
-| 1 | [Dataset contract + Flight Deck v0](01-dataset-contract-and-flightdeck.md) | NOT STARTED |
+| 0 | [Bootstrap](00-bootstrap.md) | DONE |
+| 1 | [Dataset contract + Flight Deck v0](01-dataset-contract-and-flightdeck.md) | IN PROGRESS |
 | 2 | [Experiment formulation over a simulated device](02-experiments-over-simulated-device.md) | NOT STARTED |
 | 3 | [Measurement registry](03-registry.md) | NOT STARTED |
 | 4 | [Analysis as a consumer](04-analysis-overlays.md) | NOT STARTED |
