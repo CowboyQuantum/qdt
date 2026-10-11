@@ -9,12 +9,30 @@ A one-off measurement of *how* results come out of the two live sources we will 
 observed behavior. It is **not** a driver, not a bench test, and writes no production code.
 
 ## What you need
-- The OPX, reachable from a laptop with `qm-qua` installed. **No device, no fridge, and no saved output
-  file.** The OPX does not produce output files; results are fetched over its Python API from a job's
-  result handles. Nothing needs to be connected to the analog inputs — a `measure` on an open input returns
-  noise, which is fine, and the cleanest variant skips the ADC entirely by streaming computed values.
-- The Keysight scope, reachable over VISA (USB or LAN).
-- ~2 hours of OPX time, ~30 minutes of scope time.
+- **The OPX1000**, reachable from a laptop, with `qm-qua` matching its QOP version. You also need the
+  slot of an LF-FEM. There is **no device, no fridge, and no saved output file**: results are fetched over
+  the Python API from a job's result handles. The programs stream computed values (no ADC), and the only
+  analog activity is zero-amplitude pulses on one LF-FEM output.
+- **The Keysight HD304MSO**, reachable over VISA (LAN preferred). No signal is needed (auto trigger).
+- About 30 minutes of OPX time including setup (the full script runs in ~2 min) and ~10 minutes of scope time.
+- **Run sheet:** `bench/probes/probe01/README.md`. It includes an offline check you can run before the lab day.
+
+## Rate ladder: why 10³–10⁶ points/s
+The probe measures what the OPX → host path sustains across the plausible range of use. It does not
+measure one assumed rate. A measurement's delivered rate is roughly
+
+    points/s ≈ 1 / (t_integration × N_averages + t_settle + t_overhead)
+
+| Regime | Typical per-point cost | Delivered points/s |
+|---|---|---|
+| DC transport / slow stepping (gates stepped by a DC source, ms settle) | 1–10 ms | 10²–10³ |
+| RF-reflectometry charge sensing, stepped | 10–100 µs integration, some averaging | 10⁴–10⁵ |
+| Fast/"video-mode" maps (OPX sweeps both axes, minimal averaging) | 1–5 µs | 2×10⁵–10⁶ |
+| Raw/near-raw bursts | < 1 µs | above 10⁶, short bursts only |
+
+The ladder (10³, 10⁴, 10⁵, 10⁶ and unpaced) covers every row. The unpaced run finds the ceiling. The
+answer for your own measurements is the row matching your integration time and averaging. The design target
+(10⁶ points/s) sits at the top of the video-mode row.
 
 ## Procedure — OPX
 Write one short QUA program and one Python timing script. Record, for each variant:
@@ -43,16 +61,23 @@ Write one short QUA program and one Python timing script. Record, for each varia
    all three counts.
 
 ## Findings (fill in)
+Environment: qm-qua ___, QOP ___, scope firmware ___ (from the script output).
+
 | Item | OPX | Scope |
 |---|---|---|
-| Delivery granularity | | |
-| Partial fetch mid-acquisition | | |
-| Sustained points/s (median / p95 inter-arrival) | | |
+| Delivery granularity | | whole record per query |
+| Partial fetch mid-acquisition (whole-frame buffer) | | n/a |
+| Delivered points/s at 10³ / 10⁴ / 10⁵ / 10⁶ / unpaced, per line | | |
+| Same, per point | | |
+| Highest rate without data loss (per line / per point) | | n/a |
+| Inter-arrival median / p95 at 10⁵ per line | | |
+| Fetch cost (µs per point) | | transfer ms per record length |
 | Coordinate addressing | positional (expected) | explicit time axis (expected) |
-| In-band metadata | | |
+| Time-axis origin spread across captures (samples) | n/a | |
+| In-band metadata / timestamp-stream cost | | preamble only |
 | Push or pull | pull (expected) | pull (expected) |
-| Dtype / shape on fetch | | |
-| Runtime-variable without recompile | | n/a |
+| Dtype / shape on fetch | | 16-bit signed/unsigned, 1-D |
+| Runtime-variable without recompile (input stream / IO1) | | n/a |
 
 ## What the findings decide
 - `DatasetChunk` must carry either explicit coordinates or an *index range + reference to the definition*; the probe says which the OPX path needs and whether partial lines occur.
