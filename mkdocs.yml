@@ -1,0 +1,21 @@
+site_name: qdt — Quantum Dot Toolkit
+site_url: https://cowboyquantum.github.io/qdt
+repo_url: https://github.com/cowboyquantum/qdt
+nav:
+  - Home: index.md
+  - Development plan: DEVELOPMENT_PLAN.md
+  - Status: STATUS.md
+  - Steps: steps/README.md
+  - Finish line (Flight Deck): FINISH_LINE.md
+  - Bench: BENCH.md
+  - ADRs: adr/README.md
+  - Tutorials: tutorials/README.md
+  - API: api.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [packages/qdt-schemas/src, packages/qdt-lab/src]
+theme:
+  name: material

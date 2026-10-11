@@ -1,0 +1,23 @@
+# qdt-lab — package rules
+
+Instrument capability protocols, vendor drivers, simulated backends, the `Dataset` stream server (Step 1), the experiment compiler/executor (Step 2), and real drivers (Step 5). This package never touches a database (rule 4).
+
+## Layout (target; grows with the steps)
+```
+qdt_lab/
+  protocols/         # DCSource, Digitizer, PulseSequencer, SourceMeasure — typing.Protocol classes
+  simulated/         # one Simulated* per protocol; the L0 backends
+  drivers/<vendor>/  # real drivers; vendor SDK imported lazily inside functions
+  conformance/       # ONE suite, parametrized over backends; the spec for any driver
+  stream/            # Dataset stream server + synthetic/replay sources (Step 1)
+  experiment/        # compiler + executor (Step 2)
+```
+
+## Adding a driver (`/add-driver`)
+- It implements an existing protocol. A new protocol is an ADR-level decision.
+- Vendor SDK goes in `pyproject.toml` under `[project.optional-dependencies]` as an extra — never core. Check its pins against `qdt-schemas` first; report conflicts rather than downgrading schemas (ADR 0006).
+- Do not write new tests. Register the backend in `tests/conftest.py` parametrization. The suite must pass unchanged on `Simulated*` and, under `-m hardware`, on the real instrument.
+- Add the loopback row to `docs/BENCH.md` and the bench test in `bench/` with a numeric oracle and tolerance.
+
+## Conformance suite is the spec
+Test names describe required behavior ("set_voltage_then_read_returns_within_tolerance"). If a driver needs behavior the suite does not test, the suite is incomplete — extend it, then implement.

@@ -1,0 +1,5 @@
+# One term per line. Lines starting with # are ignored. Case-insensitive.
+# Add real stand names, device lot IDs, internal system names, and people as they become known.
+# The public repo must never match any of these.
+stand-chicago
+lot-

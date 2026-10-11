@@ -1,0 +1,22 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  l0:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages --all-extras
+      - run: bash scripts/check_all.sh
+      - run: uv run pytest -q
+  extras-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        extra: ["none", "opx", "qdac", "keysight", "smu"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: |
+          if [ "${{ matrix.extra }}" = "none" ]; then uv sync --package qdt-lab; else uv sync --package qdt-lab --extra "${{ matrix.extra }}"; fi
+      - run: uv run python -c "import qdt_lab; print('import ok')"

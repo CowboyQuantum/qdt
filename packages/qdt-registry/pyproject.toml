@@ -1,0 +1,13 @@
+[project]
+name = "qdt-registry"
+version = "0.1.0"
+description = "qdt — record-keeping engine; the only package that touches a database"
+requires-python = ">=3.11,<3.14"
+dependencies = ["qdt-schemas", "sqlalchemy>=2,<3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qdt_registry"]

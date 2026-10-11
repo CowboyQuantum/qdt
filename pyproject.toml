@@ -1,0 +1,45 @@
+[project]
+name = "qdt-workspace"
+version = "0.1.0"
+description = "Quantum Dot Toolkit — workspace root (not installable)"
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+qdt-schemas = { workspace = true }
+qdt-lab = { workspace = true }
+qdt-analysis = { workspace = true }
+qdt-registry = { workspace = true }
+qdt-sim = { workspace = true }
+qdt-telemetry = { workspace = true }
+qdt-frameworks = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-cov",
+  "ruff",
+  "mypy",
+  "mkdocs-material",
+  "mkdocstrings[python]",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "docs/tutorials"]
+markers = ["hardware: requires bench instruments; excluded from CI"]
+addopts = "-m 'not hardware' --import-mode=importlib"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["qdt_schemas", "qdt_lab", "qdt_analysis", "qdt_registry", "qdt_sim", "qdt_telemetry", "qdt_frameworks"]
