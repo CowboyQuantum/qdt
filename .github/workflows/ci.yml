@@ -20,3 +20,18 @@ jobs:
       - run: |
           if [ "${{ matrix.extra }}" = "none" ]; then uv sync --package qdt-lab; else uv sync --package qdt-lab --extra "${{ matrix.extra }}"; fi
       - run: uv run python -c "import qdt_lab; print('import ok')"
+  flightdeck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages  # the end-to-end test runs the Python stream server from .venv
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm -C apps/flightdeck install --frozen-lockfile
+      - run: pnpm -C apps/flightdeck check:types  # generated TS types match the JSON Schema export
+      - run: pnpm -C apps/flightdeck typecheck
+      - run: pnpm -C apps/flightdeck test
+      - run: pnpm -C apps/flightdeck build
