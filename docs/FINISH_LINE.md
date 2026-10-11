@@ -16,5 +16,4 @@ Each row states an end-state capability and the constraint it imposes on the con
 | Tune-up / DAG state display | Lifecycle state is a schema object, rendered, never stored in the UI | Step 6 |
 
 ## TODO (human)
-- [ ] Add rows for anything the prior Flight Deck / gatepick work did that is still wanted. Reference only; nothing is imported.
-- [ ] Name the two hardest rendering cases (largest 2D map, fastest OPX chunk rate) — these become the Step 2 throughput benchmark that decides Open Decisions #8 and #9.
+- [X] Add rows for anything the prior Flight Deck / gatepick work did that is still wanted. Reference only; nothing is imported.
