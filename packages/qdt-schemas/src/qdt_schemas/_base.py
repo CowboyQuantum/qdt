@@ -6,7 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 class QdtModel(BaseModel):
     """Common base: frozen, extra fields rejected, per-object schema_version."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    # serialization-mode JSON Schema marks defaulted fields required: producers always emit them
+    model_config = ConfigDict(
+        frozen=True, extra="forbid", json_schema_serialization_defaults_required=True
+    )
     schema_version: int = Field(
         default=1,
         description=(

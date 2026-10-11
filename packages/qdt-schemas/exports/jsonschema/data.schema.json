@@ -1,0 +1,721 @@
+{
+  "$defs": {
+    "Annotation": {
+      "additionalProperties": false,
+      "description": "An overlay (marker, line, region, fitted curve) in the coordinate system of the Dataset it decorates.",
+      "properties": {
+        "annotation_id": {
+          "description": "Unique id; re-sending an id replaces that annotation.",
+          "minLength": 1,
+          "title": "Annotation Id",
+          "type": "string"
+        },
+        "attrs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Free-form scalar metadata, e.g. fit parameters.",
+          "title": "Attrs",
+          "type": "object"
+        },
+        "coords": {
+          "description": "Coordinate names giving the meaning of each component of every point.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Coords",
+          "type": "array"
+        },
+        "dataset_id": {
+          "description": "The Dataset this annotation decorates.",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Geometry: marker = one point, line = two, polyline/curve = many, region = closed polygon.",
+          "enum": [
+            "marker",
+            "line",
+            "polyline",
+            "region",
+            "curve"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "description": "Display label.",
+          "title": "Label",
+          "type": "string"
+        },
+        "points": {
+          "description": "Vertices in data coordinates; each has one value per entry in `coords`.",
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "annotation_id",
+        "dataset_id",
+        "kind",
+        "coords",
+        "points",
+        "label",
+        "attrs"
+      ],
+      "title": "Annotation",
+      "type": "object"
+    },
+    "AnnotationMessage": {
+      "additionalProperties": false,
+      "description": "Wire text message carrying an Annotation for an already-announced Dataset (ADR 0010).",
+      "properties": {
+        "annotation": {
+          "$ref": "#/$defs/Annotation",
+          "description": "The annotation being added or replaced."
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "annotation",
+          "default": "annotation",
+          "description": "Discriminator.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "type",
+        "annotation"
+      ],
+      "title": "AnnotationMessage",
+      "type": "object"
+    },
+    "DataVariable": {
+      "additionalProperties": false,
+      "description": "A named measured quantity laid out over one or more dimensions.",
+      "properties": {
+        "dims": {
+          "description": "Dimension names in array (row-major) order.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Dims",
+          "type": "array"
+        },
+        "dtype": {
+          "description": "Element type of the payload array.",
+          "enum": [
+            "float32",
+            "float64",
+            "int16",
+            "int32",
+            "int64",
+            "uint16",
+            "uint32"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "name": {
+          "description": "Variable name, unique among coordinates and data variables.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "unit": {
+          "description": "Physical unit, e.g. 'A', 'V'. Empty string for dimensionless or arbitrary units.",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "dims",
+        "unit",
+        "dtype"
+      ],
+      "title": "DataVariable",
+      "type": "object"
+    },
+    "Dataset": {
+      "additionalProperties": false,
+      "description": "xarray-shaped definition of a stream: dimensions, coordinates, variables, attributes, source.",
+      "properties": {
+        "attrs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Free-form scalar metadata.",
+          "title": "Attrs",
+          "type": "object"
+        },
+        "coords": {
+          "default": [],
+          "description": "Coordinates labelling the dimensions.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "indexed": "#/$defs/IndexedCoordinate",
+                "linear": "#/$defs/LinearCoordinate",
+                "streamed": "#/$defs/StreamedCoordinate"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/LinearCoordinate"
+              },
+              {
+                "$ref": "#/$defs/IndexedCoordinate"
+              },
+              {
+                "$ref": "#/$defs/StreamedCoordinate"
+              }
+            ]
+          },
+          "title": "Coords",
+          "type": "array"
+        },
+        "created_at": {
+          "description": "When the producer created the definition (timezone-aware).",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "data_vars": {
+          "description": "Measured variables.",
+          "items": {
+            "$ref": "#/$defs/DataVariable"
+          },
+          "minItems": 1,
+          "title": "Data Vars",
+          "type": "array"
+        },
+        "dataset_id": {
+          "description": "Unique id; every chunk and annotation refers to it.",
+          "minLength": 1,
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "dims": {
+          "description": "Dimensions, in no particular order.",
+          "items": {
+            "$ref": "#/$defs/Dimension"
+          },
+          "minItems": 1,
+          "title": "Dims",
+          "type": "array"
+        },
+        "name": {
+          "description": "Human-readable name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceDescriptor",
+          "description": "What kind of source produced this Dataset."
+        }
+      },
+      "required": [
+        "schema_version",
+        "dataset_id",
+        "name",
+        "dims",
+        "coords",
+        "data_vars",
+        "attrs",
+        "source",
+        "created_at"
+      ],
+      "title": "Dataset",
+      "type": "object"
+    },
+    "DatasetChunk": {
+      "additionalProperties": false,
+      "description": "Envelope for one partial update: which hyperrectangle of the Dataset the accompanying binary payload fills.",
+      "properties": {
+        "dataset_id": {
+          "description": "The Dataset this chunk belongs to.",
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "explicit_coords": {
+          "default": [],
+          "description": "Streamed coordinates in the payload; each is 1-D over its dimension's slice. Empty when all are implicit.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Explicit Coords",
+          "type": "array"
+        },
+        "final": {
+          "default": false,
+          "description": "True on the last chunk of the Dataset; the stream is then complete.",
+          "title": "Final",
+          "type": "boolean"
+        },
+        "produced_at": {
+          "description": "When the producer emitted the chunk (timezone-aware); used for latency.",
+          "format": "date-time",
+          "title": "Produced At",
+          "type": "string"
+        },
+        "region": {
+          "description": "Index hyperrectangle filled by this chunk, one slice per dimension of its variables.",
+          "items": {
+            "$ref": "#/$defs/IndexSlice"
+          },
+          "minItems": 1,
+          "title": "Region",
+          "type": "array"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "seq": {
+          "description": "Position in the stream, from 0, contiguous; consumers apply chunks in seq order.",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "variables": {
+          "description": "Data variables in the payload; each array has the region's shape in the variable's dim order.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Variables",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "dataset_id",
+        "seq",
+        "region",
+        "variables",
+        "explicit_coords",
+        "produced_at",
+        "final"
+      ],
+      "title": "DatasetChunk",
+      "type": "object"
+    },
+    "DatasetMessage": {
+      "additionalProperties": false,
+      "description": "Wire text message announcing a Dataset; precedes every chunk and annotation for it (ADR 0010).",
+      "properties": {
+        "dataset": {
+          "$ref": "#/$defs/Dataset",
+          "description": "The definition being announced."
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "dataset",
+          "default": "dataset",
+          "description": "Discriminator.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "type",
+        "dataset"
+      ],
+      "title": "DatasetMessage",
+      "type": "object"
+    },
+    "Dimension": {
+      "additionalProperties": false,
+      "description": "A named array axis.",
+      "properties": {
+        "name": {
+          "description": "Dimension name, unique within the Dataset, e.g. 'gate_L'.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Length along this axis; None means unbounded (append-only, e.g. a free-running time series).",
+          "title": "Size"
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "size"
+      ],
+      "title": "Dimension",
+      "type": "object"
+    },
+    "IndexSlice": {
+      "additionalProperties": false,
+      "description": "Half-open index range [start, stop) along one dimension.",
+      "properties": {
+        "dim": {
+          "description": "Dimension name.",
+          "title": "Dim",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "start": {
+          "description": "First index covered.",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "stop": {
+          "description": "One past the last index covered; must exceed start.",
+          "title": "Stop",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "dim",
+        "start",
+        "stop"
+      ],
+      "title": "IndexSlice",
+      "type": "object"
+    },
+    "IndexedCoordinate": {
+      "additionalProperties": false,
+      "description": "Implicit coordinate: arbitrary values listed in the definition, one per index of its dimension.",
+      "properties": {
+        "dim": {
+          "description": "Name of the Dimension this coordinate labels.",
+          "title": "Dim",
+          "type": "string"
+        },
+        "kind": {
+          "const": "indexed",
+          "default": "indexed",
+          "description": "Discriminator: implicit, listed values.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "Coordinate name, unique among coordinates and data variables.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "unit": {
+          "description": "Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.",
+          "title": "Unit",
+          "type": "string"
+        },
+        "values": {
+          "description": "Coordinate values; length must equal the dimension size.",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "name",
+        "dim",
+        "unit",
+        "values"
+      ],
+      "title": "IndexedCoordinate",
+      "type": "object"
+    },
+    "LinearCoordinate": {
+      "additionalProperties": false,
+      "description": "Implicit coordinate: evenly spaced values from start to stop inclusive, one per index of its dimension.",
+      "properties": {
+        "dim": {
+          "description": "Name of the Dimension this coordinate labels.",
+          "title": "Dim",
+          "type": "string"
+        },
+        "kind": {
+          "const": "linear",
+          "default": "linear",
+          "description": "Discriminator: implicit, evenly spaced.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "Coordinate name, unique among coordinates and data variables.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "num": {
+          "description": "Number of values; must equal the dimension size.",
+          "minimum": 1,
+          "title": "Num",
+          "type": "integer"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "start": {
+          "description": "Value at index 0.",
+          "title": "Start",
+          "type": "number"
+        },
+        "stop": {
+          "description": "Value at the last index (inclusive).",
+          "title": "Stop",
+          "type": "number"
+        },
+        "unit": {
+          "description": "Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "name",
+        "dim",
+        "unit",
+        "start",
+        "stop",
+        "num"
+      ],
+      "title": "LinearCoordinate",
+      "type": "object"
+    },
+    "SourceDescriptor": {
+      "additionalProperties": false,
+      "description": "What kind of source produced a Dataset. Never identifies an instrument (rule 8).",
+      "properties": {
+        "kind": {
+          "description": "Source category. Consumers may branch on this; they may not learn the producing instrument.",
+          "enum": [
+            "live",
+            "replay",
+            "synthetic",
+            "simulation",
+            "registry"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "description": "Human-readable label for display, e.g. 'synthetic stability map'.",
+          "title": "Label",
+          "type": "string"
+        },
+        "registry_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Registry reference when the Dataset is addressable in the registry (Step 3); None otherwise.",
+          "title": "Registry Ref"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "label",
+        "registry_ref"
+      ],
+      "title": "SourceDescriptor",
+      "type": "object"
+    },
+    "StreamTextMessage": {
+      "discriminator": {
+        "mapping": {
+          "annotation": "#/$defs/AnnotationMessage",
+          "dataset": "#/$defs/DatasetMessage"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DatasetMessage"
+        },
+        {
+          "$ref": "#/$defs/AnnotationMessage"
+        }
+      ]
+    },
+    "StreamedCoordinate": {
+      "additionalProperties": false,
+      "description": "Explicit coordinate: values are not known up front and arrive in-band with each chunk (e.g. a scope time axis).",
+      "properties": {
+        "dim": {
+          "description": "Name of the Dimension this coordinate labels.",
+          "title": "Dim",
+          "type": "string"
+        },
+        "dtype": {
+          "default": "float64",
+          "description": "Element type of the in-band coordinate array.",
+          "enum": [
+            "float32",
+            "float64",
+            "int16",
+            "int32",
+            "int64",
+            "uint16",
+            "uint32"
+          ],
+          "title": "Dtype",
+          "type": "string"
+        },
+        "kind": {
+          "const": "streamed",
+          "default": "streamed",
+          "description": "Discriminator: explicit, values in the payload.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "Coordinate name, unique among coordinates and data variables.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "unit": {
+          "description": "Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.",
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "name",
+        "dim",
+        "unit",
+        "dtype"
+      ],
+      "title": "StreamedCoordinate",
+      "type": "object"
+    }
+  },
+  "title": "qdt Dataset stream contract"
+}

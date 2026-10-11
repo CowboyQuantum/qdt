@@ -5,6 +5,8 @@ DRAFT — not frozen. The freeze waits on Probe 01 (`docs/probes/01-stream-seman
 A stream is one `Dataset` (the definition), then ordered `DatasetChunk` envelopes and `Annotation`s.
 Array payloads never live in these models: each chunk envelope travels as JSON next to a binary frame
 (Arrow IPC) holding one array per name in `DatasetChunk.variables` and `DatasetChunk.explicit_coords`.
+Wire framing (ADR 0010): `Dataset` and `Annotation` go as text messages (`StreamTextMessage`); each chunk
+goes as one binary Arrow IPC message whose schema metadata holds the envelope under `CHUNK_METADATA_KEY`.
 
 Coordinates are addressed two ways (Analysis 0001 §6.2):
 - implicit — values follow from the definition (`linear`, `indexed`); a chunk carries only its index region;
@@ -308,3 +310,23 @@ class Annotation(QdtModel):
         if self.kind == "region" and len(self.points) < 3:
             raise ValueError("region needs at least 3 points")
         return self
+
+
+class DatasetMessage(QdtModel):
+    """Wire text message announcing a Dataset; precedes every chunk and annotation for it (ADR 0010)."""
+
+    type: Literal["dataset"] = Field(default="dataset", description="Discriminator.")
+    dataset: Dataset = Field(description="The definition being announced.")
+
+
+class AnnotationMessage(QdtModel):
+    """Wire text message carrying an Annotation for an already-announced Dataset (ADR 0010)."""
+
+    type: Literal["annotation"] = Field(default="annotation", description="Discriminator.")
+    annotation: Annotation = Field(description="The annotation being added or replaced.")
+
+
+StreamTextMessage = Annotated[DatasetMessage | AnnotationMessage, Field(discriminator="type")]
+
+CHUNK_METADATA_KEY = "qdt.chunk"
+"""Arrow schema-metadata key holding the `DatasetChunk` JSON in a binary wire message (ADR 0010)."""

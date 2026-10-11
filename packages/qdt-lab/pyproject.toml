@@ -3,7 +3,13 @@ name = "qdt-lab"
 version = "0.1.0"
 description = "qdt — instrument capability protocols, drivers, simulated backends, experiment executor, Dataset stream server"
 requires-python = ">=3.11,<3.14"
-dependencies = ["qdt-schemas", "numpy>=1.26,<3", "xarray>=2024.1,<2027"]
+dependencies = [
+    "qdt-schemas",
+    "numpy>=1.26,<3",
+    "xarray>=2024.1,<2027",
+    "pyarrow>=15",
+    "websockets>=13",
+]
 
 [project.optional-dependencies]
 opx = []       # TODO Step 1: qm-qua, pinned after checking its pydantic/numpy constraints (ADR 0006)
