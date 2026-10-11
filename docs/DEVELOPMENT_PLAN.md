@@ -177,7 +177,7 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | 6 | Lab PC OS | Resolve via IT ask at Step 7 |
 | 7 | Bluefors log access mode | Resolve via IT ask at Step 7 |
 | 8 | Stream transport for `Dataset` | RESOLVED (ADR 0008): WebSocket + Arrow IPC; see `docs/analysis/0001-stream-budget.md` |
-| 9 | Flight Deck stack | TypeScript; 2D renderer is WebGL (ADR 0008); library chosen at Step 1 by benchmark as tie-breaker |
+| 9 | Flight Deck stack | RESOLVED (ADR 0013): TypeScript; raw WebGL2 2D renderer, no library; see `docs/analysis/0002-renderer-benchmark.md` |
 | 10 | Surrogate DUT design | Resistor divider + RC leg + diode (proposed); finalize in `BENCH.md` by Step 5 entry |
 
 ## 13. Success criteria

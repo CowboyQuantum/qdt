@@ -33,7 +33,7 @@ Draft the `Dataset` stream contract against the finish-line sketch and the Analy
 
 ## Open decisions
 - #8 — CLOSED by ADR 0008 (WebSocket + Arrow IPC)
-- #9 — reduced to WebGL library choice; benchmark is a tie-breaker
+- #9 — CLOSED by ADR 0013 (raw WebGL2, no library; Analysis 0002)
 - Probe 01 findings (chunk semantics) — needs lab access; gates the freeze only
 - Flight Deck UI starts against the drafted contract (ADR 0011); the freeze gates exit, not UI work
 
