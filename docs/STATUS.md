@@ -4,7 +4,7 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `step-1/probe01-scripts` (on top of the unmerged `step-1/flightdeck-benchmark`; neither merged to `main`; pushing stays manual)
+**Branch:** `main` (sessions 5 and the Probe 01 rewrite merged locally; not pushed — pushing stays manual)
 **Last session:** 2026-10-11 — session (5): renderer benchmark, #9 closed (ADR 0013, Analysis 0002), browser pixel test, CI target assertion; then Probe 01 scripts reviewed and rewritten for OPX1000 / HD304MSO.
 
 ## Step 1 exit criteria
@@ -45,7 +45,7 @@ freeze ADR that cites it.
   e2e, `bench --assert` at 2048² / 10⁶ pts/s on SwiftShader).
 
 ## In flight
-- Nothing uncommitted. Branch awaits merge; CI has not yet run the new e2e/bench steps.
+- Nothing uncommitted. `main` is ahead of `origin/main`; human to push. CI has not yet run the new e2e/bench steps.
 
 ## Known broken / not yet real
 - Probe 01 unrun → no freeze (per-record scope time axis; OPX partial-buffer visibility; point-wise chunk rate).
@@ -58,8 +58,8 @@ freeze ADR that cites it.
 - Probe scripts verified offline only; execution-time APIs (result handles, input-stream push, IO, pause/resume) are first exercised in the lab — run `--quick` first. `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-**Before the lab day:** merge `step-1/flightdeck-benchmark` and `step-1/probe01-scripts` to `main`, push, confirm CI
-green (the lab laptop pulls from GitHub).
+**Before the lab day:** push `main` (both branches are merged locally) and confirm CI green — the lab laptop
+pulls from GitHub. CI has not yet run the new e2e/bench steps.
 **Human, in the lab, with a Claude session on the lab laptop:** run Probe 01 per
 `bench/probes/probe01/LAB_GUIDE.md` ("Working with Claude in the lab" has the start-up steps and an opening
 message). Order: QOP version → matching `qm-qua` → offline check → `--quick` → full OPX run → scope run →
