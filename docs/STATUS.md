@@ -4,11 +4,11 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `step-1/stream-server` (not yet merged to `main`; pushing stays manual)
-**Last session:** 2026-10-11 — session (3): Arrow wire codec, WebSocket stream server, replay, JSON Schema export; ADR 0010.
+**Branch:** `main` (`step-1/stream-server` merged locally; not pushed — pushing stays manual)
+**Last session:** 2026-10-11 — session (3): Arrow wire codec, WebSocket stream server, replay, JSON Schema export; ADR 0010. Flight Deck gate relaxed to the drafted contract (ADR 0011).
 
 ## Done
-- Step 0 complete. ADR 0001–0010 written. Analysis 0001 + ADR 0008: WebSocket + Arrow IPC, WebGL 2D.
+- Step 0 complete. ADR 0001–0011 written. Flight Deck may start against the drafted contract (ADR 0011; `apps/flightdeck/CLAUDE.md` updated). Analysis 0001 + ADR 0008: WebSocket + Arrow IPC, WebGL 2D.
 - Probe 01 spec and scripts written (`docs/probes/01-stream-semantics.md`, `bench/probes/probe01/`), **not run**.
 - **`qdt_schemas/data.py` (DRAFT, not frozen; ADR 0009):** `Dataset`, `DatasetChunk` (envelope: index `region`
   + payload names + `explicit_coords`), `Annotation`, `SourceDescriptor` (kind only, rule 8), coordinate kinds
@@ -29,13 +29,9 @@
   ≥ 10⁶ pts/s end-to-end over localhost WebSocket (Python client).
 
 ## In flight
-- Nothing uncommitted. `step-1/stream-server` awaits merge.
+- Nothing uncommitted. `main` is ahead of `origin/main`; human to push.
 
 ## Known broken / not yet real
-- **Flight Deck entry gate conflict (human decision needed):** `apps/flightdeck/CLAUDE.md` says no UI code until
-  the contract is *frozen*, but the freeze waits on Probe 01 (lab), and Step 1 / ADR 0008 build Flight Deck v0
-  against the *draft*. That file also still says "stack chosen at Step 1 … Open Decisions #8, #9" (8 is closed)
-  and its README says "Scaffolded at Step 2". Needs a human edit (or an ADR) before any UI session.
 - Probe 01 unrun → contract cannot freeze. Open questions for the freeze: per-record scope time axis (streamed
   coords are 1-D/shared), OPX partial-buffer visibility.
 - Server history is unbounded (fine for maps; grows forever for free-running `record` streams). No eviction.
@@ -45,11 +41,10 @@
 - Probe scripts' `qm-qua` API names unverified. `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-Human: resolve the Flight Deck entry-gate conflict above; merge `step-1/stream-server`. Then Step 1 session (4),
-on `step-1/flightdeck-v0`: scaffold `apps/flightdeck` (pnpm, TS), `pnpm gen:types` from
+Step 1 session (4), on `step-1/flightdeck-v0`: scaffold `apps/flightdeck` (pnpm, TS), `pnpm gen:types` from
 `packages/qdt-schemas/exports/jsonschema/data.schema.json` with a CI drift check, a TS stream decoder
 (`StreamTextMessage` JSON + Arrow IPC chunk via `apache-arrow`), the `Source` abstraction with `replay` (reading
-`.qdtrec`) and WebSocket sources, then the WebGL 2D heatmap. Add the frontend job to CI.
+`.qdtrec`) and WebSocket sources, then the WebGL 2D heatmap. Add the frontend job to CI. Read `apps/flightdeck/CLAUDE.md` first.
 
 ## Decisions pending (see plan §12)
 #9 WebGL library (Step 1 benchmark, tie-breaker). Contract freeze (after Probe 01; revisits ADR 0009/0010). #10 DUT design — by Step 5 entry.
