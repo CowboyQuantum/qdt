@@ -13,3 +13,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0007 | Simulation-first sequencing; instrument drivers as the last mile | Accepted (supersedes ordering in 0004) |
 | 0008 | Stream transport, encoding, and renderer class | Accepted (analysis: `docs/analysis/0001-stream-budget.md`) |
 | 0009 | Dataset contract draft: envelope-only chunks, region addressing, implicit/explicit coordinates | Accepted (draft; freeze after Probe 01) |
+| 0010 | Stream wire protocol, recordings, and server delivery model | Accepted (draft; frozen with the contract after Probe 01) |
