@@ -4,9 +4,11 @@ Run only when the wire format or the synthetic sources change: `uv run python sc
 Recordings embed wall-clock timestamps, so bytes differ per run; tests compare content, not bytes.
 """
 
+import hashlib
+import json
 import pathlib
 
-from qdt_lab.stream import SyntheticMap, SyntheticRecords, write_recording
+from qdt_lab.stream import ReplaySource, SyntheticMap, SyntheticRecords, assemble, write_recording
 from qdt_schemas.data import Annotation
 
 OUT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-lab/tests/fixtures/stream"
@@ -14,6 +16,28 @@ OUT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-lab/tests/fixt
 # Kept here so tests can rebuild the same sources and compare content.
 MAP = {"n_outer": 64, "n_inner": 64, "seed": 7, "dataset_id": "fixture-map-64"}
 RECORDS = {"n_samples": 500, "n_records": 8, "seed": 7, "dataset_id": "fixture-records-8"}
+
+
+def expected(path: pathlib.Path) -> dict:
+    """Content oracle for non-Python decoders (Flight Deck): per array shape, dtype and sha256 of the
+    little-endian row-major bytes, as assembled by the reference Python consumer."""
+    src = ReplaySource(path)
+    ds = assemble(src.dataset, src.frames())
+    arrays = {}
+    for name, var in {**ds.coords, **ds.data_vars}.items():
+        a = var.values
+        a = a.astype(a.dtype.newbyteorder("<"), copy=False)
+        arrays[name] = {
+            "shape": list(a.shape),
+            "dtype": str(a.dtype.name),
+            "sha256": hashlib.sha256(a.tobytes(order="C")).hexdigest(),
+        }
+    return {
+        "dataset_id": src.dataset.dataset_id,
+        "n_chunks": sum(1 for _ in src.frames()),
+        "annotation_ids": [a.annotation_id for a in src.annotations],
+        "arrays": arrays,
+    }
 
 
 def main() -> None:
@@ -32,6 +56,9 @@ def main() -> None:
     r = SyntheticRecords(**RECORDS, records_per_second=50.0)
     write_recording(OUT / "synthetic_records_8.qdtrec", r)
     for p in sorted(OUT.glob("*.qdtrec")):
+        oracle = OUT / f"{p.stem}.expected.json"
+        text = json.dumps(expected(p), indent=2) + "\n"
+        oracle.write_text(text, encoding="utf-8", newline="\n")
         print(f"{p.relative_to(OUT.parents[3])}: {p.stat().st_size} bytes")
 
 

@@ -1,0 +1,22 @@
+{
+  "dataset_id": "fixture-records-8",
+  "n_chunks": 8,
+  "annotation_ids": [],
+  "arrays": {
+    "time": {
+      "shape": [
+        500
+      ],
+      "dtype": "float64",
+      "sha256": "56e3229387c4460ed1a492db5763f9188c4320363c98b333ce9f5019c2d55bf2"
+    },
+    "voltage": {
+      "shape": [
+        8,
+        500
+      ],
+      "dtype": "float64",
+      "sha256": "976eb5ad40ff05f3b9813fe07ca49d79fd87fab3b2544a1ac7a31369b0c15cbb"
+    }
+  }
+}

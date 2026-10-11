@@ -203,3 +203,29 @@ def test_wire_path_keeps_design_target_line_rate():
     np.testing.assert_array_equal(
         got[src.dataset.dataset_id].frames[3].arrays["signal"][0], src.row(3)
     )
+
+
+@pytest.mark.parametrize("name", ["synthetic_map_64", "synthetic_records_8"])
+def test_committed_content_oracle_matches_recording(name):
+    """The .expected.json oracles (consumed by Flight Deck's decoder tests) agree with the reference
+    Python consumer; regenerate both with scripts/make_stream_fixtures.py."""
+    import hashlib
+    import json
+
+    oracle = json.loads((FIXTURES / f"{name}.expected.json").read_text(encoding="utf-8"))
+    src = ReplaySource(FIXTURES / f"{name}.qdtrec")
+    ds = assemble(src.dataset, src.frames())
+    assert oracle["dataset_id"] == src.dataset.dataset_id
+    for array_name, spec in oracle["arrays"].items():
+        a = ds[array_name].values
+        assert list(a.shape) == spec["shape"] and a.dtype.name == spec["dtype"]
+        assert (
+            hashlib.sha256(a.astype(a.dtype.newbyteorder("<")).tobytes()).hexdigest()
+            == spec["sha256"]
+        )
+
+
+def test_feed_publishes_replayed_annotations():
+    replay = ReplaySource(FIXTURES / "synthetic_map_64.qdtrec")
+    received = live(replay)
+    assert [a.annotation_id for a in received.annotations] == ["transition-0"]

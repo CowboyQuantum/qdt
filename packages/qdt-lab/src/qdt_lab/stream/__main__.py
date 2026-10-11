@@ -13,7 +13,7 @@ from .synthetic import MAP_SIZE, POINTS_PER_SECOND, SyntheticMap
 
 async def main(args: argparse.Namespace) -> None:
     if args.replay:
-        source = ReplaySource(args.replay, speed=args.speed)
+        source = ReplaySource(args.replay, speed=args.speed or None)
     else:
         source = SyntheticMap(
             n_outer=args.size,
@@ -36,7 +36,7 @@ def cli() -> None:
     p.add_argument("--rate", type=float, default=POINTS_PER_SECOND, help="points/s; 0 = unpaced")
     p.add_argument("--points-per-chunk", type=int, default=None, help="default: one line")
     p.add_argument("--replay", help="serve a .qdtrec recording instead of the synthetic map")
-    p.add_argument("--speed", type=float, default=1.0, help="replay speed factor")
+    p.add_argument("--speed", type=float, default=1.0, help="replay speed factor; 0 = unpaced")
     try:
         asyncio.run(main(p.parse_args()))
     except KeyboardInterrupt:

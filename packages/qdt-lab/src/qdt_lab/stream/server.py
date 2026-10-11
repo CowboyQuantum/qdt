@@ -64,12 +64,14 @@ class StreamServer:
         self._append(encode_chunk(frame))
 
     async def feed(self, source: Source) -> None:
-        """Announce `source.dataset`, then publish its frames as they come.
+        """Announce `source.dataset` and any `source.annotations`, then publish its frames as they come.
 
         `frames()` may block to pace itself, so it runs in a worker thread, which also does the encoding;
         only the append to the history happens on the event loop.
         """
         self.publish_dataset(source.dataset)
+        for annotation in getattr(source, "annotations", ()):
+            self.publish_annotation(annotation)
         loop = asyncio.get_running_loop()
         done = asyncio.Event()
         error: list[BaseException] = []

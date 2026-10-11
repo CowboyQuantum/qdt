@@ -1,0 +1,31 @@
+{
+  "dataset_id": "fixture-map-64",
+  "n_chunks": 64,
+  "annotation_ids": [
+    "transition-0"
+  ],
+  "arrays": {
+    "V_outer": {
+      "shape": [
+        64
+      ],
+      "dtype": "float64",
+      "sha256": "4d22ed19db93938c540c538fa242304e1249d9055d31faf70cd70fb8c4657827"
+    },
+    "V_inner": {
+      "shape": [
+        64
+      ],
+      "dtype": "float64",
+      "sha256": "4d22ed19db93938c540c538fa242304e1249d9055d31faf70cd70fb8c4657827"
+    },
+    "signal": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "sha256": "e92cd094b4c9f862345d06ffaa2a1b6476edd11bbf22c78094ab22f5e44c2fe2"
+    }
+  }
+}
