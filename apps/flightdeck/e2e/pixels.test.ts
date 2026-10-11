@@ -39,7 +39,7 @@ async function reference() {
   return { rgba: renderRGBA(map.values, [rows, cols], finiteRange(map.values)!), rows, cols };
 }
 
-describe.each(["webgl2", "regl", "cpu"])("renderer %s", (renderer) => {
+describe.each(["webgl2", "cpu"])("renderer %s", (renderer) => {
   it("draws the map fixture like the CPU reference", async () => {
     const page = await browser.newPage({ viewport: { width: 1200, height: 1300 } });
     await page.route("**/fixture.qdtrec", (route) =>

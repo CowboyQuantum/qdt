@@ -15,8 +15,7 @@
     "bench": "node bench/run.mjs"
   },
   "dependencies": {
-    "apache-arrow": "^21.2.0",
-    "regl": "^2.1.1"
+    "apache-arrow": "^21.2.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

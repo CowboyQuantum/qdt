@@ -2,7 +2,7 @@
 // URL parameters:
 //   ?ws=ws://127.0.0.1:8765   WebSocket source (default)
 //   ?replay=<url>&speed=1     replay a .qdtrec fetched from <url> (speed omitted = unpaced)
-//   ?renderer=webgl2|regl|cpu 2D renderer (default webgl2, falling back to cpu)
+//   ?renderer=webgl2|cpu      2D renderer (default webgl2, falling back to cpu)
 //   ?bench=1                  record per-chunk latency in window.__flightdeck (benchmark harness)
 // A .qdtrec can also be loaded with the file picker.
 import { finiteRange, type Range } from "./render/cpu";

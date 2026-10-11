@@ -5,7 +5,7 @@
 // map is complete, and read per-chunk [produced_at, drawn] samples. Latency = drawn - produced_at: the
 // producer's stamp to the frame finishing on the GPU, same machine clock.
 //
-//   pnpm build && node bench/run.mjs [--size 2048] [--rate 1000000] [--renderers webgl2,regl,cpu]
+//   pnpm build && node bench/run.mjs [--size 2048] [--rate 1000000] [--renderers webgl2,cpu]
 //                                    [--gpu hardware|swiftshader] [--out bench/results/<file>.json]
 //                                    [--assert]   exit 1 unless every renderer meets the targets in steady state
 //                                                 (p95 latency <= 50 ms, rendered rate >= 95% of --rate)
@@ -25,7 +25,7 @@ const arg = (name, fallback) => {
 };
 const size = Number(arg("size", 2048));
 const rate = Number(arg("rate", 1_000_000));
-const renderers = arg("renderers", "webgl2,regl,cpu").split(",");
+const renderers = arg("renderers", "webgl2,cpu").split(",");
 const gpu = arg("gpu", "hardware");
 const ppc = arg("points-per-chunk", null);
 const WARMUP_MS = 500;

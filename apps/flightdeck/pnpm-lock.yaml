@@ -11,9 +11,6 @@ importers:
       apache-arrow:
         specifier: ^21.2.0
         version: 21.2.0
-      regl:
-        specifier: ^2.1.1
-        version: 2.1.1
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -484,9 +481,6 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
-  regl@2.1.1:
-    resolution: {integrity: sha512-+IOGrxl3FZ8ZM9ixCWQZzFRiRn7Rzn9bu3iFHwg/yz4tlOUQgbO4PHLgG+1ZT60zcIV8tief6Qrmyl8qcoJP0g==}
-
   rolldown@1.2.13:
     resolution: {integrity: sha512-/5apOkwWxtACcQtZ5WlrAsKS4JwXVThQPJZ3RqIruRY9UG9M8e0VlXN068xum/JRKA4aIUoJ13ghe/kGCvidiQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -917,8 +911,6 @@ snapshots:
       source-map-js: 1.2.2
 
   prettier@3.9.10: {}
-
-  regl@2.1.1: {}
 
   rolldown@1.2.13:
     dependencies:

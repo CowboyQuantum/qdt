@@ -2,7 +2,6 @@
 // All take the full row-major map plus a dirty row range; row 0 is drawn at the bottom.
 import type { TypedArray } from "../stream/decode";
 import { CpuMap, type Range } from "./cpu";
-import { ReglMap } from "./regl";
 import { WebGL2Map } from "./webgl2";
 
 export interface MapRenderer {
@@ -19,12 +18,12 @@ export interface MapRenderer {
   readonly shape: [number, number];
 }
 
-export const RENDERERS = ["webgl2", "regl", "cpu"] as const;
+// regl was benchmarked as a candidate and rejected (ADR 0013; code at d9909b3).
+export const RENDERERS = ["webgl2", "cpu"] as const;
 export type RendererName = (typeof RENDERERS)[number];
 
 export function createMapRenderer(name: RendererName, canvas: HTMLCanvasElement): MapRenderer {
   if (name === "webgl2") return new WebGL2Map(canvas);
-  if (name === "regl") return new ReglMap(canvas);
   return new CpuMap(canvas);
 }
 
