@@ -15,7 +15,7 @@ observed behavior. It is **not** a driver, not a bench test, and writes no produ
   analog activity is zero-amplitude pulses on one LF-FEM output.
 - **The Keysight HD304MSO**, reachable over VISA (LAN preferred). No signal is needed (auto trigger).
 - About 30 minutes of OPX time including setup (the full script runs in ~2 min) and ~10 minutes of scope time.
-- **Run sheet:** `bench/probes/probe01/README.md`. It includes an offline check you can run before the lab day.
+- **Lab guide:** `bench/probes/probe01/LAB_GUIDE.md`. It includes an offline check you can run before the lab day.
 
 ## Rate ladder: why 10³–10⁶ points/s
 The probe measures what the OPX → host path sustains across the plausible range of use. It does not

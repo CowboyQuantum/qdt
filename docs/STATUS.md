@@ -20,7 +20,7 @@ freeze ADR that cites it.
 
 ## Done
 - ADR 0001–0013. Analysis 0001 (stream budget) and 0002 (renderer benchmark).
-- **Probe 01 ready to run** (`bench/probes/probe01/README.md` is the run sheet). Rewritten 2026-10-11 for the
+- **Probe 01 ready to run** (`bench/probes/probe01/LAB_GUIDE.md` is the lab guide). Rewritten 2026-10-11 for the
   lab's OPX1000 (LF-FEM; API v2 with v1 fallbacks; `qm-qua` deprecations handled) and Keysight HD304MSO:
   5 s runs on a 10³–10⁶ pts/s + unpaced ladder per line and per point, fetch cost, data loss; whole-frame
   partial visibility; one compiled program re-run with new step count / step / averaging via input streams,
@@ -58,7 +58,7 @@ freeze ADR that cites it.
 - Probe scripts verified offline only; execution-time APIs (result handles, input-stream push, IO, pause/resume) are first exercised in the lab — run `--quick` first. `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-**Human, in the lab:** run Probe 01 per `bench/probes/probe01/README.md` (QOP version → matching `qm-qua` →
+**Human, in the lab:** run Probe 01 per `bench/probes/probe01/LAB_GUIDE.md` (QOP version → matching `qm-qua` →
 offline check → `--quick` → full OPX run → scope run → commit `bench/fixtures/probe01/`). Then a session on
 `step-1/contract-freeze` reads the findings, fills the probe doc's Findings table, revisits ADR 0009/0010
 against them (per-record scope time axis, OPX partial-buffer visibility, point-wise rates), writes the freeze
