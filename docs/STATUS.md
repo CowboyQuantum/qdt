@@ -4,7 +4,7 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `step-1/flightdeck-v0` (not yet merged to `main`; `main` itself is 3 commits ahead of `origin`, unpushed — pushing stays manual)
+**Branch:** `main` (sessions 3–4 pushed; CI fix `step-1/ci-fix` merged locally, not pushed — pushing stays manual)
 **Last session:** 2026-10-11 — session (4): Flight Deck v0 scaffold, decoder, sources, WebGL heatmap, CI job; ADR 0012.
 
 ## Done
@@ -33,7 +33,12 @@
   WebSocket / real Python server, CPU render snapshot, rule-8 grep. `check_all.sh` green.
 
 ## In flight
-- Nothing uncommitted. Branch awaits merge. CI has not yet run on sessions 3–4 (unpushed).
+- Nothing uncommitted. First CI run of sessions 3–4 (run 38178034894) failed; fixed locally, awaiting push:
+  - `flightdeck` job: corepack ran from the repo root and fetched the latest pnpm (12) instead of the pinned
+    9.15.9 → job now runs with `working-directory: apps/flightdeck`. Run pnpm from that directory locally too.
+  - `l0`: recording-vs-regenerated synthetic comparisons failed on Linux for float64 records (fixtures recorded
+    on Windows; libm `exp`/`cos` last-ulp differences) → those comparisons now use `rtol=1e-12`; same-bytes
+    transport comparisons stay exact. The cross-language oracles hash recorded data, so they are unaffected.
 
 ## Known broken / not yet real
 - Probe 01 unrun → contract cannot freeze (per-record scope time axis; OPX partial-buffer visibility).

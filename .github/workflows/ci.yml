@@ -22,6 +22,11 @@ jobs:
       - run: uv run python -c "import qdt_lab; print('import ok')"
   flightdeck:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # corepack resolves `packageManager` from the cwd's package.json; from the repo root it would
+        # fetch the latest pnpm instead of the pinned one
+        working-directory: apps/flightdeck
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -30,8 +35,8 @@ jobs:
         with:
           node-version: 24
       - run: corepack enable
-      - run: pnpm -C apps/flightdeck install --frozen-lockfile
-      - run: pnpm -C apps/flightdeck check:types  # generated TS types match the JSON Schema export
-      - run: pnpm -C apps/flightdeck typecheck
-      - run: pnpm -C apps/flightdeck test
-      - run: pnpm -C apps/flightdeck build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:types  # generated TS types match the JSON Schema export
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

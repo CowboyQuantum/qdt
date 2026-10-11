@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import xarray as xr
 
 from qdt_lab.stream import (
     ReplaySource,
@@ -44,7 +45,14 @@ def fixture_pairs():
 
 
 def assert_same(a, b):
+    """Exact equality: the same bytes through different transports."""
     assert a.equals(b), f"assembled datasets differ:\n{a}\n---\n{b}"
+
+
+def assert_regenerates(recorded, regenerated):
+    """A committed recording vs the synthetic source re-run on this machine: libm (exp/cos) may differ
+    in the last ulp across platforms (fixtures are recorded on Windows, CI runs Linux); allow ~1e-12."""
+    xr.testing.assert_allclose(recorded, regenerated, rtol=1e-12, atol=1e-15)
 
 
 def live(source: Source, annotations=()) -> tuple:
@@ -68,7 +76,7 @@ def test_committed_recording_replays_to_the_synthetic_content(path, make):
     assert replay.dataset.model_dump(exclude={"created_at"}) == synthetic.dataset.model_dump(
         exclude={"created_at"}
     )
-    assert_same(
+    assert_regenerates(
         assemble(replay.dataset, replay.frames()), assemble(synthetic.dataset, synthetic.frames())
     )
 
@@ -85,7 +93,7 @@ def test_source_equivalence_synthetic_replay_live(path, make):
     replayed = assemble(replay.dataset, replay.frames())
     received = live(make())
     over_wire = assemble(received.dataset, received.frames)
-    assert_same(direct, replayed)
+    assert_regenerates(replayed, direct)
     assert_same(direct, over_wire)
 
 
