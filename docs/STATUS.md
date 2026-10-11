@@ -4,33 +4,28 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `step-0/close` (Step 0 closeout; merge to `main`, then start `step-1/dataset-contract`)
-**Last session:** 2026-10-11 — Step 0 closed: all exit criteria met; step files and this file updated.
+**Branch:** `main`
+**Last session:** 2026-10-11 (chat) — ADR 0008 + Analysis 0001 closed the "open inputs"; Probe 01 spec and scripts added.
 
 ## Done
-- Step 0 complete. CI is green on `main` (`b8d41e7`, remote `CowboyQuantum/qdt`); ADR 0001–0007 merged; `FINISH_LINE.md` has no open TODOs.
+- Step 0 complete; CI green on `main`; ADR 0001–0008 merged; `FINISH_LINE.md` authored with design targets.
 - Workspace skeleton, CLAUDE.md hierarchy, slash commands, CI, check scripts, `docs/steps/00–08`.
 - `qdt-schemas`: `QdtModel` base + `ChannelMap` stub (Step 2 slice, NOT frozen).
 - `qdt-lab`: `DCSource` protocol + `SimulatedDCSource` + 3-test conformance stub.
-- Full Apache-2.0 LICENSE; `.gitattributes` forces LF.
+- Analysis 0001 (`docs/analysis/`) bounded map size and chunk rate by arithmetic; ADR 0008 decided WebSocket + Arrow IPC and WebGL 2D. Open Decision #8 closed; #9 reduced to library choice.
+- Probe 01 spec (`docs/probes/01-stream-semantics.md`) and scripts (`bench/probes/probe01/`) written, **not yet run** — needs lab access. Gates the contract *freeze* only.
 
 ## In flight
-- `step-0/close` not yet merged to `main`.
-
-## Open inputs (need lab access; human has none at present)
-Both feed the Step 1 throughput benchmark that resolves Open Decisions #8 and #9:
-1. Largest 2D map to render (shape, dtype).
-2. Fastest OPX chunk rate (chunks/s, chunk shape) — the L1 probe measures this.
-
-Until they are supplied, the contract draft, the synthetic source, and the benchmark use **provisional** values, labelled as provisional in code and docs. The Step 1 exit criteria (contract freeze, #8/#9 ADRs, "measured chunk rate") cannot be met until they are measured.
+- Nothing. Tree is clean.
 
 ## Known broken / not yet real
-- `FINISH_LINE.md` header still reads "SKELETON" and "Step 2 entry gate" (Step 0 says Step 1); the "add rows from prior Flight Deck / gatepick work" item was ticked with no rows added. The rendering-cases item was removed; it is now tracked here and in the Step 1 Open decisions.
-- `docs/BENCH.md` is a skeleton; the Step 1 L1 probe writes the stream envelope into it (needs lab).
+- Probe 01 unrun; `bench/fixtures/probe01/` empty. Contract freeze ADR cannot be written until it runs.
+- Probe scripts' `qm-qua` API names unverified against the installed version (isolated per variant by design).
+- `docs/BENCH.md` is a skeleton (needed in full by Step 5).
 - Surrogate DUT not built (needed by Step 5 entry).
 
 ## Next action
-Merge `step-0/close` to `main`. Then Step 1 session (2), on `step-1/dataset-contract`: draft `data.py` (`Dataset`, `DatasetChunk`, `Annotation`, `SourceDescriptor`) per ADR 0005, plus a `synthetic` source in `qdt-lab/stream/` that emits a provisional envelope. Read `packages/qdt-schemas/CLAUDE.md` and `packages/qdt-lab/CLAUDE.md` first.
+Step 1 session (2), on `step-1/dataset-contract`: draft `data.py` (`Dataset`, `DatasetChunk`, `Annotation`, `SourceDescriptor`) per ADR 0005/0008 — `DatasetChunk` must support both implicit (index range + definition ref) and explicit coordinates pending Probe 01 — plus a `synthetic` source in `qdt-lab/stream/` emitting the Analysis 0001 envelope. Read `packages/qdt-schemas/CLAUDE.md` and `packages/qdt-lab/CLAUDE.md` first.
 
 ## Decisions pending (see plan §12)
-#8 stream transport, #9 Flight Deck stack — resolved by the Step 1 throughput benchmark (blocked on the open inputs above). #10 DUT design — by Step 5 entry.
+#9 WebGL library (Step 1 benchmark, tie-breaker). Contract freeze (after Probe 01). #10 DUT design — by Step 5 entry.

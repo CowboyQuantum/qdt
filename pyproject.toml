@@ -41,5 +41,8 @@ line-length = 100
 [tool.ruff.lint]
 extend-select = ["I"]
 
+[tool.ruff.lint.per-file-ignores]
+"bench/probes/**" = ["BLE001", "SIM117", "RUF007", "UP031"]  # one-off probe code: blind excepts isolate API mismatches by design
+
 [tool.ruff.lint.isort]
 known-first-party = ["qdt_schemas", "qdt_lab", "qdt_analysis", "qdt_registry", "qdt_sim", "qdt_telemetry", "qdt_frameworks"]
