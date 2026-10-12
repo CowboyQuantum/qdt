@@ -25,7 +25,8 @@ class CompiledSimulatedProgram(NamedTuple):
 class SimulatedSequencer:
     """Every result is filled with its flat loop index, cast to the declared dtype: exactly what the
     Probe 01 program produced on the OPX, so the positional-addressing oracle holds here and on hardware.
-    Chunks one slab of the first axis per frame (a line for a 2-D result), the ADR 0015 default."""
+    A 1-D result is one frame; a higher-rank result is chunked one slab of its first axis per frame
+    (a line for 2-D), the ADR 0015 default."""
 
     def __init__(self, points_per_second: float | None = None) -> None:
         self.points_per_second = points_per_second
@@ -58,10 +59,13 @@ class _SequencerSource:
         plan = []
         for r in self._program.results:
             shape = self._program.result_shape(r.name, self._parameters)
-            plan.extend((r, shape, i) for i in range(shape[0]))
+            if len(shape) == 1:
+                plan.append((r, shape, slice(0, shape[0])))
+            else:
+                plan.extend((r, shape, slice(i, i + 1)) for i in range(shape[0]))
         t0, done = time.perf_counter(), 0
-        for seq, (r, shape, i) in enumerate(plan):
-            values = np.arange(math.prod(shape), dtype=np.int64).reshape(shape)[i : i + 1]
+        for seq, (r, shape, first) in enumerate(plan):
+            values = np.arange(math.prod(shape), dtype=np.int64).reshape(shape)[first]
             done += values.size
             if self._sequencer.points_per_second:
                 delay = t0 + done / self._sequencer.points_per_second - time.perf_counter()
@@ -73,8 +77,11 @@ class _SequencerSource:
                     dataset_id=self.dataset.dataset_id,
                     seq=seq,
                     region=(
-                        IndexSlice(dim=dims[0], start=i, stop=i + 1),
-                        *(IndexSlice(dim=d, start=0, stop=n) for d, n in zip(dims[1:], shape[1:])),
+                        IndexSlice(dim=dims[0], start=first.start, stop=first.stop),
+                        *(
+                            IndexSlice(dim=d, start=0, stop=n)
+                            for d, n in zip(dims[1:], shape[1:], strict=True)
+                        ),
                     ),
                     variables=(r.name,),
                     produced_at=datetime.now(UTC),

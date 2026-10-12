@@ -1,0 +1,220 @@
+"""Walk an `ExecutionPlan` against backend objects and stream the Dataset (ADR 0019).
+
+Loop order: repeats (outermost, executor) → stepped axes row-major (executor: set levels, settle,
+sense) → the stage (sequencer: its axes and shots). Sensed levels are chunked one innermost stepped
+line per frame; stage frames are re-keyed into the full index space. The executor holds no data and
+never averages (ADR 0018).
+"""
+
+import itertools
+import math
+import time
+from collections.abc import Iterator, Mapping
+from datetime import UTC, datetime
+
+import numpy as np
+
+from qdt_schemas.activity import ExecutionPlan, ParameterBinding, SequencerProgram
+from qdt_schemas.data import (
+    Dataset,
+    DatasetChunk,
+    DataVariable,
+    IndexSlice,
+    LinearCoordinate,
+)
+
+from ..protocols import LevelSense, LevelSource, Sequencer
+from ..stream.frame import Frame
+from .compile import REPEAT_DIM, SHOT_DIM
+
+
+def resolve_parameters(
+    program: SequencerProgram,
+    bindings: tuple[ParameterBinding, ...],
+    plan: ExecutionPlan,
+    current: Mapping[str, float],
+) -> dict[str, int]:
+    """Integer parameter values for one run; `current` holds the stepped axes' present values."""
+    out: dict[str, int] = {}
+    for b in bindings:
+        if b.source == "const":
+            out[b.parameter] = b.value
+            continue
+        axis = plan.definition.axis(b.axis)
+        scale = program.parameter(b.parameter).scale
+        if b.source == "axis_num":
+            out[b.parameter] = axis.num
+        elif b.source == "axis_start":
+            out[b.parameter] = round(axis.start / scale)
+        elif b.source == "axis_step":
+            out[b.parameter] = round(axis.step / scale)
+        else:  # axis_value
+            out[b.parameter] = round(current[b.axis] / scale)
+    return out
+
+
+def expected_points(plan: ExecutionPlan) -> int | None:
+    """Points (repeats × every axis × shots) a bounded plan produces per variable family; None if unbounded."""
+    d = plan.definition
+    if d.repeats is None:
+        return None
+    n = d.repeats * math.prod(a.num for a in d.axes)
+    return n * (d.stage.shots if d.stage else 1)
+
+
+class Executor:
+    """Binds a plan to backends (instrument id → object satisfying the role's protocol) and runs it."""
+
+    def __init__(
+        self, plan: ExecutionPlan, backends: Mapping[str, object], sleep=time.sleep
+    ) -> None:
+        self.plan, self._backends, self._sleep = plan, dict(backends), sleep
+        needs = {"level_source": LevelSource, "level_sense": LevelSense, "sequencer": Sequencer}
+        for c in plan.channels:
+            if c.instrument not in self._backends:
+                raise ValueError(f"no backend for instrument {c.instrument!r}")
+            if not isinstance(self._backends[c.instrument], needs[c.role]):
+                raise TypeError(
+                    f"backend {c.instrument!r} does not satisfy {needs[c.role].__name__}"
+                )
+        stage = plan.definition.stage
+        if stage is not None:
+            if not isinstance(self._backends.get(stage.instrument), Sequencer):
+                raise TypeError(f"backend {stage.instrument!r} does not satisfy Sequencer")
+            self._slab = stage_slab(plan)
+            self._compiled = self._backends[stage.instrument].compile(plan.stage_program)
+
+    def run(self) -> "_PlanSource":
+        return _PlanSource(self)
+
+    def _frames(self) -> Iterator[Frame]:
+        plan, definition = self.plan, self.plan.definition
+        stepped = definition.stepped_axes()
+        innermost = stepped[-1].name if stepped else None
+        has_repeat = definition.repeats != 1
+        repeats = itertools.count() if definition.repeats is None else range(definition.repeats)
+        var_dims = {v.name: v.dims for v in plan.dataset.data_vars}
+        current: dict[str, float] = {}
+        applied: dict[str, float] = {}
+        seq = 0
+        for k in repeats:
+            buffers: dict[str, list[float]] = {s.name: [] for s in definition.sensed}
+            for idx in itertools.product(*(range(a.num) for a in stepped)):
+                settle = 0.0
+                for a, i in zip(stepped, idx, strict=True):
+                    current[a.name] = a.value(i)
+                    ch = plan.channel(a.channel)
+                    if applied.get(a.channel) != current[a.name]:
+                        self._backends[ch.instrument].set(ch.channel, current[a.name])
+                        applied[a.channel] = current[a.name]
+                        settle = max(settle, ch.settle_s)
+                if settle > 0:
+                    self._sleep(settle)
+                prefix = (
+                    *((IndexSlice(dim=REPEAT_DIM, start=k, stop=k + 1),) if has_repeat else ()),
+                    *(
+                        IndexSlice(dim=a.name, start=i, stop=i + 1)
+                        for a, i in zip(stepped, idx, strict=True)
+                    ),
+                )
+                if definition.stage is not None:
+                    params = resolve_parameters(
+                        plan.stage_program, plan.stage_parameters, plan, current
+                    )
+                    sequencer = self._backends[definition.stage.instrument]
+                    for f in sequencer.run(self._compiled, params, self._slab).frames():
+                        yield Frame(
+                            DatasetChunk(
+                                dataset_id=plan.dataset.dataset_id,
+                                seq=seq,
+                                region=(*prefix, *f.chunk.region),
+                                variables=f.chunk.variables,
+                                explicit_coords=f.chunk.explicit_coords,
+                                produced_at=f.chunk.produced_at,
+                            ),
+                            {
+                                name: a.reshape((1,) * len(prefix) + a.shape)
+                                for name, a in f.arrays.items()
+                            },
+                        )
+                        seq += 1
+                if definition.sensed:
+                    for s in definition.sensed:
+                        ch = plan.channel(s.channel)
+                        buffers[s.name].append(self._backends[ch.instrument].sense(ch.channel))
+                    if innermost is None or idx[-1] == stepped[-1].num - 1:
+                        region = prefix
+                        if innermost is not None:
+                            region = (
+                                *prefix[:-1],
+                                IndexSlice(dim=innermost, start=0, stop=stepped[-1].num),
+                            )
+                        arrays = {}
+                        for s in definition.sensed:
+                            shape = tuple(
+                                len(buffers[s.name]) if d == innermost else 1
+                                for d in var_dims[s.name]
+                            )
+                            arrays[s.name] = np.asarray(buffers[s.name], dtype=np.float64).reshape(
+                                shape
+                            )
+                            buffers[s.name] = []
+                        yield Frame(
+                            DatasetChunk(
+                                dataset_id=plan.dataset.dataset_id,
+                                seq=seq,
+                                region=region,
+                                variables=tuple(s.name for s in definition.sensed),
+                                produced_at=datetime.now(UTC),
+                            ),
+                            arrays,
+                        )
+                        seq += 1
+
+
+def stage_slab(plan: ExecutionPlan) -> Dataset:
+    """The inner Dataset the sequencer fills per stepped point: stage axes (+ shot), stage results."""
+    definition = plan.definition
+    inner = {a.name for a in definition.stage_axes()} | {SHOT_DIM}
+    dims = tuple(d for d in plan.dataset.dims if d.name in inner)
+    if not dims:
+        raise ValueError("a stage needs at least one inner axis or kept shots")
+    results = {r.name for r in plan.stage_program.results}
+    return Dataset(
+        dataset_id=f"{plan.dataset.dataset_id}:stage",
+        name=f"{plan.dataset.name} (stage)",
+        dims=dims,
+        coords=tuple(
+            c for c in plan.dataset.coords if isinstance(c, LinearCoordinate) and c.dim in inner
+        ),
+        data_vars=tuple(
+            DataVariable(
+                name=v.name,
+                dims=tuple(d for d in v.dims if d in inner),
+                unit=v.unit,
+                dtype=v.dtype,
+            )
+            for v in plan.dataset.data_vars
+            if v.name in results
+        ),
+        source=plan.dataset.source,
+        created_at=plan.dataset.created_at,
+    )
+
+
+class _PlanSource:
+    """The `Source` an `Executor.run` returns."""
+
+    def __init__(self, executor: Executor) -> None:
+        self._executor = executor
+        self.dataset = executor.plan.dataset
+
+    def frames(self) -> Iterator[Frame]:
+        """Frames in seq order; the last one carries `final=True` when the plan is bounded."""
+        pending: Frame | None = None
+        for f in self._executor._frames():
+            if pending is not None:
+                yield pending
+            pending = f
+        if pending is not None:
+            yield Frame(pending.chunk.model_copy(update={"final": True}), pending.arrays)
