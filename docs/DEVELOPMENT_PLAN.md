@@ -22,7 +22,7 @@ Unify all personal tools under a public engine monorepo (`qdt`, GitHub, Cowboy Q
 | Package prefix | `qdt-` / `qdt_`; no brand in import paths |
 | Instrument-control package | `qdt-lab` (import `qdt_lab`) |
 | Front end | **Flight Deck** — product name; lives at `apps/flightdeck/` (v0.3) |
-| Simulation package | `qdt-sim` (import `qdt_sim`), imported from `quantum_dot_sim` |
+| Simulation package | `qdt-sim` (import `qdt_sim`), written fresh (ADR 0020) |
 | License (public repo) | Apache-2.0 |
 
 ## 3. Repository architecture

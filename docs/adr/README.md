@@ -23,3 +23,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0017 | Protocol signatures: producers are handed the Dataset and return a stream; `SequencerProgram` typed envelope | Accepted |
 | 0018 | qdt owns a minimal backend-neutral `PulseSequence`; backends emit their own ISA; shots innermost, repeats outermost | Accepted (amends plan §10, §4.1) |
 | 0019 | `SweepDefinition` and `ExecutionPlan`: axes bind symbols, stage owns the innermost axes, structural plan, stateless executor | Accepted |
+| 0020 | `qdt-sim` written fresh: constant-interaction double dot, periodic charge sensor, clocked noise models | Accepted (amends plan §2) |
