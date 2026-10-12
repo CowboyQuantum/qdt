@@ -81,6 +81,13 @@ day); the Scope column is still the expectation.
 | Dtype / shape on fetch | int64 for int saves; per line `(n_lines, M)`, frame `(N, M)`, per point 1-D. Fixed-point saves not exercised (all saves were int) | 16-bit signed/unsigned, 1-D |
 | Runtime-variable without recompile (input stream / IO1) | Step count, sweep step (hence endpoint) and averaging count all change on **one compiled program** via an int input stream (two runs: 50×3×1000, 120×7×2500, exact). IO1 via pause/resume sets the step count. **Fixed-typed input streams do not compile on QOP 3.7.1** (server `INTERNAL` error), so fractional parameters must go in as scaled ints. API v2 `add_to_queue` returns while "In queue"; pushes must wait for "Running" | n/a |
 
+**Scope column and the freeze (2026-10-11).** The HD3-Series Programmer's Guide already establishes that the
+time axis is `xorigin + i·xincrement` per record and that the origin can differ per capture
+(`:WAVeform:SEGmented:XLISt? RELXorigin`). The proposed direction (STATUS.md, decided in the freeze ADR) keeps
+alignment in the producer: declared coordinates are exact, and the scope driver aligns or resamples records and
+may publish the residual offset as a data variable. Under that direction the scope run informs the Step 5
+driver (offset magnitude, whether resampling is worth it) and does not gate the freeze.
+
 ## What the findings decide
 - `DatasetChunk` must carry either explicit coordinates or an *index range + reference to the definition*; the probe says which the OPX path needs and whether partial lines occur.
 - The stream server's poller cadence and chunking policy (per line vs per frame).

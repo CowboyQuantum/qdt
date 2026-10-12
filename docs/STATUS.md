@@ -14,7 +14,7 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
 | Contract frozen with ADR; TS types generated in CI | TS types generated + drift-checked in CI ✔ · freeze ✘ |
 | Flight Deck renders a 2048² map live from the synthetic source within the latency target | ✔ steady-state p95 17 ms (RTX 4090) / 11 ms (SwiftShader) vs ≤ 50 ms; asserted in CI |
 | Contract-freeze ADR cites Probe 01 findings; #9 choice recorded | #9 ✔ (ADR 0013) · freeze ADR ✘ |
-| L1: Probe 01 run; Findings filled; CSVs in `bench/fixtures/probe01/` | OPX ✔ · scope ✘ (needs the HD304MSO, ~10 min, no OPX needed) |
+| L1: Probe 01 run; Findings filled; CSVs in `bench/fixtures/probe01/` | OPX ✔ · scope ✘ (needs the HD304MSO, ~10 min; no longer gates the freeze if the proposed direction below holds) |
 
 ## Done
 - ADR 0001–0013. Analysis 0001 (stream budget) and 0002 (renderer benchmark).
@@ -48,7 +48,7 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
 - CI on `main` for c7287b4 (first run of the e2e/bench steps) was still running at session start — check it.
 
 ## Known broken / not yet real
-- Probe 01 scope half unrun → per-record scope time axis (question 4) unanswered.
+- Probe 01 scope half unrun → per-capture origin magnitude unmeasured (Step 5 driver input under the proposed direction).
 - Unpaced OPX runs are ≈ 0.7 s bursts, not 5 s sustained; the 10⁶ point is the sustained figure.
 - First-frame latency spike ~100 ms (GPU) / ~290 ms (SwiftShader) on the first chunk; steady state fine.
 - Flight Deck has no axes, colorbar, cursors, line cuts or zoom; only the first Dataset is shown.
@@ -58,15 +58,25 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
 - `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-**Human:** merge `step-1/probe01-lab` into `main` and push. When the HD304MSO is available, run the scope half
-(LAB_GUIDE step 5, ~10 min, no OPX needed) and commit its `scope_findings.json`; a Claude session can fill the
-Scope column from it.
+**Human:** merge `step-1/probe01-lab` into `main` and push.
 **Then** a session on `step-1/contract-freeze` reads the Findings, revisits ADR 0009/0010 against them
 (chunks as index ranges into the definition; per-line vs per-point chunking; poller cost at 10⁶; int-only
-runtime parameters in `SweepDefinition.backend_payload`; per-record scope time axis), writes the freeze ADR,
-and closes Step 1.
+runtime parameters in `SweepDefinition.backend_payload`), adopts or rejects the time-alignment direction
+below, writes the freeze ADR, and closes Step 1. It does not wait for the scope.
+**Whenever the HD304MSO is available:** run the scope half (LAB_GUIDE step 5, ~10 min, no OPX) and commit
+`scope_findings.json`; a session fills the Scope column. It confirms the SCPI commands and the offset size.
 
 ## Decisions pending (see plan §12)
-**Freeze before the scope half?** The OPX answers 3 of the 4 freeze questions. The human decides whether the
-freeze session waits for the scope run or freezes now with an explicit per-record time axis as a hedge.
+**Scope time axis — proposed direction (human agreed 2026-10-11; to be decided in the freeze ADR):** keep time
+alignment out of the schema. Rule: a `Dataset`'s declared coordinates are exact; meeting them is the producer's
+job. The scope driver either makes alignment deterministic in hardware (shared 10 MHz reference + trigger on
+that clock) or shifts/resamples each record onto the declared `LinearCoordinate` using the preamble's
+`xorigin`, records what it did in `Dataset.attrs`, and may publish the residual as an ordinary `DataVariable`
+(e.g. `trigger_offset` over the record dim, in its own chunks — chunk variables must span the region,
+`data.py` `payload_shapes`). Raw records with preambles go to raw storage (Step 3); the conformance suite
+asserts records land on the declared grid. Evidence that origins differ per capture: the HD3-Series
+Programmer's Guide (`:WAVeform:XORigin?`; `:WAVeform:SEGmented:XLISt? RELXorigin` returns a per-segment
+origin). Consequence: **the freeze no longer waits for the scope run**; the scope half becomes Step 5 driver
+input (offset magnitude, whether resampling is worth it). The freeze session should still confirm nothing
+else in ADR 0009/0010 depends on a per-record axis.
 #10 DUT design — by Step 5 entry.
