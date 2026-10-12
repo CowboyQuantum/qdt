@@ -4,7 +4,7 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 1 — Dataset contract + Flight Deck v0 → `docs/steps/01-dataset-contract-and-flightdeck.md`
-**Branch:** `step-1/probe01-lab` (Probe 01 OPX lab run; not merged, not pushed — merging and pushing stay manual)
+**Branch:** `main` (`step-1/probe01-lab` fast-forwarded into it; not pushed — pushing stays manual)
 **Last session:** 2026-10-11 — session (6), in the lab: Probe 01 OPX half run on the OPX1000 (QOP 3.7.1,
 qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half not run (no scope access).
 
@@ -44,7 +44,7 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
   build, e2e, `bench --assert`).
 
 ## In flight
-- Nothing uncommitted. `step-1/probe01-lab` is ahead of `main`; human to merge and push.
+- Nothing uncommitted. `main` is ahead of `origin/main`; human to push.
 - CI on `main` for c7287b4 (first run of the e2e/bench steps) was still running at session start — check it.
 
 ## Known broken / not yet real
@@ -58,7 +58,7 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
 - `docs/BENCH.md` skeleton. Surrogate DUT not built.
 
 ## Next action
-**Human:** merge `step-1/probe01-lab` into `main` and push.
+**Human:** push `main` and check CI.
 **Then** a session on `step-1/contract-freeze` reads the Findings, revisits ADR 0009/0010 against them
 (chunks as index ranges into the definition; per-line vs per-point chunking; poller cost at 10⁶; int-only
 runtime parameters in `SweepDefinition.backend_payload`), adopts or rejects the time-alignment direction
