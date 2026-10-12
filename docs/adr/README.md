@@ -20,3 +20,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0014 | CI gates the renderer bench on rendered rate; latency advisory there | Accepted |
 | 0015 | Dataset stream contract frozen against Probe 01; time alignment is the producer's job | Accepted (freezes 0009 + 0010) |
 | 0016 | Capability protocol naming: Level/Waveform × Source/Sense, plus Sequencer; quantity lives on the channel | Accepted |
+| 0017 | Protocol signatures: producers are handed the Dataset and return a stream; `SequencerProgram` typed envelope | Accepted |
