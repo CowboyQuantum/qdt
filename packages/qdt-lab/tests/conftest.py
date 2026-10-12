@@ -1,11 +1,11 @@
 import pytest
 
-from qdt_lab.simulated import SimulatedDCSource
+from qdt_lab.simulated import SimulatedLevelSource
 
 # Register real backends here under the `hardware` marker as drivers land (see CLAUDE.md).
-DC_BACKENDS = [pytest.param(SimulatedDCSource, id="simulated")]
+LEVEL_SOURCE_BACKENDS = [pytest.param(SimulatedLevelSource, id="simulated")]
 
 
-@pytest.fixture(params=DC_BACKENDS)
-def dc_source(request):
+@pytest.fixture(params=LEVEL_SOURCE_BACKENDS)
+def level_source(request):
     return request.param()

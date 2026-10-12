@@ -9,7 +9,7 @@ Experiments are data. A `SweepDefinition` compiles to an execution plan and runs
 `stand.py`: `InstrumentConfig`, `ChannelMap`, `StandConfig`. `activity.py`: `SweepDefinition`, `ExecutionPlan`. Frozen at exit.
 
 ## Deliverables
-- `qdt-lab/protocols/`: `DCSource`, `Digitizer`, `PulseSequencer`, `SourceMeasure` complete, each with a `Simulated*` twin and the single conformance suite
+- `qdt-lab/protocols/`: `LevelSource`, `LevelSense`, `WaveformSource`, `WaveformSense`, `Sequencer` complete (ADR 0016 naming), each with a `Simulated*` twin and the single conformance suite
 - `qdt-sim`: `quantum_dot_sim` imported; `DoubleDotValley` exposed as `SimulatedDevice` implementing the protocols
 - `qdt-lab/experiment/`: compiler (definition → plan) and executor (plan → protocol calls → `Dataset` stream); backend-payload slot for QUA inner loops
 - Flight Deck `live` source

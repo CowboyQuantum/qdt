@@ -3,16 +3,16 @@
 import random
 
 
-class SimulatedDCSource:
-    """Ideal DC source with optional additive Gaussian noise for realism tests."""
+class SimulatedLevelSource:
+    """Ideal level source with optional additive Gaussian noise on readback for realism tests."""
 
-    def __init__(self, noise_v: float = 0.0) -> None:
-        self._v: dict[str, float] = {}
-        self._noise = noise_v
+    def __init__(self, noise: float = 0.0) -> None:
+        self._levels: dict[str, float] = {}
+        self._noise = noise
 
-    def set_voltage(self, channel: str, volts: float) -> None:
-        self._v[channel] = volts
+    def set(self, channel: str, value: float) -> None:
+        self._levels[channel] = value
 
-    def get_voltage(self, channel: str) -> float:
-        base = self._v.get(channel, 0.0)
+    def get(self, channel: str) -> float:
+        base = self._levels.get(channel, 0.0)
         return base + (random.gauss(0, self._noise) if self._noise else 0.0)

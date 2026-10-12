@@ -5,7 +5,7 @@ Instrument capability protocols, vendor drivers, simulated backends, the `Datase
 ## Layout (target; grows with the steps)
 ```
 qdt_lab/
-  protocols/         # DCSource, Digitizer, PulseSequencer, SourceMeasure — typing.Protocol classes
+  protocols/         # LevelSource, LevelSense, WaveformSource, WaveformSense, Sequencer — typing.Protocol classes (ADR 0016)
   simulated/         # one Simulated* per protocol; the L0 backends
   drivers/<vendor>/  # real drivers; vendor SDK imported lazily inside functions
   conformance/       # ONE suite, parametrized over backends; the spec for any driver
@@ -14,10 +14,11 @@ qdt_lab/
 ```
 
 ## Adding a driver (`/add-driver`)
-- It implements an existing protocol. A new protocol is an ADR-level decision.
+- It implements every existing protocol its instrument honours (an SMU is `LevelSource` + `LevelSense`). A new protocol is an ADR-level decision; names follow the `<Level|Waveform><Source|Sense>` grid plus `Sequencer` (ADR 0016).
+- The physical quantity (voltage, current) is declared on the channel in `ChannelMap`, never in a method name.
 - Vendor SDK goes in `pyproject.toml` under `[project.optional-dependencies]` as an extra — never core. Check its pins against `qdt-schemas` first; report conflicts rather than downgrading schemas (ADR 0006).
 - Do not write new tests. Register the backend in `tests/conftest.py` parametrization. The suite must pass unchanged on `Simulated*` and, under `-m hardware`, on the real instrument.
 - Add the loopback row to `docs/BENCH.md` and the bench test in `bench/` with a numeric oracle and tolerance.
 
 ## Conformance suite is the spec
-Test names describe required behavior ("set_voltage_then_read_returns_within_tolerance"). If a driver needs behavior the suite does not test, the suite is incomplete — extend it, then implement.
+Test names describe required behavior ("set_level_then_get_returns_within_tolerance"). If a driver needs behavior the suite does not test, the suite is incomplete — extend it, then implement.

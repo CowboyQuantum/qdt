@@ -6,15 +6,15 @@ from qdt_schemas.stand import ChannelMap
 
 
 def test_channel_map_round_trips():
-    m = ChannelMap(logical="gate_L", instrument="qdac0", channel="ch03")
+    m = ChannelMap(logical="gate_L", instrument="qdac0", channel="ch03", quantity="voltage")
     assert ChannelMap.model_validate_json(m.model_dump_json()) == m
     assert m.schema_version == 1
 
 
 def test_models_are_frozen_and_strict():
-    m = ChannelMap(logical="a", instrument="b", channel="c")
+    m = ChannelMap(logical="a", instrument="b", channel="c", quantity="voltage")
     with pytest.raises(ValidationError):
         m.logical = "x"  # type: ignore[misc]
     with pytest.raises(ValidationError):
-        ChannelMap(logical="a", instrument="b", channel="c", extra="no")  # type: ignore[call-arg]
+        ChannelMap(logical="a", instrument="b", channel="c", quantity="voltage", extra="no")  # type: ignore[call-arg]
     assert issubclass(ChannelMap, QdtModel)
