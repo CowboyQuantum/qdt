@@ -7,10 +7,10 @@ Keep it generic: roles and models, not site names (rule 7).
 ## Instruments
 | Role (protocol) | Instrument | Address | Notes |
 |---|---|---|---|
-| `DCSource` | QDAC-II | TODO | channels used: TODO |
-| `PulseSequencer`, `Digitizer` | OPX | TODO | |
-| `Digitizer` | Keysight benchtop scope (model TODO) | TODO | |
-| `SourceMeasure` | benchtop SMU (model TODO) | TODO | |
+| `LevelSource` (+ `LevelSense` current readout) | QDAC-II | TODO | channels used: TODO |
+| `Sequencer` (owns `WaveformSource`, `WaveformSense`) | OPX | TODO | |
+| `WaveformSense` | Keysight benchtop scope (model TODO) | TODO | |
+| `LevelSource` + `LevelSense` on one terminal | benchtop SMU (model TODO) | TODO | |
 
 ## Loopback map (L1)
 | Source → Sink | Oracle | Tolerance |

@@ -19,3 +19,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0013 | Flight Deck 2D renderer: raw WebGL2, no library (closes #9) | Accepted (analysis: `docs/analysis/0002-renderer-benchmark.md`) |
 | 0014 | CI gates the renderer bench on rendered rate; latency advisory there | Accepted |
 | 0015 | Dataset stream contract frozen against Probe 01; time alignment is the producer's job | Accepted (freezes 0009 + 0010) |
+| 0016 | Capability protocol naming: Level/Waveform × Source/Sense, plus Sequencer; quantity lives on the channel | Accepted |

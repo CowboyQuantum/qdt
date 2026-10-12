@@ -23,6 +23,7 @@ Run `/session-check` before claiming anything is done.
 2. rewrite `docs/STATUS.md` (rewrite, never append — history lives in git)
 3. write an ADR for any decision a future session could reasonably ask "why?" about (`/adr`)
 4. commit. A session that ends uncommitted did not happen.
+5. push the branch and open a pull request against `main` with a review-focus list. The human merges from the PR (often from a phone); never push `main` yourself.
 
 ## Hard rules (violations fail CI; see `scripts/`)
 
