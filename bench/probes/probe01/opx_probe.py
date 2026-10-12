@@ -199,7 +199,8 @@ def is_paused(job) -> bool:
 
 
 def run_compiled(qm, program_id):
-    if hasattr(qm, "add_to_queue"):  # API v2: returns while "In queue"; pushes before "Running" fail
+    if hasattr(qm, "add_to_queue"):  # API v2
+        # add_to_queue returns while "In queue"; an input-stream push before "Running" fails
         job = qm.add_to_queue(program_id)
         job.wait_until("Running", timeout=30)
         return job
@@ -432,7 +433,7 @@ def timestamp_section(qm, qua, out: Path) -> dict:
     res["timestamp_dtype"] = str(ts.dtype)
     if ts.size > 1:
         d = np.diff(ts.astype(np.int64))
-        res["timestamp_step_median"] = float(np.median(d))  # ns between points, OPX clock
+        res["timestamp_step_median"] = float(np.median(d))  # clock cycles (4 ns) between points
     write_log(out / "opx_lines_1e+05_timestamps.csv", log)
     return res
 
@@ -585,7 +586,7 @@ def main() -> None:
         ts.get("delivered_points_per_s"),
         "pts/s; step",
         ts.get("timestamp_step_median"),
-        "ns",
+        "clock cycles (4 ns)",
     )
     print(f"\nall outputs in {args.out}")
 
