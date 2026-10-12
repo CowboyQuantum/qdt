@@ -1,6 +1,6 @@
 # apps/flightdeck — package rules
 
-Flight Deck is the front end. Restarted from scratch (ADR 0005). TypeScript. Transport and renderer class are decided (ADR 0008): WebSocket + Arrow IPC, WebGL 2D. The 2D renderer is raw WebGL2 with no library (ADR 0013, closing #9); `pnpm bench` reproduces Analysis 0002 and `--assert` guards the targets in CI. Browser pixel tests: `pnpm build && pnpm test:e2e`.
+Flight Deck is the front end. Restarted from scratch (ADR 0005). TypeScript. Transport and renderer class are decided (ADR 0008): WebSocket + Arrow IPC, WebGL 2D. The 2D renderer is raw WebGL2 with no library (ADR 0013, closing #9); `pnpm bench` reproduces Analysis 0002; in CI `--assert --latency-advisory` gates the rendered rate and reports latency (the latency target is evidenced by `bench/results/`). Browser pixel tests: `pnpm build && pnpm test:e2e`.
 
 ## Entry gate (ADR 0011)
 UI code may be written once `docs/FINISH_LINE.md` is authored (done) and the `Dataset` stream contract is **drafted** in `qdt-schemas` with ADRs (done: ADR 0009, 0010). The contract *freeze* (after Probe 01) gates Step 1's exit, not UI work. Until the freeze:

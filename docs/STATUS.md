@@ -12,7 +12,7 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
 | Criterion | State |
 |---|---|
 | Contract frozen with ADR; TS types generated in CI | TS types generated + drift-checked in CI ✔ · freeze ✘ |
-| Flight Deck renders a 2048² map live from the synthetic source within the latency target | ✔ steady-state p95 17 ms (RTX 4090) / 11 ms (SwiftShader) vs ≤ 50 ms; asserted in CI |
+| Flight Deck renders a 2048² map live from the synthetic source within the latency target | ✔ steady-state p95 17 ms on a hardware GPU vs ≤ 50 ms (`apps/flightdeck/bench/results/`, Analysis 0002). CI gates the rendered rate (≥ 95 % of 10⁶ pts/s); latency is printed but advisory there |
 | Contract-freeze ADR cites Probe 01 findings; #9 choice recorded | #9 ✔ (ADR 0013) · freeze ADR ✘ |
 | L1: Probe 01 run; Findings filled; CSVs in `bench/fixtures/probe01/` | OPX ✔ · scope ✘ (needs the HD304MSO, ~10 min; no longer gates the freeze if the proposed direction below holds) |
 
@@ -41,18 +41,18 @@ qm-qua 1.4.1); three script fixes; Findings table filled for the OPX. Scope half
   `webgl2` + `cpu` map renderers, 1D trace; URL params `?ws= ?replay=&speed= ?renderer= ?bench=1`;
   `pnpm test` (21 unit), `pnpm test:e2e`, `pnpm bench`. Run pnpm from `apps/flightdeck`.
 - **CI:** `l0` (78 Python tests + check_all), extras matrix, `flightdeck` (types drift, typecheck, unit,
-  build, e2e, `bench --assert`).
+  build, e2e, `bench --assert --latency-advisory`).
 
 ## In flight
 - Nothing uncommitted. `main` is ahead of `origin/main`; human to push.
-- CI on `main` for c7287b4 (first run of the e2e/bench steps) was still running at session start — check it.
+- CI was red on `main` only in the bench latency gate (never passed since it was added); fixed on `step-1/ci-bench-latency`, unverified on CI until pushed.
 
 ## Known broken / not yet real
 - Probe 01 scope half unrun → per-capture origin magnitude unmeasured (Step 5 driver input under the proposed direction).
 - Unpaced OPX runs are ≈ 0.7 s bursts, not 5 s sustained; the 10⁶ point is the sustained figure.
 - First-frame latency spike ~100 ms (GPU) / ~290 ms (SwiftShader) on the first chunk; steady state fine.
 - Flight Deck has no axes, colorbar, cursors, line cuts or zoom; only the first Dataset is shown.
-- `bench --assert` and wall-clock tests may be flaky on slow CI runners.
+- SwiftShader latency is machine noise, not a code signal: steady p95 78 / 334 ms on two CI runs of identical code, 1250 ms on a MacBook, 11 ms on the Analysis 0002 machine. Hence `--latency-advisory` in CI. Rerun the hardware bench when the renderer changes.
 - Server history unbounded; server ignores client messages ("up" edge is Step 6).
 - `FINISH_LINE.md` TODO open: human to confirm/adjust the design targets (measured: Analysis 0002).
 - `docs/BENCH.md` skeleton. Surrogate DUT not built.

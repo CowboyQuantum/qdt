@@ -17,3 +17,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0011 | Flight Deck may start against the drafted contract; the freeze gates Step 1 exit only | Accepted |
 | 0012 | Flight Deck v0 architecture: one decoder, raw WebGL2, cross-language oracles | Accepted (renderer library provisional until #9) |
 | 0013 | Flight Deck 2D renderer: raw WebGL2, no library (closes #9) | Accepted (analysis: `docs/analysis/0002-renderer-benchmark.md`) |
+| 0014 | CI gates the renderer bench on rendered rate; latency advisory there | Accepted |
