@@ -16,3 +16,13 @@ class ChannelMap(QdtModel):
     quantity: Literal["voltage", "current"] = Field(
         description="Physical quantity a level on this channel is expressed in; protocol calls use its SI unit (V or A). ADR 0016."
     )
+    settle_s: float = Field(
+        default=0.0,
+        ge=0,
+        description="Seconds the executor waits after changing a level on this channel before sensing through it (ADR 0017).",
+    )
+    integration_s: float | None = Field(
+        default=None,
+        gt=0,
+        description="Sensing aperture in seconds a LevelSense driver applies on this channel; None means the instrument default (ADR 0017).",
+    )
