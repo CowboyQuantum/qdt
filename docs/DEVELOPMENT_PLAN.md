@@ -78,7 +78,7 @@ Adapters (arbok), site DDL migrations, bootstrap seeds, `deploy/` compose bundle
 | Step | Family | Objects | Module |
 |---|---|---|---|
 | 1 | Data | `Dataset`, `DatasetChunk`, `Annotation`, `SourceDescriptor` | `data.py` |
-| 2 | Stand + Activity | `InstrumentConfig`, `ChannelMap`, `StandConfig`; `SweepDefinition`, `ExecutionPlan` | `stand.py`, `activity.py` |
+| 2 | Stand + Activity + Pulse | `InstrumentConfig`, `ChannelMap`, `StandConfig`; `SweepDefinition`, `ExecutionPlan`, `SequencerProgram`; `PulseSequence` (ADR 0018) | `stand.py`, `activity.py`, `pulse.py` |
 | 3 | Envelope + identity | `MeasurementRecord`, `DeviceRecord`, `CIRecord`, `AssetRecord`, `BaselineRecord` | `identity.py`, `envelope.py` |
 | 4 | Modeling | `FitModel`, `AnalysisResult` | `modeling.py` |
 | 5 | — | (drivers; no new family) | |
@@ -156,7 +156,7 @@ Prior Flight Deck / gatepick work is reference material for what the UI felt lik
 
 Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licensing); firewall inbound 5432/8100 (+9000/9001) scoped to lab subnet; VLAN reachability; DHCP reservation / DNS name `qdt-db`; Bluefors log access mode; backup landing location; declared prototype→VM trajectory; Windows Update policy.
 
-## 10. Out of scope (unchanged) — Pulse IR/compiler; rewriting arbok; public PyPI; Diraq-identifying content in the public repo; hardening Windows/WSL beyond unbroken-record minimum.
+## 10. Out of scope — a *general* pulse compiler (waveform algebra, phase-tracked frames, branching, real-time feedback); rewriting arbok; public PyPI; Diraq-identifying content in the public repo; hardening Windows/WSL beyond unbroken-record minimum. **In scope since ADR 0018:** a minimal backend-neutral `PulseSequence` (`pulse.py`) with per-backend emitters, so a sweep takes its per-shot sequence as data and the same sequence runs on any sequencer with an emitter (OPX/QUA, other AWGs, custom ISAs).
 
 ## 11. Claude Code handoff
 

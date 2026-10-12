@@ -10,7 +10,7 @@ qdt_lab/
   drivers/<vendor>/  # real drivers; vendor SDK imported lazily inside functions
   conformance/       # ONE suite, parametrized over backends; the spec for any driver
   stream/            # Dataset stream server + synthetic/replay sources (Step 1)
-  experiment/        # compiler + executor (Step 2)
+  experiment/        # compile_sweep, Executor, Emitter protocol + SimulatedEmitter (ADR 0018/0019)
 ```
 
 ## Adding a driver (`/add-driver`)

@@ -6,12 +6,12 @@
 Experiments are data. A `SweepDefinition` compiles to an execution plan and runs against the capability protocols, with `qdt-sim`'s `SimulatedDevice` as the backend so declared sweeps stream physically meaningful maps into Flight Deck.
 
 ## Schema slice
-`stand.py`: `InstrumentConfig`, `ChannelMap`, `StandConfig`. `activity.py`: `SweepDefinition`, `ExecutionPlan`. Frozen at exit.
+`stand.py`: `InstrumentConfig`, `ChannelMap`, `StandConfig`. `activity.py`: `SequencerProgram`, `SweepDefinition`, `ExecutionPlan`. `pulse.py`: `PulseSequence` and primitives (ADR 0018). Frozen at exit.
 
 ## Deliverables
 - `qdt-lab/protocols/`: `LevelSource`, `LevelSense`, `WaveformSource`, `WaveformSense`, `Sequencer` complete (ADR 0016 naming), each with a `Simulated*` twin and the single conformance suite
 - `qdt-sim`: `quantum_dot_sim` imported; `DoubleDotValley` exposed as `SimulatedDevice` implementing the protocols
-- `qdt-lab/experiment/`: compiler (definition → plan) and executor (plan → protocol calls → `Dataset` stream); backend-payload slot for QUA inner loops
+- `qdt-lab/experiment/`: compiler (definition → plan) and executor (plan → protocol calls → `Dataset` stream); `Emitter` protocol (PulseSequence + stage → backend `SequencerProgram`) with the simulated emitter; the QUA emitter is Step 5 (`[opx]`)
 - Flight Deck `live` source
 
 ## L0 tests (CI)
