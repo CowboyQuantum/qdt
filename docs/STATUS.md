@@ -4,47 +4,54 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 2 — Experiments over a simulated device → `docs/steps/02-experiments-over-simulated-device.md`
-**Branch:** `claude/session-plan-review-wudauu` (session-assigned name; restarted from `main` after PR #1 merged.
-Human merges to `main`; pushing `main` stays manual)
-**Last session:** 2026-10-12 — session (8), first Step 2 commit: capability protocols renamed to the
-Level/Waveform × Source/Sense grid plus `Sequencer` (ADR 0016); quantity moved onto `ChannelMap`.
+**Branch:** `claude/session-plan-review-wudauu` (session-assigned name; restarted from `main` after PR #2 merged.
+Every session ends with a PR against `main`; the human merges)
+**Last session:** 2026-10-12 — session (9): all five capability protocols defined with signatures (ADR 0017),
+`Simulated*` twins, and conformance suites; `SequencerProgram` envelope added to `activity.py`.
 
 ## Step 2 exit criteria
 | Criterion | State |
 |---|---|
-| `SweepDefinition` round-trips and runs on `SimulatedDevice`, live in Flight Deck | ✘ |
-| stand + activity slices frozen with ADR | ✘ (`stand.py` has `ChannelMap` with `quantity`; `activity.py` not started) |
-| Protocols frozen with ADR (the second deliberate freeze, ADR 0007) | ✘ naming fixed (ADR 0016); 1 of 5 protocols exists |
+| `SweepDefinition` round-trips and runs on `SimulatedDevice`, live in Flight Deck | ✘ not started |
+| stand + activity slices frozen with ADR | ✘ `stand.py`: `ChannelMap` (+ `quantity`, `settle_s`, `integration_s`). `activity.py`: `SequencerProgram` only; `SweepDefinition`, `ExecutionPlan` next |
+| Protocols frozen with ADR (second deliberate freeze, ADR 0007) | ✘ all five defined (ADR 0016 names, ADR 0017 signatures); freeze ADR at exit |
 
 ## Done
-- Step 0, Step 1 DONE. ADR 0001–0016. Contract frozen (ADR 0015). CI green on `main` at 4bfd48f.
-- **Protocol naming (ADR 0016):** `LevelSource`, `LevelSense`, `WaveformSource`, `WaveformSense`, `Sequencer`.
-  `SourceMeasure` dropped (SMU = `LevelSource` + `LevelSense` on one terminal). Methods are `set`/`get`;
-  the quantity (voltage/current) is `ChannelMap.quantity`. `LevelSource` + `SimulatedLevelSource` +
-  conformance (`tests/test_conformance_level_source.py`, fixture `level_source`) exist. Tutorial 00 updated.
-- `qdt_lab/stream/`, `apps/flightdeck`, Probe 01 OPX half: see ADR 0010–0015; unchanged this session.
+- Steps 0–1 DONE. ADR 0001–0017. Contract frozen (ADR 0015). CI green on `main` at 5369126.
+- **Protocols** (`qdt_lab/protocols/`): `LevelSource` set/get, `LevelSense` sense, `WaveformSource`
+  play/stop, `WaveformSense.arm(channel, dataset, variable) -> Source`, `Sequencer.compile(program)` +
+  `run(compiled, int params, dataset) -> Source`. Producers are handed the Dataset and return a stream.
+- **Twins** (`qdt_lab/simulated/`): `level.py`, `waveform.py`, `sequencer.py`. `SimulatedLevelSense` follows
+  a paired source (L0 loopback). `SimulatedWaveformSense` fills records on the declared `LinearCoordinate`.
+  `SimulatedSequencer` ignores the body and fills results with the flat loop index (Probe 01's oracle).
+- **Conformance** (`packages/qdt-lab/tests/test_conformance_*.py`, fixtures in `conftest.py`): one suite per
+  protocol; real backends register in the fixture lists. `FLAT_INDEX_PROGRAM` is the sequencer conformance
+  program; a real sequencer registers its own body for it.
+- **Schema:** `activity.py` `SequencerProgram` (`SequencerParameter` name/unit/scale, `SequencerResult`
+  name/dims-by-parameter/dtype/unit, opaque `body`, `backend`) with `check_parameters`, `result_shape`,
+  `check_run`. 109 tests + check_all green.
 
 ## In flight
-- Nothing uncommitted. Branch ahead of `main` by this session's commit; human to merge and push.
+- Nothing uncommitted. PR against `main` open for this session; human merges.
 
 ## Known broken / not yet real
-- `test_wire_path_keeps_design_target_line_rate` (stream, ≥ 10⁶ pts/s over localhost) is wall-clock bound: on
-  the 4-vCPU cloud container it fails ~2 of 3 runs at ≈ 0.8–0.9×10⁶; passes on GitHub runners and on hardware.
-  Same class as the latency gate in ADR 0014. Not touched this session; decide whether it gets the same
-  advisory treatment.
-- Four protocols not yet defined: `LevelSense`, `WaveformSource`, `WaveformSense`, `Sequencer`. Method
-  signatures are open; `Sequencer` must expose the Probe 01 constraints (int runtime parameters, positional
-  results). Executor must refuse one terminal in two roles per plan step (ADR 0016).
-- Probe 01 scope half unrun → Step 5 input (LAB_GUIDE step 5, ~10 min, no OPX).
-- Flight Deck: no axes/colorbar/cursors/zoom; first Dataset only. Server history unbounded (Step 6).
-- `FINISH_LINE.md` TODO open (human). `docs/BENCH.md` skeleton; surrogate DUT not built (#10, by Step 5).
+- `test_wire_path_keeps_design_target_line_rate` is wall-clock bound: fails ~2/3 on the 4-vCPU cloud
+  container (≈ 0.8×10⁶ pts/s vs 10⁶), passes on GitHub runners. Decide advisory treatment (cf. ADR 0014).
+- Executor does not exist: nothing yet honours `settle_s`/`integration_s` or refuses one terminal in two
+  roles per plan step (ADR 0016/0017 "must now").
+- `qdt-sim` package not started; `SimulatedDevice` (double-dot physics behind the protocols) is next after
+  the activity slice.
+- Probe 01 scope half unrun → Step 5 input. Flight Deck: no axes/colorbar/cursors/zoom; first Dataset
+  only. Server history unbounded (Step 6). `FINISH_LINE.md` TODO (human). `BENCH.md` skeleton; DUT #10.
 
 ## Next action
-**Human:** merge this branch to `main`, push, check CI.
-**Then** a session on `step-2/protocols` defines the four remaining protocols with the human's sign-off on
-signatures (start with `LevelSense` and `WaveformSense`, which the stability-diagram sweep needs first), each
-with a `Simulated*` twin and conformance tests, then `qdt-sim`'s `SimulatedDevice` behind them. `activity.py`
-(`SweepDefinition`, `ExecutionPlan`) comes after the protocols; its QUA payload slot is int-only (ADR 0015).
+**Human:** merge the open PR, check CI.
+**Then** a session on the activity slice: `SweepDefinition` (axes as `LinearCoordinate`s over `ChannelMap`
+logical channels, the sensed variables, and for a sequencer-driven inner loop a `SequencerProgram` plus the
+mapping from axis to integer parameter via `scale`) and `ExecutionPlan`; then `qdt_lab/experiment/` compiler
+(definition → plan + Dataset) and executor (plan → protocol calls → `Source`; honours `settle_s`; refuses a
+terminal in two roles). L0 tests per the step file: dry-run point count/order/shape, reproducibility.
+`qdt-sim` `SimulatedDevice` and the Flight Deck `live` source follow.
 
 ## Decisions pending (see plan §12)
 - #10 surrogate DUT design — by Step 5 entry. #2 `payload_hdf5` location — Step 3.
