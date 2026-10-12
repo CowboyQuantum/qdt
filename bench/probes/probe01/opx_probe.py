@@ -126,20 +126,22 @@ def paced_program(
 
 
 def runtime_program(qua):
-    """Compiled once; step count, sweep step (so the endpoint) and averaging count arrive at run time."""
+    """Compiled once; step count, sweep step (so the endpoint) and averaging count arrive at run time.
+
+    The step is an int input stream (sweep units of 1e-6): QOP 3.7.1 fails to compile a fixed-typed
+    input stream (server "internal error"; see fixed_input_program).
+    """
     with qua.program() as prog:
-        params = in_stream(qua, "params", int, size=2)  # [n_steps, n_avg]
-        step = in_stream(qua, "step", qua.fixed)
+        params = in_stream(qua, "params", int, size=3)  # [n_steps, n_avg, step in 1e-6 units]
         j = qua.declare(int)
         k = qua.declare(int)
-        x = qua.declare(qua.fixed)
+        x = qua.declare(int)
         acc = qua.declare(int)
         xs = out_stream(qua)
         accs = out_stream(qua)
         qua.advance_input_stream(params)
-        qua.advance_input_stream(step)
         with qua.for_(j, 0, j < params[0], j + 1):
-            qua.assign(x, j * step)
+            qua.assign(x, j * params[2])
             qua.assign(acc, 0)
             with qua.for_(k, 0, k < params[1], k + 1):
                 qua.assign(acc, acc + 1)
@@ -148,6 +150,22 @@ def runtime_program(qua):
         with qua.stream_processing():
             xs.save_all("x")
             accs.save_all("acc")
+    return prog
+
+
+def fixed_input_program(qua):
+    """Minimal fixed-typed input stream; records whether this QOP compiles one at all."""
+    with qua.program() as prog:
+        step = in_stream(qua, "step", qua.fixed)
+        j = qua.declare(int)
+        x = qua.declare(qua.fixed)
+        st = out_stream(qua)
+        qua.advance_input_stream(step)
+        with qua.for_(j, 0, j < 10, j + 1):
+            qua.assign(x, j * step)
+            qua.save(x, st)
+        with qua.stream_processing():
+            st.save_all("x")
     return prog
 
 
@@ -181,8 +199,10 @@ def is_paused(job) -> bool:
 
 
 def run_compiled(qm, program_id):
-    if hasattr(qm, "add_to_queue"):  # API v2
-        return qm.add_to_queue(program_id)
+    if hasattr(qm, "add_to_queue"):  # API v2: returns while "In queue"; pushes before "Running" fail
+        job = qm.add_to_queue(program_id)
+        job.wait_until("Running", timeout=30)
+        return job
     return qm.queue.add_compiled(program_id).wait_for_execution()
 
 
@@ -308,26 +328,34 @@ def frame_partial_run(qm, qua, out: Path) -> dict:
     job = qm.execute(prog)
     handle = job.result_handles.get("data")
     probes, t0 = [], time.perf_counter()
-    while handle.is_processing() and time.perf_counter() - t0 < DURATION_S * 6 + 30:
+    # Poll until the frame is complete (count_so_far reaches 1), not until is_processing() drops:
+    # on QOP 3.7.1 a fetch_all mid-frame returns None or raises "not a round number: <fill fraction>".
+    while time.perf_counter() - t0 < DURATION_S * 6 + 30:
         t = time.perf_counter() - t0
+        n = handle.count_so_far()
         try:
             a = handle.fetch_all()
             shape = None if a is None else list(np.shape(flat(a)))
         except Exception as e:
             shape = f"error {e!r}"
-        probes.append((t, handle.count_so_far(), json.dumps(shape)))
-        time.sleep(0.25)
+        probes.append((t, n, json.dumps(shape)))
+        if n >= 1:
+            break
+        time.sleep(0.1)
+    handle.wait_for_all_values()
     final = flat(handle.fetch_all())
     with (out / "opx_frame_midfetch.csv").open("w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["t_since_submit_s", "count_so_far", "fetch_all_shape"])
         w.writerows(probes)
-    mid = [p for p in probes if p[0] < DURATION_S * 0.9]
+    mid = [p for p in probes if p[1] in (0, None)]
     return {
         "run": "frame_partial",
         "mid_acquisition_polls": len(mid),
-        "partial_visible": any(p[1] not in (0, None) or nonempty(p[2]) for p in mid),
-        "mid_fetch_samples": mid[:5],
+        "partial_visible": any(nonempty(p[2]) for p in mid),
+        "partial_fetch_errors": [p[2] for p in mid if p[2].startswith('"error')][:3],
+        "first_complete_s": probes[-1][0] if probes and probes[-1][1] >= 1 else None,
+        "mid_fetch_samples": mid[-5:],
         "final_shape": list(final.shape),
         "positional_ok": bool(np.array_equal(final.reshape(-1), np.arange(n_lines * m))),
     }
@@ -338,10 +366,9 @@ def runtime_section(qm, qua) -> dict:
     try:
         pid = qm.compile(runtime_program(qua))
         runs = []
-        for n_steps, n_avg, step in [(50, 3, 0.001), (120, 7, 0.0025)]:
+        for n_steps, n_avg, step in [(50, 3, 1000), (120, 7, 2500)]:
             job = run_compiled(qm, pid)
-            job.push_to_input_stream("params", [n_steps, n_avg])
-            job.push_to_input_stream("step", step)
+            job.push_to_input_stream("params", [n_steps, n_avg, step])
             h = job.result_handles
             h.wait_for_all_values()
             x = flat(h.get("x").fetch_all())
@@ -350,7 +377,7 @@ def runtime_section(qm, qua) -> dict:
                 {
                     "pushed": {"n_steps": n_steps, "n_avg": n_avg, "step": step},
                     "got_n_steps": int(x.size),
-                    "got_endpoint": float(x[-1]) if x.size else None,
+                    "got_endpoint": int(x[-1]) if x.size else None,
                     "expected_endpoint": (n_steps - 1) * step,
                     "got_n_avg": sorted({int(a) for a in acc}),
                 }
@@ -358,12 +385,17 @@ def runtime_section(qm, qua) -> dict:
         res["input_stream_same_compiled_program"] = runs
         res["input_stream_ok"] = all(
             r["got_n_steps"] == r["pushed"]["n_steps"]
-            and abs(r["got_endpoint"] - r["expected_endpoint"]) < 1e-3
+            and r["got_endpoint"] == r["expected_endpoint"]
             and r["got_n_avg"] == [r["pushed"]["n_avg"]]
             for r in runs
         )
     except Exception:
         res["input_stream_error"] = traceback.format_exc(limit=3)
+    try:
+        qm.compile(fixed_input_program(qua))
+        res["fixed_input_stream_compiles"] = True
+    except Exception as e:
+        res["fixed_input_stream_compiles"] = f"no: {type(e).__name__}: {str(e)[:200]}"
     try:
         got = []
         for n in (40, 90):
@@ -421,6 +453,7 @@ def offline_check(fem: int, ao: int) -> None:
         },
         "lines_timestamps": paced_program(qua, 10, 100, 1e5, "lines", timestamps=True),
         "runtime": runtime_program(qua),
+        "fixed_input": fixed_input_program(qua),
         "io": io_program(qua),
     }
     for name, prog in programs.items():
@@ -537,11 +570,14 @@ def main() -> None:
         )
     fp = findings.get("frame_partial", {})
     print("whole frame partial visible:", fp.get("partial_visible", fp.get("error", "n/a")))
+    if fp.get("partial_fetch_errors"):
+        print("  mid-frame fetch_all errors:", fp["partial_fetch_errors"][0])
     rt = findings.get("runtime", {})
     print(
         "runtime via input stream (same compiled program):",
         rt.get("input_stream_ok", rt.get("input_stream_error")),
     )
+    print("fixed-typed input stream compiles:", rt.get("fixed_input_stream_compiles"))
     print("runtime via IO1:", rt.get("io1_ok", rt.get("io1_error")))
     ts = findings.get("timestamps", {})
     print(
