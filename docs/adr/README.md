@@ -12,9 +12,10 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0006 | Dependency fences: extras for vendor SDKs, lockstep versioning, generated TS types | Accepted |
 | 0007 | Simulation-first sequencing; instrument drivers as the last mile | Accepted (supersedes ordering in 0004) |
 | 0008 | Stream transport, encoding, and renderer class | Accepted (analysis: `docs/analysis/0001-stream-budget.md`) |
-| 0009 | Dataset contract draft: envelope-only chunks, region addressing, implicit/explicit coordinates | Accepted (draft; freeze after Probe 01) |
-| 0010 | Stream wire protocol, recordings, and server delivery model | Accepted (draft; frozen with the contract after Probe 01) |
+| 0009 | Dataset contract draft: envelope-only chunks, region addressing, implicit/explicit coordinates | Accepted (draft; frozen by 0015) |
+| 0010 | Stream wire protocol, recordings, and server delivery model | Accepted (draft; frozen by 0015) |
 | 0011 | Flight Deck may start against the drafted contract; the freeze gates Step 1 exit only | Accepted |
 | 0012 | Flight Deck v0 architecture: one decoder, raw WebGL2, cross-language oracles | Accepted (renderer library provisional until #9) |
 | 0013 | Flight Deck 2D renderer: raw WebGL2, no library (closes #9) | Accepted (analysis: `docs/analysis/0002-renderer-benchmark.md`) |
 | 0014 | CI gates the renderer bench on rendered rate; latency advisory there | Accepted |
+| 0015 | Dataset stream contract frozen against Probe 01; time alignment is the producer's job | Accepted (freezes 0009 + 0010) |

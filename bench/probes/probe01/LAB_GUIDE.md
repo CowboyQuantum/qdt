@@ -5,8 +5,9 @@ explains what each step does, and lists what to bring back. Allow about **30 min
 about 4 minutes, and the rest is setup. The specification is `docs/probes/01-stream-semantics.md`.
 
 ## What this measures, and why it matters
-The `Dataset` stream contract is drafted (ADR 0009, 0010) but not frozen. Freezing it needs four answers
-that only the hardware can give:
+The `Dataset` stream contract was drafted (ADR 0009, 0010) and frozen on the OPX half of this probe
+(ADR 0015). The scope half (step 5 below) still informs the Step 5 scope driver. The probe asks four
+questions that only the hardware can answer:
 
 1. **Delivery from the OPX.** How do results arrive: per point, per line, or per frame? Can a partly filled
    buffer be read before it completes?
