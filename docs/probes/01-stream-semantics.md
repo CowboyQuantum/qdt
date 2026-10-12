@@ -89,6 +89,7 @@ may publish the residual offset as a data variable. Under that direction the sco
 driver (offset magnitude, whether resampling is worth it) and does not gate the freeze.
 
 ## What the findings decide
+Decided in ADR 0015 (contract freeze) on the OPX findings above.
 - `DatasetChunk` must carry either explicit coordinates or an *index range + reference to the definition*; the probe says which the OPX path needs and whether partial lines occur.
 - The stream server's poller cadence and chunking policy (per line vs per frame).
 - The shape of `SweepDefinition.backend_payload` for QUA.

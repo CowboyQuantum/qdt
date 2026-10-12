@@ -2,7 +2,8 @@
 
 `SyntheticMap` is OPX-shaped: a 2D sweep, positional results, implicit coordinates, paced in points/s.
 `SyntheticRecords` is scope-shaped: whole records pulled at a few Hz with an explicit (streamed) time axis.
-Both are provisional until Probe 01 confirms real chunk semantics; the defaults are the design ceiling.
+Probe 01 confirmed the chunk semantics (ADR 0015); the defaults are the design ceiling, which the OPX path
+sustains (10⁶ points/s with no loss; unpaced bursts ≈ 3×10⁶).
 Content is a pure function of (seed, index), so the assembled result does not depend on chunking.
 """
 

@@ -31,7 +31,7 @@ Experiments are data. A `SweepDefinition` compiles to an execution plan and runs
 - stand + activity slices frozen with ADR
 
 ## Open decisions
-- QUA payload-slot shape — informed by the Step 1 probe
+- QUA payload-slot shape — Probe 01 (ADR 0015): runtime-variable parameters go through an int input stream on one compiled program; fixed-typed input streams do not compile on QOP 3.7.1, so fractional values are scaled ints with the scale recorded
 
 ## Status
-NOT STARTED
+IN PROGRESS

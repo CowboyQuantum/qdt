@@ -34,8 +34,8 @@ Draft the `Dataset` stream contract against the finish-line sketch and the Analy
 ## Open decisions
 - #8 — CLOSED by ADR 0008 (WebSocket + Arrow IPC)
 - #9 — CLOSED by ADR 0013 (raw WebGL2, no library; Analysis 0002)
-- Probe 01 findings (chunk semantics) — needs lab access; gates the freeze only
+- Probe 01 findings (chunk semantics) — CLOSED by ADR 0015 on the OPX half; scope half deferred to Step 5 entry
 - Flight Deck UI starts against the drafted contract (ADR 0011); the freeze gates exit, not UI work
 
 ## Status
-IN PROGRESS
+DONE (2026-10-12; contract frozen by ADR 0015; Probe 01 scope half deferred to Step 5)

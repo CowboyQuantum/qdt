@@ -1,6 +1,7 @@
 """Step 1 schema slice: the `Dataset` stream contract (plan §4.2, ADR 0005, ADR 0008).
 
-DRAFT — not frozen. The freeze waits on Probe 01 (`docs/probes/01-stream-semantics.md`) and needs an ADR.
+FROZEN (ADR 0015, against Probe 01 `docs/probes/01-stream-semantics.md`). Any change bumps `schema_version`,
+adds a migration and a fixture at the old version, and carries an ADR (`packages/qdt-schemas/CLAUDE.md`).
 
 A stream is one `Dataset` (the definition), then ordered `DatasetChunk` envelopes and `Annotation`s.
 Array payloads never live in these models: each chunk envelope travels as JSON next to a binary frame
