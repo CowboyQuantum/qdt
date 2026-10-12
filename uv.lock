@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
@@ -1145,6 +1145,7 @@ source = { editable = "packages/qdt-sim" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "qdt-lab" },
     { name = "qdt-schemas" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1154,6 +1155,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26,<3" },
+    { name = "qdt-lab", editable = "packages/qdt-lab" },
     { name = "qdt-schemas", editable = "packages/qdt-schemas" },
     { name = "scipy" },
     { name = "xarray", specifier = ">=2024.1,<2027" },

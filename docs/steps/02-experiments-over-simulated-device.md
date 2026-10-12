@@ -10,7 +10,7 @@ Experiments are data. A `SweepDefinition` compiles to an execution plan and runs
 
 ## Deliverables
 - `qdt-lab/protocols/`: `LevelSource`, `LevelSense`, `WaveformSource`, `WaveformSense`, `Sequencer` complete (ADR 0016 naming), each with a `Simulated*` twin and the single conformance suite
-- `qdt-sim`: `quantum_dot_sim` imported; `DoubleDotValley` exposed as `SimulatedDevice` implementing the protocols
+- `qdt-sim`: `DoubleDotModel` written fresh (ADR 0020) + noise models; `SimulatedDevice` implements `LevelSource`, `LevelSense`, `Sequencer` for backend `simulated`
 - `qdt-lab/experiment/`: compiler (definition → plan) and executor (plan → protocol calls → `Dataset` stream); `Emitter` protocol (PulseSequence + stage → backend `SequencerProgram`) with the simulated emitter; the QUA emitter is Step 5 (`[opx]`)
 - Flight Deck `live` source
 
