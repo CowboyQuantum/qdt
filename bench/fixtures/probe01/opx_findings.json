@@ -1,0 +1,333 @@
+{
+  "environment": {
+    "qm_qua": "1.4.1",
+    "python": "3.12.12",
+    "server": "DevicesVersion(gateway='3.7.1-14777.489ebb8', controllers={'con1': None}, qm_qua='1.4.1', octaves={}, QOP='3.7.1')"
+  },
+  "fem": 1,
+  "ao": 1,
+  "quick": false,
+  "runs": [
+    {
+      "run": "lines_1e+03",
+      "delivery": "lines",
+      "target_points_per_s": 1000.0,
+      "points": 10000,
+      "items_expected": 10,
+      "items_final": 10,
+      "complete": true,
+      "first_visible_s": 1.0064396660018247,
+      "last_visible_s": 10.000525374998688,
+      "wall_s_incl_compile": 10.125476624998555,
+      "delivered_points_per_s": 1000.6575755662658,
+      "visibility_steps": 10,
+      "inter_arrival_median_ms": 1000.0217909982894,
+      "inter_arrival_p95_ms": 1003.5357500019018,
+      "fetch_seconds_total": 0.1978261250005744,
+      "fetch_us_per_point": 19.78261250005744,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        10,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "lines_1e+04",
+      "delivery": "lines",
+      "target_points_per_s": 10000.0,
+      "points": 50000,
+      "items_expected": 50,
+      "items_final": 50,
+      "complete": true,
+      "first_visible_s": 0.10376025000005029,
+      "last_visible_s": 5.00187641699813,
+      "wall_s_incl_compile": 5.127556542000093,
+      "delivered_points_per_s": 10003.846035777211,
+      "visibility_steps": 50,
+      "inter_arrival_median_ms": 100.775374998193,
+      "inter_arrival_p95_ms": 107.75116599688772,
+      "fetch_seconds_total": 0.9351375399819517,
+      "fetch_us_per_point": 18.702750799639034,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        50,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "lines_1e+05",
+      "delivery": "lines",
+      "target_points_per_s": 100000.0,
+      "points": 500000,
+      "items_expected": 500,
+      "items_final": 500,
+      "complete": true,
+      "first_visible_s": 0.012798959000065224,
+      "last_visible_s": 4.994962041997496,
+      "wall_s_incl_compile": 5.124140624997381,
+      "delivered_points_per_s": 100157.29948763247,
+      "visibility_steps": 176,
+      "inter_arrival_median_ms": 28.450583002268104,
+      "inter_arrival_p95_ms": 31.459792000532616,
+      "fetch_seconds_total": 2.98459441299201,
+      "fetch_us_per_point": 5.96918882598402,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        500,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "lines_1e+06",
+      "delivery": "lines",
+      "target_points_per_s": 1000000.0,
+      "points": 5000000,
+      "items_expected": 5000,
+      "items_final": 5000,
+      "complete": true,
+      "first_visible_s": 0.01274008399923332,
+      "last_visible_s": 4.998182125000312,
+      "wall_s_incl_compile": 5.12317420799809,
+      "delivered_points_per_s": 999108.9975643991,
+      "visibility_steps": 136,
+      "inter_arrival_median_ms": 36.748792001162656,
+      "inter_arrival_p95_ms": 41.593875001126435,
+      "fetch_seconds_total": 3.2489779599709436,
+      "fetch_us_per_point": 0.6497955919941887,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        5000,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "lines_unpaced",
+      "delivery": "lines",
+      "target_points_per_s": null,
+      "points": 2000000,
+      "items_expected": 2000,
+      "items_final": 2000,
+      "complete": true,
+      "first_visible_s": 8.300048648379743e-08,
+      "last_visible_s": 0.629387291999592,
+      "wall_s_incl_compile": 0.7937570419999247,
+      "delivered_points_per_s": 3172927.52608647,
+      "visibility_steps": 14,
+      "inter_arrival_median_ms": 44.00254199936171,
+      "inter_arrival_p95_ms": 79.7183340000629,
+      "fetch_seconds_total": 0.5262763339960657,
+      "fetch_us_per_point": 0.26313816699803283,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        2000,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "points_1e+03",
+      "delivery": "points",
+      "target_points_per_s": 1000.0,
+      "points": 10000,
+      "items_expected": 10000,
+      "items_final": 10000,
+      "complete": true,
+      "first_visible_s": 0.012337832999037346,
+      "last_visible_s": 10.00255741699948,
+      "wall_s_incl_compile": 10.125359125002433,
+      "delivered_points_per_s": 999.3774327032407,
+      "visibility_steps": 355,
+      "inter_arrival_median_ms": 28.31539599901589,
+      "inter_arrival_p95_ms": 31.25020899824449,
+      "fetch_seconds_total": 5.953153996964829,
+      "fetch_us_per_point": 595.3153996964829,
+      "dataloss": false
+    },
+    {
+      "run": "points_1e+04",
+      "delivery": "points",
+      "target_points_per_s": 10000.0,
+      "points": 50000,
+      "items_expected": 50000,
+      "items_final": 50000,
+      "complete": true,
+      "first_visible_s": 0.012306750002608169,
+      "last_visible_s": 5.0101571250015695,
+      "wall_s_incl_compile": 5.14304062500014,
+      "delivered_points_per_s": 9973.487851766742,
+      "visibility_steps": 177,
+      "inter_arrival_median_ms": 28.469625001889654,
+      "inter_arrival_p95_ms": 31.58383299887646,
+      "fetch_seconds_total": 2.9917611300115823,
+      "fetch_us_per_point": 59.835222600231646,
+      "dataloss": false
+    },
+    {
+      "run": "points_1e+05",
+      "delivery": "points",
+      "target_points_per_s": 100000.0,
+      "points": 500000,
+      "items_expected": 500000,
+      "items_final": 500000,
+      "complete": true,
+      "first_visible_s": 0.012460582998755854,
+      "last_visible_s": 5.008952749998571,
+      "wall_s_incl_compile": 5.13456083300116,
+      "delivered_points_per_s": 99671.5262137663,
+      "visibility_steps": 184,
+      "inter_arrival_median_ms": 27.25000000282307,
+      "inter_arrival_p95_ms": 30.373958001291612,
+      "fetch_seconds_total": 2.9882201560030808,
+      "fetch_us_per_point": 5.9764403120061615,
+      "dataloss": false
+    },
+    {
+      "run": "points_1e+06",
+      "delivery": "points",
+      "target_points_per_s": 1000000.0,
+      "points": 5000000,
+      "items_expected": 5000000,
+      "items_final": 5000000,
+      "complete": true,
+      "first_visible_s": 0.012621375000890112,
+      "last_visible_s": 5.033385582999472,
+      "wall_s_incl_compile": 5.157527249997656,
+      "delivered_points_per_s": 991816.7421738055,
+      "visibility_steps": 144,
+      "inter_arrival_median_ms": 34.02420799829997,
+      "inter_arrival_p95_ms": 40.156208000553306,
+      "fetch_seconds_total": 3.2485024129709927,
+      "fetch_us_per_point": 0.6497004825941985,
+      "dataloss": false
+    },
+    {
+      "run": "points_unpaced",
+      "delivery": "points",
+      "target_points_per_s": null,
+      "points": 2000000,
+      "items_expected": 2000000,
+      "items_final": 2000000,
+      "complete": true,
+      "first_visible_s": 0.012519790998339886,
+      "last_visible_s": 0.6946599580005568,
+      "wall_s_incl_compile": 0.8350280830018164,
+      "delivered_points_per_s": 2886415.571528133,
+      "visibility_steps": 14,
+      "inter_arrival_median_ms": 52.988625000580214,
+      "inter_arrival_p95_ms": 57.823249997454695,
+      "fetch_seconds_total": 0.555538249991514,
+      "fetch_us_per_point": 0.277769124995757,
+      "dataloss": false
+    }
+  ],
+  "frame_partial": {
+    "run": "frame_partial",
+    "mid_acquisition_polls": 40,
+    "partial_visible": false,
+    "partial_fetch_errors": [],
+    "first_complete_s": 5.052293958000519,
+    "mid_fetch_samples": [
+      [
+        4.421391042000323,
+        0,
+        "null"
+      ],
+      [
+        4.545720499998424,
+        0,
+        "null"
+      ],
+      [
+        4.672628374999476,
+        0,
+        "null"
+      ],
+      [
+        4.800792457997886,
+        0,
+        "null"
+      ],
+      [
+        4.926974999998492,
+        0,
+        "null"
+      ]
+    ],
+    "final_shape": [
+      500,
+      1000
+    ],
+    "positional_ok": true
+  },
+  "runtime": {
+    "input_stream_same_compiled_program": [
+      {
+        "pushed": {
+          "n_steps": 50,
+          "n_avg": 3,
+          "step": 1000
+        },
+        "got_n_steps": 50,
+        "got_endpoint": 49000,
+        "expected_endpoint": 49000,
+        "got_n_avg": [
+          3
+        ]
+      },
+      {
+        "pushed": {
+          "n_steps": 120,
+          "n_avg": 7,
+          "step": 2500
+        },
+        "got_n_steps": 120,
+        "got_endpoint": 297500,
+        "expected_endpoint": 297500,
+        "got_n_avg": [
+          7
+        ]
+      }
+    ],
+    "input_stream_ok": true,
+    "fixed_input_stream_compiles": "no: QMConnectionError: Encountered connection error from QOP: details: An internal error occurred., status:  StatusCode.INTERNAL",
+    "io1_runs": [
+      [
+        40,
+        40
+      ],
+      [
+        90,
+        90
+      ]
+    ],
+    "io1_ok": true
+  },
+  "timestamps": {
+    "run": "lines_1e+05_with_timestamps",
+    "items_expected": 500,
+    "items_final": 500,
+    "complete": true,
+    "first_visible_s": 0.013849082999513485,
+    "last_visible_s": 5.01045808300114,
+    "wall_s_incl_compile": 5.139296291999926,
+    "delivered_points_per_s": 99867.73029465335,
+    "visibility_steps": 173,
+    "inter_arrival_median_ms": 28.55310450104298,
+    "inter_arrival_p95_ms": 33.354459003021475,
+    "fetch_seconds_total": 2.9747555000067223,
+    "fetch_us_per_point": 5.949511000013445,
+    "dataloss": false,
+    "timestamps": 500000,
+    "timestamp_dtype": "int64",
+    "timestamp_step_median": 2504.0
+  }
+}

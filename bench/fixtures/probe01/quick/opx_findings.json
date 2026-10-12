@@ -1,0 +1,201 @@
+{
+  "environment": {
+    "qm_qua": "1.4.1",
+    "python": "3.12.12",
+    "server": "DevicesVersion(gateway='3.7.1-14777.489ebb8', controllers={'con1': None}, qm_qua='1.4.1', octaves={}, QOP='3.7.1')"
+  },
+  "fem": 1,
+  "ao": 1,
+  "quick": true,
+  "runs": [
+    {
+      "run": "lines_1e+04",
+      "delivery": "lines",
+      "target_points_per_s": 10000.0,
+      "points": 10000,
+      "items_expected": 10,
+      "items_final": 10,
+      "complete": true,
+      "first_visible_s": 0.0982967500021914,
+      "last_visible_s": 1.0015712500025984,
+      "wall_s_incl_compile": 1.126724584002659,
+      "delivered_points_per_s": 9963.748561479311,
+      "visibility_steps": 10,
+      "inter_arrival_median_ms": 98.46137500062468,
+      "inter_arrival_p95_ms": 109.22991599727538,
+      "fetch_seconds_total": 0.19289108199518523,
+      "fetch_us_per_point": 19.289108199518523,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        10,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "lines_1e+05",
+      "delivery": "lines",
+      "target_points_per_s": 100000.0,
+      "points": 100000,
+      "items_expected": 100,
+      "items_final": 100,
+      "complete": true,
+      "first_visible_s": 0.012843042000895366,
+      "last_visible_s": 1.007479500000045,
+      "wall_s_incl_compile": 1.1521677919990907,
+      "delivered_points_per_s": 99533.85400647022,
+      "visibility_steps": 26,
+      "inter_arrival_median_ms": 34.162291001848644,
+      "inter_arrival_p95_ms": 39.82808299770113,
+      "fetch_seconds_total": 0.5419970020011533,
+      "fetch_us_per_point": 5.419970020011533,
+      "dataloss": false,
+      "fetch_dtype": "int64",
+      "fetch_shape": [
+        100,
+        1000
+      ],
+      "positional_ok": true
+    },
+    {
+      "run": "points_1e+04",
+      "delivery": "points",
+      "target_points_per_s": 10000.0,
+      "points": 10000,
+      "items_expected": 10000,
+      "items_final": 10000,
+      "complete": true,
+      "first_visible_s": 3.749992174562067e-07,
+      "last_visible_s": 1.0125171670006239,
+      "wall_s_incl_compile": 1.1800817910007027,
+      "delivered_points_per_s": 9840.824447271152,
+      "visibility_steps": 29,
+      "inter_arrival_median_ms": 31.29966650158167,
+      "inter_arrival_p95_ms": 34.378584001387935,
+      "fetch_seconds_total": 0.6764991700074461,
+      "fetch_us_per_point": 67.64991700074461,
+      "dataloss": false
+    },
+    {
+      "run": "points_1e+05",
+      "delivery": "points",
+      "target_points_per_s": 100000.0,
+      "points": 100000,
+      "items_expected": 100000,
+      "items_final": 100000,
+      "complete": true,
+      "first_visible_s": 0.013620290999824647,
+      "last_visible_s": 1.0091483750002226,
+      "wall_s_incl_compile": 1.1620012079984008,
+      "delivered_points_per_s": 98434.18942660469,
+      "visibility_steps": 31,
+      "inter_arrival_median_ms": 33.34987500056741,
+      "inter_arrival_p95_ms": 35.15216600135318,
+      "fetch_seconds_total": 0.6241402529958577,
+      "fetch_us_per_point": 6.241402529958577,
+      "dataloss": false
+    }
+  ],
+  "frame_partial": {
+    "run": "frame_partial",
+    "mid_acquisition_polls": 8,
+    "partial_visible": false,
+    "partial_fetch_errors": [],
+    "first_complete_s": 1.0231281669985037,
+    "mid_fetch_samples": [
+      [
+        0.3777714999996533,
+        0,
+        "null"
+      ],
+      [
+        0.5068903749997844,
+        0,
+        "null"
+      ],
+      [
+        0.6354959579985007,
+        0,
+        "null"
+      ],
+      [
+        0.7673676669983251,
+        0,
+        "null"
+      ],
+      [
+        0.8972335420003219,
+        0,
+        "null"
+      ]
+    ],
+    "final_shape": [
+      100,
+      1000
+    ],
+    "positional_ok": true
+  },
+  "runtime": {
+    "input_stream_same_compiled_program": [
+      {
+        "pushed": {
+          "n_steps": 50,
+          "n_avg": 3,
+          "step": 1000
+        },
+        "got_n_steps": 50,
+        "got_endpoint": 49000,
+        "expected_endpoint": 49000,
+        "got_n_avg": [
+          3
+        ]
+      },
+      {
+        "pushed": {
+          "n_steps": 120,
+          "n_avg": 7,
+          "step": 2500
+        },
+        "got_n_steps": 120,
+        "got_endpoint": 297500,
+        "expected_endpoint": 297500,
+        "got_n_avg": [
+          7
+        ]
+      }
+    ],
+    "input_stream_ok": true,
+    "fixed_input_stream_compiles": "no: QMConnectionError: Encountered connection error from QOP: details: An internal error occurred., status:  StatusCode.INTERNAL",
+    "io1_runs": [
+      [
+        40,
+        40
+      ],
+      [
+        90,
+        90
+      ]
+    ],
+    "io1_ok": true
+  },
+  "timestamps": {
+    "run": "lines_1e+05_with_timestamps",
+    "items_expected": 100,
+    "items_final": 100,
+    "complete": true,
+    "first_visible_s": 0.013703333999728784,
+    "last_visible_s": 1.0240415000007488,
+    "wall_s_incl_compile": 1.1659190419995866,
+    "delivered_points_per_s": 96997.22657007996,
+    "visibility_steps": 33,
+    "inter_arrival_median_ms": 31.338270999185625,
+    "inter_arrival_p95_ms": 35.5920830006653,
+    "fetch_seconds_total": 0.633290579997265,
+    "fetch_us_per_point": 6.33290579997265,
+    "dataloss": false,
+    "timestamps": 100000,
+    "timestamp_dtype": "int64",
+    "timestamp_step_median": 2504.0
+  }
+}
