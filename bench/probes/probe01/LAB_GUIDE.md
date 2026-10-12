@@ -168,6 +168,7 @@ session.
 ## If something fails
 | Symptom | Likely cause | What to do |
 |---|---|---|
+| OPX doesn't answer ping over a direct cable; the laptop port shows a 169.254.x address | The OPX has a static address on another subnet and nothing on the cable hands out addresses | Give the laptop port a temporary second address in the OPX's subnet: `sudo ifconfig <if> alias <addr> netmask 255.255.255.0` (macOS; include the `netmask` keyword); remove it with `sudo ifconfig <if> -alias <addr>` |
 | Connection error or "incompatible" message at start | `qm-qua` doesn't match QOP | Use the `qm-qua` version QM lists for your QOP release |
 | `bad config`, or an error naming a port or FEM | Wrong slot, or that slot isn't an LF-FEM | Check slots in the QM web interface; pass the right `--fem` / `--ao` |
 | `AttributeError` in one section (e.g. `set_io1_value`, `add_to_queue`, `count_so_far`) | API name differs in your `qm-qua` version | The other sections still run. Note the error; the next session adapts the script |

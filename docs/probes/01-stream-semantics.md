@@ -60,24 +60,26 @@ Write one short QUA program and one Python timing script. Record, for each varia
 3. Note that this source is *pull*, whole-record, with an explicit coordinate axis — the opposite of the OPX on
    all three counts.
 
-## Findings (fill in)
-Environment: qm-qua ___, QOP ___, scope firmware ___ (from the script output).
+## Findings
+OPX run 2026-10-11 (`bench/fixtures/probe01/`, dry run in `quick/`). Environment: qm-qua 1.4.1, QOP 3.7.1
+(gateway 3.7.1-14777), OPX1000 with one LF-FEM output, API v2. **Scope not run yet** (no scope access that
+day); the Scope column is still the expectation.
 
 | Item | OPX | Scope |
 |---|---|---|
-| Delivery granularity | | whole record per query |
-| Partial fetch mid-acquisition (whole-frame buffer) | | n/a |
-| Delivered points/s at 10³ / 10⁴ / 10⁵ / 10⁶ / unpaced, per line | | |
-| Same, per point | | |
-| Highest rate without data loss (per line / per point) | | n/a |
-| Inter-arrival median / p95 at 10⁵ per line | | |
-| Fetch cost (µs per point) | | transfer ms per record length |
-| Coordinate addressing | positional (expected) | explicit time axis (expected) |
+| Delivery granularity | Whatever the stream processing says: `save_all` per point shows any number of points per poll (partial lines occur); `buffer(M).save_all` shows only whole lines; `buffer(N,M).save` shows only the whole frame | whole record per query |
+| Partial fetch mid-acquisition (whole-frame buffer) | **No.** `count_so_far` stays 0 and `fetch_all` returns `None` until the frame completes (40 polls over 5 s). Near completion `fetch_all` can raise `DataFetchingError: Fetched items count is not a round number: <fill fraction>`: the server tracks partial fill, but the client API will not return it | n/a |
+| Delivered points/s at 10³ / 10⁴ / 10⁵ / 10⁶ / unpaced, per line | 1,001 / 10,004 / 100,157 / 999,109 / 3,172,928 | |
+| Same, per point | 999 / 9,973 / 99,672 / 991,817 / 2,886,416 | |
+| Highest rate without data loss (per line / per point) | No loss anywhere: 10⁶ sustained for 5 s both ways; unpaced ≈ 3.2×10⁶ / 2.9×10⁶ (a 2×10⁶-point burst, ≈ 0.7 s, not 5 s sustained). The OPX → laptop path is not the bottleneck at the 10⁶ target | n/a |
+| Inter-arrival median / p95 at 10⁵ per line | 28 / 31 ms (per point: 27 / 30 ms). This is the client's poll loop, not the server's publication period: one `fetch` call costs ≈ 17 ms, so visibility is only resolved to ≈ 30 ms. At 10³ and 10⁴ per line it is the line time (1000 / 101 ms) | |
+| Fetch cost (µs per point) | Dominated by a fixed ≈ 16–20 ms per `fetch` call (24 ms at 10⁶, 30–40 ms for 2–4×10⁵-point slices). Per point: 6.0 at 10⁵, 0.65 at 10⁶, 0.26–0.28 unpaced. At 10⁶ a single poller spends ≈ 65 % of wall time fetching | transfer ms per record length |
+| Coordinate addressing | Positional confirmed: values equal the flat loop index on every complete fetch (`positional_ok` true, all line runs and the frame); no in-band coordinates | explicit time axis (expected) |
 | Time-axis origin spread across captures (samples) | n/a | |
-| In-band metadata / timestamp-stream cost | | preamble only |
-| Push or pull | pull (expected) | pull (expected) |
-| Dtype / shape on fetch | | 16-bit signed/unsigned, 1-D |
-| Runtime-variable without recompile (input stream / IO1) | | n/a |
+| In-band metadata / timestamp-stream cost | None in band. A `timestamp_stream` on a play gives int64 timestamps in **4 ns clock cycles** (median step 2504 = 10.016 µs at 10⁵ pts/s). Cost negligible: 99,868 vs 100,157 pts/s, same fetch cost | preamble only |
+| Push or pull | Pull: poll `count_so_far`, then `fetch(slice)` | pull (expected) |
+| Dtype / shape on fetch | int64 for int saves; per line `(n_lines, M)`, frame `(N, M)`, per point 1-D. Fixed-point saves not exercised (all saves were int) | 16-bit signed/unsigned, 1-D |
+| Runtime-variable without recompile (input stream / IO1) | Step count, sweep step (hence endpoint) and averaging count all change on **one compiled program** via an int input stream (two runs: 50×3×1000, 120×7×2500, exact). IO1 via pause/resume sets the step count. **Fixed-typed input streams do not compile on QOP 3.7.1** (server `INTERNAL` error), so fractional parameters must go in as scaled ints. API v2 `add_to_queue` returns while "In queue"; pushes must wait for "Running" | n/a |
 
 ## What the findings decide
 - `DatasetChunk` must carry either explicit coordinates or an *index range + reference to the definition*; the probe says which the OPX path needs and whether partial lines occur.
