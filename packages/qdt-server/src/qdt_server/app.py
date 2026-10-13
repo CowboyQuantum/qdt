@@ -210,6 +210,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/stream/replay", response_model=StreamInfo, status_code=202)
     async def replay(body: ReplayRequest, request: Request) -> StreamInfo:
+        """Put a stored record (with its overlays) or a result's output on the stream. A record whose
+        Dataset is already on the stream (it was just run live) gets only its overlays published, so
+        "analyse, then show me" works without a second copy of the data."""
         reg, stream = registry(request), request.app.state.stream
         try:
             if body.result_id:
@@ -217,11 +220,16 @@ def create_app(settings: Settings) -> FastAPI:
                     await asyncio.to_thread(reg.output, body.result_id), registry_ref=body.result_id
                 )
             elif body.record_id:
+                record = reg.get(body.record_id)
                 overlays = [
                     a
                     for r in reg.results(record_id=body.record_id, status="ok")
                     for a in r.annotations
                 ]
+                if record.plan_id in stream.datasets:
+                    for a in overlays:
+                        stream.publish_annotation(a)
+                    return StreamInfo(url=stream.url)
                 source = PayloadSource(
                     await asyncio.to_thread(reg.payload, body.record_id),
                     registry_ref=body.record_id,

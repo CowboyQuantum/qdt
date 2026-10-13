@@ -1,0 +1,76 @@
+{
+ "definition": {
+  "schema_version": 1,
+  "name": "my first run",
+  "axes": [
+   {
+    "schema_version": 1,
+    "name": "P1",
+    "channel": "P1",
+    "start": 0.03,
+    "stop": 0.18,
+    "num": 48
+   },
+   {
+    "schema_version": 1,
+    "name": "P2",
+    "channel": "P2_pulse",
+    "start": 0.03,
+    "stop": 0.18,
+    "num": 48
+   }
+  ],
+  "sensed": [],
+  "stage": {
+   "schema_version": 1,
+   "instrument": "dot",
+   "axes": [
+    "P2"
+   ],
+   "sequence": {
+    "schema_version": 1,
+    "name": "read sensor at a P2 pulse level",
+    "segments": [],
+    "body": [
+     {
+      "schema_version": 1,
+      "op": "step",
+      "channel": "P2_pulse",
+      "level": {
+       "schema_version": 1,
+       "name": "v_p2",
+       "unit": "V"
+      },
+      "duration": 500
+     },
+     {
+      "schema_version": 1,
+      "op": "measure",
+      "channel": "sensor",
+      "duration": 2000,
+      "result": "I_sensor"
+     }
+    ],
+    "attrs": {}
+   },
+   "bindings": [
+    {
+     "schema_version": 1,
+     "symbol": "v_p2",
+     "axis": "P2",
+     "value": null
+    }
+   ],
+   "program": null,
+   "parameters": [],
+   "shots": 1,
+   "reduce": {}
+  },
+  "repeats": 1,
+  "attrs": {}
+ },
+ "options": {
+  "seed": 1,
+  "campaign": "docs-page"
+ }
+}
