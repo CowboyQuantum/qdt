@@ -268,8 +268,8 @@
           "type": "string"
         },
         "schema_version": {
-          "default": 1,
-          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "default": 2,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: `source.kind` admits 'analysis' (ADR 0031).",
           "title": "Schema Version",
           "type": "integer"
         },
@@ -593,13 +593,14 @@
       "description": "What kind of source produced a Dataset. Never identifies an instrument (rule 8).",
       "properties": {
         "kind": {
-          "description": "Source category. Consumers may branch on this; they may not learn the producing instrument.",
+          "description": "Source category. Consumers may branch on this; they may not learn the producing instrument. analysis: produced by an analysis method from other data (ADR 0031).",
           "enum": [
             "live",
             "replay",
             "synthetic",
             "simulation",
-            "registry"
+            "registry",
+            "analysis"
           ],
           "title": "Kind",
           "type": "string"

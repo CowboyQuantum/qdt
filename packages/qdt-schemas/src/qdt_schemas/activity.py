@@ -419,6 +419,13 @@ class ExecutionPlan(QdtModel):
     Structural, not unrolled: the executor walks it (ADR 0019).
     """
 
+    schema_version: int = Field(
+        default=2,
+        description=(
+            "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via "
+            "migrations.py. 2: the nested `dataset` is a Dataset v2 (ADR 0031)."
+        ),
+    )
     plan_id: str = Field(min_length=1, description="Unique id; also the Dataset id.")
     definition: SweepDefinition = Field(description="The experiment this plan was compiled from.")
     stand_id: str = Field(min_length=1, description="Stand it was compiled against.")

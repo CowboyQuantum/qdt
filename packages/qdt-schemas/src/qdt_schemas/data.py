@@ -2,6 +2,7 @@
 
 FROZEN (ADR 0015, against Probe 01 `docs/probes/01-stream-semantics.md`). Any change bumps `schema_version`,
 adds a migration and a fixture at the old version, and carries an ADR (`packages/qdt-schemas/CLAUDE.md`).
+History: `Dataset` v2 (ADR 0031) admits `source.kind = "analysis"` for a Dataset an analysis produced.
 
 A stream is one `Dataset` (the definition), then ordered `DatasetChunk` envelopes and `Annotation`s.
 Array payloads never live in these models: each chunk envelope travels as JSON next to a binary frame
@@ -116,8 +117,11 @@ class DataVariable(QdtModel):
 class SourceDescriptor(QdtModel):
     """What kind of source produced a Dataset. Never identifies an instrument (rule 8)."""
 
-    kind: Literal["live", "replay", "synthetic", "simulation", "registry"] = Field(
-        description="Source category. Consumers may branch on this; they may not learn the producing instrument."
+    kind: Literal["live", "replay", "synthetic", "simulation", "registry", "analysis"] = Field(
+        description=(
+            "Source category. Consumers may branch on this; they may not learn the producing instrument. "
+            "analysis: produced by an analysis method from other data (ADR 0031)."
+        )
     )
     label: str = Field(
         default="", description="Human-readable label for display, e.g. 'synthetic stability map'."
@@ -131,6 +135,13 @@ class SourceDescriptor(QdtModel):
 class Dataset(QdtModel):
     """xarray-shaped definition of a stream: dimensions, coordinates, variables, attributes, source."""
 
+    schema_version: int = Field(
+        default=2,
+        description=(
+            "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via "
+            "migrations.py. 2: `source.kind` admits 'analysis' (ADR 0031)."
+        ),
+    )
     dataset_id: str = Field(
         min_length=1, description="Unique id; every chunk and annotation refers to it."
     )

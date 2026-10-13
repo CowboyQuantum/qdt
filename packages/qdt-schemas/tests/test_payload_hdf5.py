@@ -21,6 +21,7 @@ from qdt_schemas.data import (
     SourceDescriptor,
     StreamedCoordinate,
 )
+from qdt_schemas.migrations import load
 from qdt_schemas.payload_hdf5 import read_payload, write_payload
 from qdt_schemas.stand import StandConfig
 
@@ -28,7 +29,10 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
 def fixture(name, cls):
-    return cls.model_validate(json.loads((FIXTURES / name / "v1.json").read_text()))
+    """The v1 fixture read the way stored objects are read: upgraded to the current version."""
+    obj = load(name, json.loads((FIXTURES / name / "v1.json").read_text()))
+    assert isinstance(obj, cls)
+    return obj
 
 
 def records_dataset() -> Dataset:

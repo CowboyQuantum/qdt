@@ -6,6 +6,8 @@ from the envelope via `Dataset.payload_shapes`. The envelope JSON sits in the sc
 `CHUNK_METADATA_KEY`, so a chunk is self-contained and needs no pairing with a separate text message.
 """
 
+import json
+
 import numpy as np
 import pyarrow as pa
 from pydantic import TypeAdapter
@@ -18,6 +20,7 @@ from qdt_schemas.data import (
     DatasetMessage,
     StreamTextMessage,
 )
+from qdt_schemas.migrations import load
 
 from .frame import Frame
 
@@ -29,6 +32,13 @@ def encode_text(message: DatasetMessage | AnnotationMessage) -> str:
 
 
 def decode_text(data: str | bytes) -> DatasetMessage | AnnotationMessage:
+    """Decode a text message, upgrading its Dataset or Annotation to the current schema version
+    (`migrations.load`), so a recording or a producer at an older version still reads (ADR 0031)."""
+    raw = json.loads(data)
+    if isinstance(raw, dict) and raw.get("type") == "dataset" and "dataset" in raw:
+        return DatasetMessage(dataset=load("Dataset", raw["dataset"]))
+    if isinstance(raw, dict) and raw.get("type") == "annotation" and "annotation" in raw:
+        return AnnotationMessage(annotation=load("Annotation", raw["annotation"]))
     return _text.validate_json(data)
 
 
