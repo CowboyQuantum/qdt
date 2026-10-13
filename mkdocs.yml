@@ -18,6 +18,6 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          paths: [packages/qdt-schemas/src, packages/qdt-lab/src]
+          paths: [packages/qdt-schemas/src, packages/qdt-lab/src, packages/qdt-sim/src, packages/qdt-registry/src, packages/qdt-analysis/src]
 theme:
   name: material
