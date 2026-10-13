@@ -3,6 +3,7 @@
     python -m qdt_registry find [--device D] [--stand S] [--definition NAME] [--remote]
     python -m qdt_registry sync                      # needs QDT_REGISTRY_DSN and QDT_PAYLOAD_STORE
     python -m qdt_registry serve RECORD_ID           # then Flight Deck at ?ws=ws://127.0.0.1:8765
+                                                     # (its analyses' annotations ride along as overlays)
 
 The client root defaults to ~/.qdt/registry (`--root`). `serve` needs the `[serve]` extra (qdt-lab's
 stream server); the record's payload must be in this client's store.
@@ -32,9 +33,15 @@ def _find(reg: Registry, a: argparse.Namespace) -> None:
 async def _serve(reg: Registry, a: argparse.Namespace) -> None:
     from qdt_lab.stream import PayloadSource, StreamServer
 
-    source = PayloadSource(reg.payload(a.record_id), registry_ref=a.record_id)
+    results = reg.analyses(a.record_id)
+    overlays = [ann for r in results for ann in r.annotations]
+    source = PayloadSource(reg.payload(a.record_id), registry_ref=a.record_id, annotations=overlays)
     async with StreamServer(a.host, a.port) as server:
-        print(f"serving record {a.record_id} ({source.dataset.name!r}) on {server.url}", flush=True)
+        print(
+            f"serving record {a.record_id} ({source.dataset.name!r}) with {len(overlays)} overlay(s) "
+            f"from {len(results)} analysis result(s) on {server.url}",
+            flush=True,
+        )
         await server.feed(source)
         print("sent; still serving history (Ctrl+C to stop)", flush=True)
         await asyncio.Future()

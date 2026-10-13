@@ -1,4 +1,4 @@
--- qdt registry DDL, ddl_version 1, dialect sqlite. Generated; do not edit.
+-- qdt registry DDL, ddl_version 2, dialect sqlite. Generated; do not edit.
 
 CREATE TABLE devices (
 	device_id VARCHAR(255) NOT NULL, 
@@ -61,3 +61,22 @@ CREATE INDEX ix_records_device ON records (device_id, started_at);
 CREATE INDEX ix_records_stand ON records (stand_sha256);
 
 CREATE INDEX ix_records_stand_id ON records (stand_id);
+
+CREATE TABLE analyses (
+	analysis_id VARCHAR(32) NOT NULL, 
+	record_id VARCHAR(32) NOT NULL, 
+	dataset_id VARCHAR(255) NOT NULL, 
+	variable VARCHAR(255) NOT NULL, 
+	model_name VARCHAR(255) NOT NULL, 
+	scenario_kind VARCHAR(16) NOT NULL, 
+	scenario_name VARCHAR(255) NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	schema_version INTEGER NOT NULL, 
+	body JSON NOT NULL, 
+	PRIMARY KEY (analysis_id), 
+	FOREIGN KEY(record_id) REFERENCES records (record_id)
+);
+
+CREATE INDEX ix_analyses_model ON analyses (model_name, created_at);
+
+CREATE INDEX ix_analyses_record ON analyses (record_id, created_at);

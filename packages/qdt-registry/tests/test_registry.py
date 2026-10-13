@@ -20,12 +20,12 @@ def test_full_loop_sweep_record_query_sync(tmp_path, server, device, recorded_ru
         "definition_sha256": plan.definition.content_sha256(),
     }
     assert reg.find(**by) == [record]
-    assert reg.unsynced() == {"devices": 1, "objects": 3, "records": 1}
+    assert reg.unsynced() == {"devices": 1, "objects": 3, "records": 1, "analyses": 0}
 
     report = reg.sync()
     assert (report.devices, report.objects, report.records) == (1, 3, 1)
     assert report.payload_bytes == record.payload.size_bytes
-    assert reg.unsynced() == {"devices": 0, "objects": 0, "records": 0}
+    assert reg.unsynced() == {"devices": 0, "objects": 0, "records": 0, "analyses": 0}
     assert reg.find(**by, remote=True) == [record]
     assert reg.find(stand_id=stand.stand_id, definition_name=plan.definition.name, remote=True) == [
         record

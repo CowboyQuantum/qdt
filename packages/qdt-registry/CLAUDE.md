@@ -6,9 +6,10 @@ it never defines them (that is `qdt-schemas`) and never produces data (that is `
 ## Layout
 ```
 qdt_registry/
-  tables.py   # SQLAlchemy Core metadata shared by the SQLite cache and Postgres; DDL_VERSION (ADR 0026)
-  client.py   # Registry: cache-first writes, queries, idempotent sync (ADR 0024)
-  ddl.py      # render_ddl → exports/ddl/*.sql (scripts/export_ddl.py; no-diff in check_all)
+  tables.py      # SQLAlchemy Core metadata shared by the SQLite cache and Postgres; DDL_VERSION (ADR 0026)
+  migrations.py  # STEPS: one additive function per DDL_VERSION bump; migrate(engine) runs on every open (ADR 0030)
+  client.py      # Registry: cache-first writes, queries, analyses, idempotent sync (ADR 0024, 0030)
+  ddl.py         # render_ddl → exports/ddl/*.sql (scripts/export_ddl.py; no-diff in check_all)
 ```
 
 ## Rules
@@ -17,9 +18,9 @@ qdt_registry/
   mutable state is the cache-local `sync_state` table.
 - The `body` column is the truth. Other columns are indexes derived from it (or from the payload), and
   every read goes through `qdt_schemas.migrations.load`.
-- A table change bumps `DDL_VERSION`, regenerates the DDL export, adds an additive migration, and needs an
-  ADR. Never `DROP TABLE` and never delete a migration. Migration tooling arrives with the first change
-  (ADR 0026).
+- A table change bumps `DDL_VERSION`, adds a step to `migrations.STEPS` (create only; idempotent),
+  regenerates the DDL export, adds a test that migrates from the previous version, and needs an ADR.
+  Never `DROP TABLE` and never delete a step (ADR 0026, 0030).
 - Payload files are immutable. `_place` copies through a temp file and verifies the SHA-256, and an
   existing file with other content is an error.
 - Tests run on SQLite always and on Postgres when `QDT_TEST_PG_DSN` is set (CI sets it; locally

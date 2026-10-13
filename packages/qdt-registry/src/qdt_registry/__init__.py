@@ -6,6 +6,7 @@
 
 from .client import DSN_ENV, STORE_ENV, Registry, SyncReport
 from .ddl import render_ddl
+from .migrations import migrate
 
 __version__ = "0.1.0"
-__all__ = ["DSN_ENV", "STORE_ENV", "Registry", "SyncReport", "__version__", "render_ddl"]
+__all__ = ["DSN_ENV", "STORE_ENV", "Registry", "SyncReport", "__version__", "migrate", "render_ddl"]

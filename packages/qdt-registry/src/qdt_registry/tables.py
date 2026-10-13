@@ -23,8 +23,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-DDL_VERSION = 1
-"""Bumps with every table change; a change is an ADR plus an additive migration, never a DROP."""
+DDL_VERSION = 2
+"""Bumps with every table change; a change is an ADR plus an additive migration (`migrations.py`),
+never a DROP. History: 1 = Step 3 (ADR 0026); 2 = `analyses` (Step 4, ADR 0030)."""
 
 Body = JSON().with_variant(JSONB(), "postgresql")
 Timestamp = DateTime(timezone=True)
@@ -89,6 +90,24 @@ records = Table(
     Index("ix_records_stand_id", "stand_id"),
     Index("ix_records_campaign", "campaign"),
     comment="MeasurementRecord envelopes; the Step 3 exit query runs here.",
+)
+
+analyses = Table(
+    "analyses",
+    metadata,
+    Column("analysis_id", String(32), primary_key=True),
+    Column("record_id", String(32), ForeignKey("records.record_id"), nullable=False),
+    Column("dataset_id", String(255), nullable=False),
+    Column("variable", String(255), nullable=False),
+    Column("model_name", String(255), nullable=False),
+    Column("scenario_kind", String(16), nullable=False),
+    Column("scenario_name", String(255), nullable=False),
+    Column("created_at", Timestamp, nullable=False),
+    Column("schema_version", Integer, nullable=False),
+    Column("body", Body, nullable=False, comment="AnalysisResult, canonical JSON."),
+    Index("ix_analyses_record", "record_id", "created_at"),
+    Index("ix_analyses_model", "model_name", "created_at"),
+    comment="AnalysisResult rows (ADR 0030); each hangs off the record it was computed from.",
 )
 
 cache_metadata = MetaData()

@@ -4,6 +4,8 @@
     reg.register_device(device)
     reg.ingest(record, "run.h5")                      # validates payload ↔ envelope, copies it into the store
     reg.find(device_id="dev", definition_sha256=h)    # the Step 3 exit query, offline
+    reg.record_analysis(result)                       # an AnalysisResult on one of its records (Step 4)
+    reg.analyses(record_id)                           # ... and back, oldest first
     reg.sync()                                        # needs remote_dsn + remote_store (or the env vars)
 
 Every write is insert-if-absent keyed by a client-minted id or a content hash, so a sync can be retried
@@ -25,18 +27,11 @@ from qdt_schemas import QdtModel
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import load
+from qdt_schemas.modeling import AnalysisResult
 from qdt_schemas.payload_hdf5 import Payload, read_payload
 
-from .tables import (
-    DDL_VERSION,
-    cache_metadata,
-    devices,
-    metadata,
-    objects,
-    records,
-    registry_meta,
-    sync_state,
-)
+from .migrations import migrate
+from .tables import analyses, cache_metadata, devices, objects, records, sync_state
 
 DSN_ENV = "QDT_REGISTRY_DSN"
 STORE_ENV = "QDT_PAYLOAD_STORE"
@@ -74,18 +69,8 @@ def _insert_absent(conn: Connection, table: Table, row: dict[str, Any]) -> bool:
 
 
 def _prepare(engine: Engine) -> None:
-    """Create missing tables (never alters or drops) and check the DDL version."""
-    metadata.create_all(engine)
-    with engine.begin() as conn:
-        row = conn.execute(
-            select(registry_meta.c.value).where(registry_meta.c.key == "ddl_version")
-        ).scalar_one_or_none()
-        if row is None:
-            conn.execute(registry_meta.insert().values(key="ddl_version", value=str(DDL_VERSION)))
-        elif int(row) != DDL_VERSION:
-            raise RuntimeError(
-                f"registry at {engine.url!r} has ddl_version {row}; this client expects {DDL_VERSION}"
-            )
+    """Create an empty database or migrate an older one forward (additive only; `migrations.py`)."""
+    migrate(engine)
 
 
 def _sqlite_engine(path: Path) -> Engine:
@@ -106,6 +91,7 @@ class SyncReport:
     objects: int
     records: int
     payload_bytes: int
+    analyses: int = 0
 
 
 class Registry:
@@ -182,6 +168,31 @@ class Registry:
             if _insert_absent(conn, records, row):
                 self._mark(conn, "records", record.record_id, False)
 
+    def record_analysis(self, result: AnalysisResult) -> None:
+        """Add an `AnalysisResult` computed on one of this client's records. The result must name the
+        record, its Dataset must be the record's, and every annotation must fit that Dataset's
+        coordinates. Idempotent for an identical result; a different body under the same id is refused."""
+        ref = result.measurement
+        if ref.record_id is None:
+            raise ValueError("the registry stores analyses of recorded measurements: set record_id")
+        record = self.get(ref.record_id)
+        if ref.dataset_id != record.plan_id:
+            raise ValueError(
+                f"analysis is of Dataset {ref.dataset_id!r}; record {record.record_id} holds {record.plan_id!r}"
+            )
+        with self._cache.connect() as conn:
+            plan_sha = conn.execute(
+                select(records.c.plan_sha256).where(records.c.record_id == record.record_id)
+            ).scalar_one()
+        dataset = self.object(plan_sha).dataset
+        if ref.variable not in {v.name for v in dataset.data_vars}:
+            raise ValueError(f"Dataset {dataset.dataset_id!r} has no variable {ref.variable!r}")
+        for a in result.annotations:
+            dataset.check_annotation(a)
+        with self._cache.begin() as conn:
+            if _insert_absent(conn, analyses, self._analysis_row(result)):
+                self._mark(conn, "analyses", result.analysis_id, False)
+
     # --- reads (cache or server) -----------------------------------------------------------------
 
     def find(
@@ -239,6 +250,25 @@ class Registry:
             raise KeyError(f"no device {device_id!r}")
         return load("DeviceRecord", body)
 
+    def analyses(self, record_id: str, *, remote: bool = False) -> list[AnalysisResult]:
+        """Every analysis of `record_id`, oldest first."""
+        q = (
+            select(analyses.c.body)
+            .where(analyses.c.record_id == record_id)
+            .order_by(analyses.c.created_at, analyses.c.analysis_id)
+        )
+        with self._engine(remote).connect() as conn:
+            return [load("AnalysisResult", b) for b in conn.execute(q).scalars()]
+
+    def analysis(self, analysis_id: str, *, remote: bool = False) -> AnalysisResult:
+        with self._engine(remote).connect() as conn:
+            body = conn.execute(
+                select(analyses.c.body).where(analyses.c.analysis_id == analysis_id)
+            ).scalar_one_or_none()
+        if body is None:
+            raise KeyError(f"no analysis {analysis_id!r}")
+        return load("AnalysisResult", body)
+
     def payload(self, record_id: str) -> Payload:
         """The payload of a record in this client's store (sync does not download)."""
         return read_payload(self.store / self.get(record_id).payload.path)
@@ -246,7 +276,7 @@ class Registry:
     def unsynced(self) -> dict[str, int]:
         with self._cache.connect() as conn:
             rows = conn.execute(select(sync_state.c.table_name).where(~sync_state.c.synced))
-            out = {"devices": 0, "objects": 0, "records": 0}
+            out = {"devices": 0, "objects": 0, "records": 0, "analyses": 0}
             for (t,) in rows:
                 out[t] += 1
             return out
@@ -254,17 +284,18 @@ class Registry:
     # --- sync ------------------------------------------------------------------------------------
 
     def sync(self) -> SyncReport:
-        """Upload everything not yet confirmed: devices, objects, then each record after its payload.
-        Safe to repeat and to interrupt; raises RuntimeError without a server configured."""
+        """Upload everything not yet confirmed: devices, objects, each record after its payload, then
+        analyses. Safe to repeat and to interrupt; raises RuntimeError without a server configured."""
         if not self.remote_dsn or self.remote_store is None:
             raise RuntimeError(f"sync needs a server: set {DSN_ENV} and {STORE_ENV}")
         remote = self._engine(True)
-        counts = {"devices": 0, "objects": 0, "records": 0}
+        counts = {"devices": 0, "objects": 0, "records": 0, "analyses": 0}
         sent_bytes = 0
         for name, table, key in (
             ("devices", devices, "device_id"),
             ("objects", objects, "sha256"),
             ("records", records, "record_id"),
+            ("analyses", analyses, "analysis_id"),
         ):
             for row in self._pending(name, table, key):
                 if name == "records":
@@ -354,6 +385,22 @@ class Registry:
             "campaign": r.campaign,
             "payload_path": r.payload.path,
             "payload_sha256": r.payload.sha256,
+            "schema_version": r.schema_version,
+            "body": _body(r),
+        }
+
+
+    @staticmethod
+    def _analysis_row(r: AnalysisResult) -> dict[str, Any]:
+        return {
+            "analysis_id": r.analysis_id,
+            "record_id": r.measurement.record_id,
+            "dataset_id": r.measurement.dataset_id,
+            "variable": r.measurement.variable,
+            "model_name": r.model.name,
+            "scenario_kind": r.scenario.kind,
+            "scenario_name": r.scenario.name,
+            "created_at": r.created_at,
             "schema_version": r.schema_version,
             "body": _body(r),
         }
