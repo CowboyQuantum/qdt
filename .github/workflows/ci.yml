@@ -49,6 +49,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:types  # generated TS types match the JSON Schema export
+      - run: pnpm check:api  # generated API types match qdt-server's OpenAPI export
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

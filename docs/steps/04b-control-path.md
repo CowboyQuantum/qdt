@@ -36,8 +36,11 @@ A user does the whole simulated loop from the browser: picks a stand and device,
 - Authentication: none in 4b (single machine); multi-user and the lab PC are Step 7.
 
 ## Status
-IN PROGRESS (opened 2026-10-13, ADR 0032). Session 1: ADR 0034 (FastAPI, REST + the existing stream);
-`control.py` (`Run`, `MethodSpec`); `packages/qdt-server` with stand/devices/stream, compile, runs
-(queue → execute on the simulator → stream → record → ingest), records, methods, results (with outputs),
-replay; API contract tests against the simulator. Next: Flight Deck client generated from the OpenAPI
-document, sweep + pulse-sequence editors, run panel, records browser, analysis panel, e2e.
+IN PROGRESS (opened 2026-10-13, ADR 0032). Session 1: ADR 0034, `control.py`, `packages/qdt-server`,
+API contract tests. Session 2: OpenAPI export (`scripts/export_openapi.py`, drift-checked) and
+`pnpm gen:api` → `src/schema/api.ts`; `src/api/client.ts`; `src/control/` (sweep builders for stage and
+DC sweeps, method parameter forms, the panel: craft, run, runs list, records list with show/analyse,
+analysis with parameter form, show overlays / show output); every announced Dataset selectable;
+`e2e/control.test.ts` drives the whole loop in Chrome against a spawned server. Remaining: the
+pulse-sequence editor beyond the one-step template, trace views for 1-D sweeps in the panel, freeze
+`control.py`, a scripted demo entry (`python -m qdt_server --demo`?), polish.
