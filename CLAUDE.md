@@ -59,6 +59,7 @@ bash scripts/check_all.sh                 # provenance + descriptions + import b
 uv run mkdocs serve                       # docs at localhost:8000
 (cd apps/flightdeck && pnpm test)        # front end; run pnpm from apps/flightdeck so corepack picks the pinned version
 uv run python -m qdt_lab.stream           # synthetic stream on ws://127.0.0.1:8765; then `pnpm dev` in apps/flightdeck
+uv run python -m qdt_server               # control path: API on :8700 (/docs), stream on :8765, simulated backend (Step 4b)
 ```
 
 ## Where to look
@@ -74,5 +75,6 @@ uv run python -m qdt_lab.stream           # synthetic stream on ws://127.0.0.1:8
 | Flight Deck end-state constraints | `docs/FINISH_LINE.md` |
 | Bench wiring, surrogate DUT, loopback map | `docs/BENCH.md` |
 | How to add an instrument driver | `packages/qdt-lab/CLAUDE.md` |
+| How the UI talks to the backend | `packages/qdt-server/CLAUDE.md` (ADR 0032, 0034) |
 | How to add/change a schema | `packages/qdt-schemas/CLAUDE.md` |
 | Personal, uncommitted overrides | `CLAUDE.local.md` (gitignored) |
