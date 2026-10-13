@@ -4,8 +4,7 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 4b — Control path → `docs/steps/04b-control-path.md` (Step 4 DONE, ADR 0033)
-**Branch:** `step-4b/server` (PR against `main` open, stacked on `step-4/close` PR #14; the human merges
-#14 first). Next session: `step-4b/<short-name>` from `main`.
+**Branch:** `step-4b/flightdeck-control` (PR against `main` open; the human merges). PRs #14–#17 merged.
 **Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
 (`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
 session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
@@ -25,7 +24,7 @@ in a payload referenced from the result.
 ## Step 4b exit criteria
 | Criterion | State |
 |---|---|
-| from a fresh browser with only `qdt-server` running against the simulator: craft a sweep + pulse sequence, run, watch live, find the record, run a curated analysis, see overlays and output — e2e in CI and as a scripted demo | ◐ the server side of the loop runs under `TestClient` (`packages/qdt-server/tests/test_api.py`); no UI for it yet |
+| from a fresh browser with only `qdt-server` running against the simulator: craft a sweep + pulse sequence, run, watch live, find the record, run a curated analysis, see overlays and output — e2e in CI and as a scripted demo | ◐ `apps/flightdeck/e2e/control.test.ts` does it in Chrome against a spawned server (form → run → live map → record → analysis → overlays painted). The pulse sequence is the one-step template, not yet edited; the scripted demo is "start the server, open Flight Deck" |
 | `control.py` (`Run`, `MethodSpec`) frozen with ADR | ✘ defined (ADR 0032/0034), not frozen |
 
 ## Done
@@ -62,7 +61,13 @@ in a payload referenced from the result.
   time), `POST /records/{id}/results` (curated method by `MethodSpec`, stores result + output, 201),
   `POST /stream/replay` (record with overlays, or a result's output). `catalogue.METHODS` pins each spec
   to its function's signature. `fastapi`/`uvicorn` are `qdt-server` deps only; `httpx` dev.
-- 266 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 26 Flight Deck unit tests, 2 e2e.
+- **Step 4b session 2:** `scripts/export_openapi.py` → `packages/qdt-server/exports/openapi.json`
+  (drift-checked in `check_all`); Flight Deck `pnpm gen:api` → `src/schema/api.ts` (drift-checked in CI);
+  `src/api/client.ts` (typed fetch client, `?api=`); `src/control/sweeps.ts` (stage and DC sweep
+  builders from a form; stand channel classification), `src/control/methods.ts` (MethodSpec → defaults,
+  parse, check, overrides), `src/control/panel.ts` (craft/run/runs/records/analysis UI); every Dataset
+  on the stream selectable (`#datasets`, newest shown first); `e2e/control.test.ts`.
+- 266 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 37 Flight Deck unit tests, 3 e2e.
 
 ## In flight
 - Nothing uncommitted. PR `step-4/result-output` → `main` open. Remote branches `step-4/analysis`,
@@ -89,16 +94,14 @@ in a payload referenced from the result.
   Windows: `corepack pnpm ...` in `apps/flightdeck`.
 
 ## Next action
-**Human:** merge PR #14 (Step 4 close), then the `step-4b/server` PR. Try the server:
-`uv run python -m qdt_server` then open http://127.0.0.1:8700/docs; `corepack pnpm dev` in
-`apps/flightdeck` shows whatever the server streams (a `POST /runs` from the docs page runs a sweep live).
-**Then** Step 4b session 2 on `step-4b/<short-name>`: generate the Flight Deck API client from the
-server's OpenAPI document (`pnpm gen:api`, drift-checked in CI like `gen:types`); a run panel that posts
-a `SweepDefinition` (start with a stability-sweep form over the generated types) and watches the `Run`;
-a records list from `GET /records` with replay (`POST /stream/replay`); then the analysis panel from
-`GET /methods` (form from `MethodSpec.parameters`). Pulse-sequence editor after. Flight Deck must handle
-more than one Dataset per connection (choose which to show) before replay and live runs coexist.
-Freeze `control.py` at 4b exit.
+**Human:** merge the PR; then the demo: `uv run python -m qdt_server`, `corepack pnpm dev` in
+`apps/flightdeck`, open the URL. The panel on the right: pick channels, set ranges, "run" (the map
+draws live), the record appears under Records, "analyse" → pick a method → "run analysis" → "show
+overlays". For diamonds: kind "DC", outer `SG` −0.2…0.2, inner `bias` −0.0015…0.0015 (name `V_sd`),
+options `{"seed": 1, "noise": false, "sensor_width_v": 0.01}`, method "Coulomb diamonds".
+**Then** Step 4b session 3: the pulse-sequence editor (edit the stage's `PulseSequence` body: steps,
+ramps, waits, measures, symbols bound to axes) with its own unit tests; 1-D sweeps in the panel; a
+`--demo` entry; then freeze `control.py` by ADR and close 4b. Step 5 (drivers) follows.
 
 ## Direction recorded (human, 2026-10-13)
 - The end state is a web app: users run **curated** analyses from Flight Deck; no method authoring in

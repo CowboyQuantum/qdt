@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from qdt_lab.stream import PayloadSource, StreamServer
@@ -124,7 +125,14 @@ def create_app(settings: Settings) -> FastAPI:
             )
             yield
 
-    app = FastAPI(title="qdt-server", version="0.1.0", lifespan=lifespan)
+    # one schema per model (no -Input/-Output pairs): the UI's generated types mirror qdt-schemas 1:1
+    app = FastAPI(
+        title="qdt-server", version="0.1.0", lifespan=lifespan, separate_input_output_schemas=False
+    )
+    # Flight Deck is served by Vite on another port of the same machine; no auth in Step 4b (ADR 0032)
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+    )
 
     def registry(request: Request) -> Registry:
         return request.app.state.registry

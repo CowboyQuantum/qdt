@@ -135,3 +135,17 @@ def test_diamonds_run_through_the_api_with_a_cold_sensor(client):
     result = AnalysisResult.model_validate(r.json())
     assert result.status == "ok", result.message
     assert result.estimate("charging_energy").value == pytest.approx(1e-3, rel=0.05)
+
+
+def test_the_browser_may_call_from_another_origin(client):
+    r = client.options(
+        "/runs",
+        headers={
+            "origin": "http://127.0.0.1:5173",
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type",
+        },
+    )
+    assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "*"
+    r = client.get("/stand", headers={"origin": "http://127.0.0.1:5173"})
+    assert r.headers["access-control-allow-origin"] == "*"

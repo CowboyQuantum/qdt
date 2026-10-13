@@ -12,7 +12,9 @@
     "gen:types": "node scripts/gen-types.mjs",
     "check:types": "node scripts/gen-types.mjs --check",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "bench": "node bench/run.mjs"
+    "bench": "node bench/run.mjs",
+    "gen:api": "node scripts/gen-api.mjs",
+    "check:api": "node scripts/gen-api.mjs --check"
   },
   "dependencies": {
     "apache-arrow": "^21.2.0"

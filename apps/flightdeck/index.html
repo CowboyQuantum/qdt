@@ -9,21 +9,43 @@
       body { margin: 0; font: 13px system-ui, sans-serif; background: #181818; color: #ddd; }
       header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #222; }
       #title { font-weight: 600; }
-      #stage { position: relative; width: min(96vw, 86vh); aspect-ratio: 1; margin: 12px auto; }
+      main { display: flex; gap: 12px; align-items: flex-start; }
+      #stage { position: relative; width: min(60vw, 86vh); aspect-ratio: 1; margin: 12px; flex: none; }
       #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
       #status { padding: 0 12px; font-variant-numeric: tabular-nums; }
+      #message { padding: 0 12px; min-height: 1.2em; color: #9c9; }
+      #message.error { color: #f77; }
+      #control { flex: 1; min-width: 320px; max-width: 480px; margin: 12px 12px 12px 0; display: flex; flex-direction: column; gap: 6px; }
+      #control h3 { margin: 10px 0 2px; font-size: 13px; color: #aaa; }
+      #control label { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+      #control input, #control select { background: #111; color: #ddd; border: 1px solid #444; padding: 2px 4px; font: inherit; width: 55%; }
+      #control .axis { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; gap: 4px; }
+      #control .axis input, #control .axis select { width: 100%; }
+      #control .axis.head { color: #888; grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; }
+      #control ul { margin: 0; padding-left: 16px; max-height: 160px; overflow: auto; }
+      #control li { display: flex; gap: 6px; align-items: center; }
+      #control button { font: inherit; background: #333; color: #ddd; border: 1px solid #555; padding: 2px 8px; cursor: pointer; }
+      #control #params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+      #control #params label { font-size: 12px; }
+      #control #estimates { font: 12px ui-monospace, monospace; white-space: pre; margin: 0; }
+      #datasets { background: #111; color: #ddd; border: 1px solid #444; font: inherit; }
     </style>
   </head>
   <body>
     <header>
       <span id="title">Flight Deck</span>
+      <label>dataset <select id="datasets"></select></label>
       <label>replay <input id="file" type="file" accept=".qdtrec" /></label>
     </header>
     <div id="status">connecting…</div>
-    <div id="stage">
-      <canvas id="plot" width="1024" height="1024"></canvas>
-      <canvas id="overlay" width="1024" height="1024"></canvas>
-    </div>
+    <div id="message"></div>
+    <main>
+      <div id="stage">
+        <canvas id="plot" width="1024" height="1024"></canvas>
+        <canvas id="overlay" width="1024" height="1024"></canvas>
+      </div>
+      <aside id="control"></aside>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
