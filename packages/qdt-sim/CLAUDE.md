@@ -7,10 +7,10 @@ device-in-the-loop: one object implementing `LevelSource`, `LevelSense` and `Seq
 ## Layout
 ```
 qdt_sim/
-  dot.py        # DoubleDotModel: constant-interaction electrostatics + periodic charge sensor; pure functions
+  dot.py        # DoubleDotModel: constant-interaction electrostatics + biased sensor SET (ADR 0030); pure functions; charge_lattice / diamond_edges are the truth
   noise.py      # NoiseModel protocol: WhiteNoise, TelegraphNoise, OneOverFNoise, Composite; seeded, clocked
   device.py     # SimulatedDevice (+ DeviceNoise); interprets the SimulatedEmitter body against the model
-  scenarios.py  # default_model / default_noise / default_device / default_stand / stability(...) sweeps
+  scenarios.py  # default_model / default_noise / default_device(model=...) / default_stand / stability(...) and diamonds(...) sweeps
   __main__.py   # `python -m qdt_sim`: stream a stability diagram live for Flight Deck
 ```
 
@@ -21,6 +21,10 @@ qdt_sim/
   on one platform and within `rtol=1e-9` across platforms; the committed fixture test enforces it.
 - Physics additions (tunnel coupling, spin, valley, Pauli blockade) are ADR-level: say what the new
   parameter means and which sweep first needs it.
-- Pulses add to the DC level of the same gate (bias-tee semantics). Durations advance the clock; the
+- Pulses add to the DC level of the same gate (bias-tee semantics); the `bias` role (sensor source–drain
+  voltage) adds likewise and starts at the model's `sensor_bias_v`. Durations advance the clock; the
   charge state is quasi-static at each `measure`.
+- A test that needs the truth gets it from the model (`charge_lattice`, `diamond_edges`), never from a
+  hand-written expectation. A scenario that needs other model parameters passes
+  `default_device(model=dataclasses.replace(default_model(), ...))`.
 - Regenerate fixtures only when the model or a scenario changes: `uv run python scripts/make_sim_fixtures.py`.

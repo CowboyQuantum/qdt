@@ -2,7 +2,8 @@
 
 One object, three capabilities, one set of vendor channels. Each channel has a role: a gate name of
 the model (several channels may drive the same gate; their levels add, as a DC line and a pulse line
-do through a bias tee) or `"sensor"`. The device keeps a clock (s) that every integration and every
+do through a bias tee), `"bias"` (the sensor's source–drain voltage, ADR 0030; channels add likewise,
+and its DC level starts at the model's `sensor_bias_v`) or `"sensor"`. The device keeps a clock (s) that every integration and every
 pulse duration advances; noise processes are sampled on it. Pulse timing is otherwise quasi-static:
 the charge state at a `measure` is the Boltzmann state (sampled per shot, or its mean) for the gate
 levels at that instant.
@@ -34,6 +35,7 @@ from .dot import DoubleDotModel
 from .noise import NoiseModel, NoNoise
 
 SENSOR = "sensor"
+BIAS = "bias"
 
 
 @dataclass
@@ -82,13 +84,17 @@ class SimulatedDevice:
                 "SG": "SG",
                 "P1_pulse": "P1",
                 "P2_pulse": "P2",
+                BIAS: BIAS,
+                "bias_pulse": BIAS,
                 SENSOR: SENSOR,
             }
         )
-        roles = set(self.model.gate_names) | {SENSOR}
+        roles = set(self.model.gate_names) | {SENSOR, BIAS}
         bad = {ch: r for ch, r in self.channels.items() if r not in roles}
         if bad:
-            raise ValueError(f"channel roles must be a gate of the model or 'sensor': {bad}")
+            raise ValueError(
+                f"channel roles must be a gate of the model, 'bias' or 'sensor': {bad}"
+            )
         if SENSOR not in self.channels.values():
             raise ValueError("the device needs a channel with role 'sensor'")
         self.noise = noise or DeviceNoise()
@@ -101,6 +107,9 @@ class SimulatedDevice:
             raise ValueError(f"integration times for unknown channels {sorted(unknown)}")
         self._rng = np.random.default_rng(seed)
         self._dc: dict[str, float] = dict.fromkeys(self.channels, 0.0)
+        bias = [ch for ch, role in self.channels.items() if role == BIAS]
+        if bias:  # the sensor is read at its default bias until something sets it
+            self._dc[bias[0]] = self.model.sensor_bias_v
         self.clock_s = 0.0
 
     @classmethod
@@ -148,7 +157,7 @@ class SimulatedDevice:
                 f"channel {channel!r} is a gate ({self.channels[channel]}); sense the sensor"
             )
         aperture = self.integration_s.get(channel, self.sense_integration_s)
-        return float(self.read(self.gate_vector(), 1, aperture)[0])
+        return float(self.read(self.gate_vector(), 1, aperture, self.bias_level())[0])
 
     # --- Sequencer ------------------------------------------------------------------------------
 
@@ -190,8 +199,19 @@ class SimulatedDevice:
                 v[index[role]] += self._dc[ch] + (pulse or {}).get(ch, 0.0)
         return v
 
-    def read(self, v: np.ndarray, shots: int, integration_s: float) -> np.ndarray:
-        """`shots` sensor-current samples (A) at gate voltages `v`, each advancing the clock."""
+    def bias_level(self, pulse: Mapping[str, float] | None = None) -> float | None:
+        """Sensor source–drain bias (V): DC levels plus pulse offsets of every `bias` channel, summed;
+        None (the model's default) when the device has no bias channel."""
+        chans = [ch for ch, role in self.channels.items() if role == BIAS]
+        if not chans:
+            return None
+        return sum(self._dc[ch] + (pulse or {}).get(ch, 0.0) for ch in chans)
+
+    def read(
+        self, v: np.ndarray, shots: int, integration_s: float, v_sd: float | None = None
+    ) -> np.ndarray:
+        """`shots` sensor-current samples (A) at gate voltages `v` and bias `v_sd` (None: the model's
+        default), each advancing the clock."""
         out = np.empty(shots)
         for s in range(shots):
             self.clock_s += integration_s + self.shot_overhead_s
@@ -203,7 +223,7 @@ class SimulatedDevice:
                 else self.model.mean_occupation(v_eff)
             )
             phi = self.model.sensor_potential(v_eff, n, self.noise.sensor.sample(t))
-            out[s] = self.model.sensor_current(phi) + self.noise.readout.sample(t)
+            out[s] = self.model.sensor_current(phi, v_sd) + self.noise.readout.sample(t)
         return out
 
     def _check(self, channel: str) -> None:
@@ -259,7 +279,9 @@ class _DeviceRun:
                 elif op.op == "ramp":
                     pulse[op.channel] = val(op.stop)
                 elif op.op == "measure":
-                    i = device.read(device.gate_vector(pulse), 1, duration_ns * 1e-9)
+                    i = device.read(
+                        device.gate_vector(pulse), 1, duration_ns * 1e-9, device.bias_level(pulse)
+                    )
                     samples.setdefault(op.result, []).append(float(i[0]))
                     continue
                 device.clock_s += duration_ns * 1e-9
