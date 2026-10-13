@@ -36,4 +36,8 @@ A user does the whole simulated loop from the browser: picks a stand and device,
 - Authentication: none in 4b (single machine); multi-user and the lab PC are Step 7.
 
 ## Status
-NOT STARTED (planned 2026-10-13, ADR 0032). Estimated six to eight sessions: server two to three, editors and records browser three to four, wiring, e2e and docs one.
+IN PROGRESS (opened 2026-10-13, ADR 0032). Session 1: ADR 0034 (FastAPI, REST + the existing stream);
+`control.py` (`Run`, `MethodSpec`); `packages/qdt-server` with stand/devices/stream, compile, runs
+(queue → execute on the simulator → stream → record → ingest), records, methods, results (with outputs),
+replay; API contract tests against the simulator. Next: Flight Deck client generated from the OpenAPI
+document, sweep + pulse-sequence editors, run panel, records browser, analysis panel, e2e.

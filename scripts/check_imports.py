@@ -10,6 +10,7 @@ FORBIDDEN = {
     "packages/qdt-lab/src": [r"^\s*(from|import)\s+(sqlalchemy|psycopg)"],  # rule 4
     "packages/qdt-sim/src": [r"^\s*(from|import)\s+(qdt_registry|sqlalchemy|psycopg)"],  # rule 4
     "apps/flightdeck/src": [r"qdt_lab\.drivers", r"\bqm\.", r"qcodes", r"pyvisa"],  # rule 8
+    "packages/qdt-server/src": [r"^\s*(from|import)\s+(sqlalchemy|psycopg|h5py)"],  # stores via qdt-registry only
 }
 bad = []
 for rel, pats in FORBIDDEN.items():

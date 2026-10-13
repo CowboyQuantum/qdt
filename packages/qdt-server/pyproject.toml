@@ -1,0 +1,21 @@
+[project]
+name = "qdt-server"
+version = "0.1.0"
+description = "qdt — the control path: HTTP API for stands, sweeps, runs, records and curated analyses, beside the Dataset stream (Step 4b)"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "qdt-schemas[hdf5]",
+    "qdt-lab",
+    "qdt-registry",
+    "qdt-analysis",
+    "qdt-sim",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qdt_server"]

@@ -37,3 +37,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0031 | Analysis outputs are Datasets in payloads; methods are curated; one record per result for now | Accepted (Dataset v2, ExecutionPlan v2) |
 | 0032 | The control path (server + UI) comes before instrument drivers, as Step 4b | Accepted (amends the ADR 0007 order) |
 | 0033 | Modeling slice frozen at schema_version 1: `FitModel`, `Estimate`, `AnalysisResult` | Accepted (freezes 0029 objects; closes Step 4) |
+| 0034 | `qdt-server`: FastAPI over the schema objects, REST for commands and queries, the existing WebSocket for data | Accepted |

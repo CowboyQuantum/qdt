@@ -19,6 +19,7 @@ qdt-registry = { workspace = true }
 qdt-sim = { workspace = true }
 qdt-telemetry = { workspace = true }
 qdt-frameworks = { workspace = true }
+qdt-server = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -28,6 +29,7 @@ dev = [
   "mypy",
   "mkdocs-material",
   "mkdocstrings[python]",
+  "httpx>=0.28.1",
 ]
 
 [tool.pytest.ini_options]
@@ -45,4 +47,4 @@ extend-select = ["I"]
 "bench/probes/**" = ["BLE001", "SIM117", "RUF007", "UP031"]  # one-off probe code: blind excepts isolate API mismatches by design
 
 [tool.ruff.lint.isort]
-known-first-party = ["qdt_schemas", "qdt_lab", "qdt_analysis", "qdt_registry", "qdt_sim", "qdt_telemetry", "qdt_frameworks"]
+known-first-party = ["qdt_schemas", "qdt_lab", "qdt_analysis", "qdt_registry", "qdt_sim", "qdt_telemetry", "qdt_frameworks", "qdt_server"]
