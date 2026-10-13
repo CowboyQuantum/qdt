@@ -12,7 +12,7 @@ import { ReplaySource } from "./sources/replay";
 import { consume, type Source } from "./sources/source";
 import { WebSocketSource } from "./sources/websocket";
 import type { DatasetStore } from "./stream/store";
-import { annotationPath, axis, chooseView, type ViewKind } from "./view";
+import { annotationPath, axis, chooseView, meanAlongLeading, type ViewKind } from "./view";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const plot = $<HTMLCanvasElement>("plot");
@@ -93,19 +93,26 @@ function show(store: DatasetStore, signal: AbortSignal): void {
   });
 
   let range: Range | null = null;
+  let mean: Float64Array | null = null; // display map for a stacked heatmap: mean over the stack dim
 
   const frame = () => {
     if (signal.aborted) return;
     if (dirty) {
       const data = store.get(view.variable);
       if (view.kind === "heatmap" && renderer) {
-        const [rows, cols] = data.shape as [number, number];
-        const r = finiteRange(data.values.subarray(dirty[0] * cols, dirty[1] * cols));
+        let map = data.values;
+        const [rows, cols] = data.shape.slice(-2) as [number, number];
+        if (view.stackDim) {
+          if (mean?.length !== rows * cols) mean = new Float64Array(rows * cols).fill(NaN);
+          meanAlongLeading(data, dirty[0], dirty[1], mean);
+          map = mean;
+        }
+        const r = finiteRange(map.subarray(dirty[0] * cols, dirty[1] * cols));
         if (r) range = range ? { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) } : r;
         if (renderer.shape[0] !== rows || renderer.shape[1] !== cols) {
           renderer.resize(rows, cols);
-          renderer.upload(data.values, 0, rows);
-        } else renderer.upload(data.values, dirty[0], dirty[1]);
+          renderer.upload(map, 0, rows);
+        } else renderer.upload(map, dirty[0], dirty[1]);
         if (range) renderer.draw(range);
         if (bench) renderer.finish();
         drawAnnotations(store, view);
@@ -128,7 +135,11 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     while (recent.length && recent[0]![0] < now - 1000) recent.shift();
     const rate = recent.reduce((a, [, n]) => a + n, 0);
     status.textContent =
-      `${store.dataset.name} · ${view.kind}${renderer ? ` (${renderer.name})` : ""} · seq ${store.lastSeq}` +
+      `${store.dataset.name} · ${view.kind}${renderer ? ` (${renderer.name})` : ""}` +
+      (view.kind === "heatmap" && view.stackDim
+        ? ` · mean over ${store.get(view.variable).shape[0]} ${view.stackDim}`
+        : "") +
+      ` · seq ${store.lastSeq}` +
       `${store.complete ? " (complete)" : ""} · ${points.toLocaleString()} pts · ${rate.toLocaleString()} pts/s` +
       (Number.isFinite(latency) ? ` · last chunk age ${latency.toFixed(0)} ms` : "");
     requestAnimationFrame(frame);
