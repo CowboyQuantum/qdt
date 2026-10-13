@@ -29,4 +29,7 @@ Fits and feature detection run from registry queries, emit `AnalysisResult` with
 - none
 
 ## Status
-IN PROGRESS (opened 2026-10-13; no code yet)
+IN PROGRESS (opened 2026-10-13). Built: `modeling.py` (ADR 0029, not frozen); charge transitions with
+lattice estimation; sensor source–drain bias and the Coulomb diamond pipeline (ADR 0030); results in
+the registry; overlays on replay; Tutorial 03. Remaining: overlays seen in Flight Deck by a human, then
+the freeze ADR.
