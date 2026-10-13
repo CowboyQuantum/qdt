@@ -4,12 +4,15 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 4 — Analysis as a consumer → `docs/steps/04-analysis-overlays.md`
-**Branch:** `step-4/diamonds` (PR against `main` open; the human merges).
+**Branch:** `step-4/result-output` (PR against `main` open; the human merges). PR #11 (diamonds) merged.
 **Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
 (`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
 session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
 `diamonds` sweep, the Coulomb diamond method with injection–recovery, and a recovery scorer (ADR 0030).
-`ScenarioRef` (PR #10's reading of the scenario ref) was dropped per the human's choice.
+`ScenarioRef` (PR #10's reading of the scenario ref) was dropped per the human's choice. After seeing the
+overlays in Flight Deck the human reviewed the analysis objects and decided: curated methods only,
+multi-record analyses deferred, and results may carry arrays. Built as ADR 0031: an output is a Dataset
+in a payload referenced from the result.
 
 ## Step 4 exit criteria
 | Criterion | State |
@@ -41,12 +44,19 @@ draws lines, markers and regions in data coordinates).
   `E_c = e·V_apex`, lever arm, as `Estimate`s; edges, points and diamonds as overlays; `failed` without a
   complete diamond. `qdt_analysis.recovery` scores line overlays against a truth mask. The 24×32
   stability fixture was regenerated (model changed, ~1 % at the default bias).
-- 242 Python tests (+4 Postgres-parametrized with `QDT_TEST_PG_DSN`), 26 Flight Deck unit tests, 2 e2e.
-  Flight Deck source unchanged (`data.schema.json` did not change).
+- **Step 4 (ADR 0031):** `AnalysisResult.output: PayloadRef | None`; a method returns
+  `Analysis(result, output)` with the output as an in-memory `Payload` whose Dataset has
+  `source.kind="analysis"` (new kind: `Dataset` v2, `ExecutionPlan` v2, identity migrations, v1 fixtures
+  kept, exports and Flight Deck types regenerated; the wire decoder upgrades on read).
+  `Registry.add_result(result, output)` writes `analysis/<YYYY>/<MM>/<result_id>.h5`, fills the ref and
+  returns the stored result; `Registry.result`/`output`; `sync` uploads outputs; `serve --output
+  <result_id>` streams one to Flight Deck. Both methods output their detection map (gradient + edges).
+- 247 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 26 Flight Deck unit tests, 2 e2e.
+  Flight Deck source unchanged except the generated `src/schema/data.ts`.
 
 ## In flight
-- Nothing uncommitted. PR `step-4/diamonds` → `main` open. Branch `step-4/analysis-overlays` (PR #10,
-  closed) stays on the remote for reference; delete it once this PR is merged.
+- Nothing uncommitted. PR `step-4/result-output` → `main` open. Remote branches `step-4/analysis`,
+  `step-4/diamonds` (merged) and `step-4/analysis-overlays` (PR #10, closed) await the human's pruning.
 
 ## Known broken / not yet real
 - The diamond estimator needs sharp edges: at the stability default sensor width (40 mV, kT_s ≈ 80 µeV)
@@ -73,11 +83,21 @@ draws lines, markers and regions in data coordinates).
 `uv run python scripts/demo_analysis.py` (transitions) and `uv run python scripts/demo_analysis.py
 --diamonds` (each prints a record id), then `uv run python -m qdt_registry serve <record_id>` and
 `corepack pnpm dev` in `apps/flightdeck`. Transition segments should lie on the honeycomb edges; the
-diamond edges, `g<k>` markers and `E_c` regions on the sensor's diamonds.
+diamond edges, `g<k>` markers and `E_c` regions on the sensor's diamonds. The demo also prints
+`serve --output <result_id>`: the detection map the method worked on, as a Dataset of its own.
 **Then** close Step 4: review `FitModel`/`Estimate`/`AnalysisResult` against what both methods, the
 registry and Tutorial 03 used; write the freeze ADR; mark Step 4 DONE (`docs/steps/04-…`, `README.md`);
 delete `step-4/analysis-overlays`; open Step 5 (instrument drivers) and settle #10 (surrogate DUT) with
 the human at Step 5 entry.
+
+## Direction recorded (ADR 0031, human, 2026-10-13)
+- The end state is a web app: users run **curated** analyses from Flight Deck; no method authoring in
+  the browser. Multi-record analyses deferred. Results may carry arrays as Datasets.
+- Not yet on the roadmap: the backend service that lets the UI query the registry, run a method, and
+  craft/compile/run a sweep (the "control path"). Today Flight Deck has one channel in (the stream) and
+  one planned channel out (click-to-set, Step 6). A method catalogue (name, version, parameter schema
+  for forms, applicable shapes, promised estimates) enters with that service. Needs a step and a
+  `FINISH_LINE.md` row; proposed to the human.
 
 ## Decisions pending
 - #10 surrogate DUT design (by Step 5 entry). Advisory treatment of the two wall-clock CI gates. Whether to

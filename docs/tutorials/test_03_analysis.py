@@ -37,10 +37,12 @@ registry.ingest(*recorder.finish(registry.root / "outbox"))
 # 2. Analysis starts from a query, never from a file path.
 [record] = registry.find(device_id=DEVICE_ID, definition_name=plan.definition.name)
 
-# 3. A pure function: the record and its payload in, an AnalysisResult out. It knows what data it read
-#    (record_id) and how (method: name, version, every parameter, content hash).
-result = detect_transitions(record, registry.payload(record.record_id))
+# 3. A pure function: the record and its payload in, an Analysis out: the AnalysisResult, which knows
+#    what data it read (record_id) and how (method: name, version, every parameter, content hash), and
+#    the arrays the method produced as a Dataset of its own (here the detection map), not yet stored.
+result, output = detect_transitions(record, registry.payload(record.record_id))
 assert result.status == "ok" and result.record_id == record.record_id
+assert output.dataset.source.kind == "analysis" and result.output is None
 
 # 4. The numbers: electrons per volt on each dot from each plunger, and the cross-capacitance ratios
 #    a virtual-gate matrix is built from. The simulated device knows the truth.
@@ -48,9 +50,13 @@ truth = default_model().charge_lattice("P1", "P2")
 ratio = result.estimate("cross_ratio_a").value
 assert abs(ratio - truth[0, 1] / truth[0, 0]) < 0.02
 
-# 5. Keep it. Results sync to the server with everything else.
-registry.add_result(result)
+# 5. Keep it. The registry writes the output payload to its store and fills `result.output`; results and
+#    their outputs sync to the server with everything else. The output reads back as a Dataset, and
+#    `python -m qdt_registry serve --output <result_id>` streams it to Flight Deck like a measurement.
+result = registry.add_result(result, output)
 assert registry.results(record_id=record.record_id) == [result]
+assert result.output is not None
+assert registry.output(result.result_id).dataset == output.dataset
 
 
 # 6. Replay the run with the overlays: `python -m qdt_registry serve <record_id>` does this for Flight Deck,
