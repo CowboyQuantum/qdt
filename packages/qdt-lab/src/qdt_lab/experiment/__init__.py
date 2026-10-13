@@ -9,11 +9,13 @@ returns a stream `Source`.
 from .compile import compile_sweep
 from .emit import DEFAULT_SCALES, Emitter, SimulatedEmitter, scale_for
 from .execute import Executor, build_backends
+from .record import RunRecorder
 
 __all__ = [
     "DEFAULT_SCALES",
     "Emitter",
     "Executor",
+    "RunRecorder",
     "SimulatedEmitter",
     "build_backends",
     "compile_sweep",

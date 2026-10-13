@@ -1,0 +1,24 @@
+# Local registry server for development and the Postgres half of the L0 suite (Step 3, ADR 0026).
+#   docker compose -f deploy/registry.compose.yml up -d
+#   QDT_REGISTRY_DSN=postgresql+psycopg://qdt:qdt@localhost:5432/qdt          # the registry
+#   QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@localhost:5432/qdt_test      # tests (dropped per test)
+# Localhost-bound; development credentials only. Lab deployment lives in the internal extension (plan §5).
+services:
+  registry-db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: qdt
+      POSTGRES_PASSWORD: qdt
+      POSTGRES_DB: qdt
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - registry-data:/var/lib/postgresql/data
+      - ./registry-init.sql:/docker-entrypoint-initdb.d/registry-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qdt -d qdt"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  registry-data:

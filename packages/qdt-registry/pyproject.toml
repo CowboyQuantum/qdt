@@ -3,7 +3,11 @@ name = "qdt-registry"
 version = "0.1.0"
 description = "qdt — record-keeping engine; the only package that touches a database"
 requires-python = ">=3.11,<3.14"
-dependencies = ["qdt-schemas", "sqlalchemy>=2,<3"]
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "qdt-schemas[hdf5]",
+    "sqlalchemy>=2,<3",
+]
 
 [build-system]
 requires = ["hatchling"]

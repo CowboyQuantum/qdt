@@ -29,3 +29,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0023 | `payload_hdf5` lives in `qdt-schemas` behind the `[hdf5]` extra | Accepted (closes plan #2) |
 | 0024 | Registry clients write to a local cache first and sync to Postgres | Accepted (closes plan #4) |
 | 0025 | `MeasurementRecord` is a reference-and-hash envelope; Step 3 builds only device identity | Accepted |
+| 0026 | Registry storage: one table set for cache and server, append-only, payloads in a file store | Accepted |

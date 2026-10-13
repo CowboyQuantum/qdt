@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "qdt — instrument capability protocols, drivers, simulated backends, experiment executor, Dataset stream server"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "qdt-schemas",
+    "qdt-schemas[hdf5]",  # a recorded run is a qdt-hdf5-v1 payload (ADR 0023)
     "numpy>=1.26,<3",
     "xarray>=2024.1,<2027",
     "pyarrow>=15",
