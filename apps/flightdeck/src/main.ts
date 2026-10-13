@@ -16,7 +16,18 @@ import { ReplaySource } from "./sources/replay";
 import { consume, type Source } from "./sources/source";
 import { WebSocketSource } from "./sources/websocket";
 import type { DatasetStore } from "./stream/store";
-import { annotationPath, axis, chooseView, meanAlongLeading, type ViewKind } from "./view";
+import {
+  annotationPath,
+  axis,
+  chooseView,
+  DEFAULT_OPTIONS,
+  meanAlongLeading,
+  transformMap,
+  transpose,
+  type Transform,
+  type ViewKind,
+  type ViewOptions,
+} from "./view";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const plot = $<HTMLCanvasElement>("plot");
@@ -25,6 +36,9 @@ const status = $<HTMLDivElement>("status");
 const title = $<HTMLDivElement>("title");
 const message = $<HTMLDivElement>("message");
 const datasets = $<HTMLSelectElement>("datasets");
+const transformSelect = $<HTMLSelectElement>("transform");
+const swapBox = $<HTMLInputElement>("swap");
+const options = (): ViewOptions => ({ swap: swapBox.checked, transform: transformSelect.value as Transform });
 const params = new URLSearchParams(location.search);
 const bench = params.get("bench") === "1";
 
@@ -125,6 +139,25 @@ function show(store: DatasetStore, signal: AbortSignal): void {
 
   let range: Range | null = null;
   let mean: Float64Array | null = null; // display map for a stacked heatmap: mean over the stack dim
+  let derived: Float64Array | null = null; // transformed map
+  let swapped: Float64Array | null = null; // transposed map
+  let shown: ViewOptions = { ...DEFAULT_OPTIONS };
+  const onOptions = () => {
+    const o = options();
+    if (o.swap === shown.swap && o.transform === shown.transform) return;
+    shown = o;
+    range = null;
+    const rows = store.get(view.variable).shape;
+    dirty = [0, view.kind === "heatmap" && view.stackDim ? rows[1]! : rows[0]!];
+    overlaysDirty = true;
+  };
+  transformSelect.addEventListener("change", onOptions);
+  swapBox.addEventListener("change", onOptions);
+  signal.addEventListener("abort", () => {
+    transformSelect.removeEventListener("change", onOptions);
+    swapBox.removeEventListener("change", onOptions);
+  }, { once: true });
+  shown = options();
 
   const frame = () => {
     if (signal.aborted) return;
@@ -139,16 +172,35 @@ function show(store: DatasetStore, signal: AbortSignal): void {
           meanAlongLeading(data, dirty[0], dirty[1], mean);
           map = mean;
         }
-        const r = finiteRange(map.subarray(dirty[0] * cols, dirty[1] * cols));
-        if (r) range = range ? { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) } : r;
-        if (r2.shape[0] !== rows || r2.shape[1] !== cols) {
-          r2.resize(rows, cols);
-          r2.upload(map, 0, rows);
-          range = finiteRange(map) ?? range;
-        } else r2.upload(map, dirty[0], dirty[1]);
+        const plain = shown.transform === "raw" && !shown.swap;
+        if (plain) {
+          // the live path: only the dirty rows are mapped and uploaded (the bench measures this)
+          const r = finiteRange(map.subarray(dirty[0] * cols, dirty[1] * cols));
+          if (r) range = range ? { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) } : r;
+          if (r2.shape[0] !== rows || r2.shape[1] !== cols) {
+            r2.resize(rows, cols);
+            r2.upload(map, 0, rows);
+            range = finiteRange(map) ?? range;
+          } else r2.upload(map, dirty[0], dirty[1]);
+        } else {
+          // a view option: recompute the whole display map client-side (no round trip)
+          if (shown.transform !== "raw") {
+            if (derived?.length !== rows * cols) derived = new Float64Array(rows * cols);
+            map = transformMap(map, rows, cols, shown.transform, derived);
+          }
+          let [shownRows, shownCols] = [rows, cols];
+          if (shown.swap) {
+            if (swapped?.length !== rows * cols) swapped = new Float64Array(rows * cols);
+            map = transpose(map, rows, cols, swapped);
+            [shownRows, shownCols] = [cols, rows];
+          }
+          range = finiteRange(map);
+          if (r2.shape[0] !== shownRows || r2.shape[1] !== shownCols) r2.resize(shownRows, shownCols);
+          r2.upload(map, 0, shownRows);
+        }
         if (range) r2.draw(range);
         if (bench) r2.finish();
-        drawAnnotations(store, view);
+        drawOverlay(store, view, shown);
       } else if (view.kind === "trace") {
         const x = axis(store, view.xDim).values;
         const n = view.latestAlong ? data.shape[1]! : data.values.length;
@@ -165,7 +217,7 @@ function show(store: DatasetStore, signal: AbortSignal): void {
       dirty = null;
       overlaysDirty = false;
     } else if (overlaysDirty && view.kind === "heatmap" && renderer) {
-      drawAnnotations(store, view); // overlays that arrived after the last chunk
+      drawOverlay(store, view, shown); // overlays that arrived after the last chunk
       overlaysDirty = false;
     }
     const now = performance.now();
@@ -176,6 +228,8 @@ function show(store: DatasetStore, signal: AbortSignal): void {
       (view.kind === "heatmap" && view.stackDim
         ? ` · mean over ${store.get(view.variable).shape[0]} ${view.stackDim}`
         : "") +
+      (view.kind === "heatmap" && shown.transform !== "raw" ? ` · ${TRANSFORM_LABEL[shown.transform]} (per step)` : "") +
+      (view.kind === "heatmap" && shown.swap ? " · axes swapped" : "") +
       ` · seq ${store.lastSeq}` +
       `${store.complete ? " (complete)" : ""} · ${points.toLocaleString()} pts · ${rate.toLocaleString()} pts/s` +
       (Number.isFinite(latency) ? ` · last chunk age ${latency.toFixed(0)} ms` : "");
@@ -184,7 +238,50 @@ function show(store: DatasetStore, signal: AbortSignal): void {
   requestAnimationFrame(frame);
 }
 
-function drawAnnotations(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>): void {
+const TRANSFORM_LABEL: Record<Transform, string> = { raw: "raw", d_col: "d/d(inner)", d_row: "d/d(outer)", grad: "|gradient|" };
+
+/** Axis names, units and extents on the overlay canvas: which coordinate runs which way. */
+function drawAxes(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>, swap: boolean): void {
+  const ctx = overlay.getContext("2d")!;
+  const { width: w, height: h } = overlay;
+  const x = axis(store, swap ? view.rowDim : view.colDim);
+  const y = axis(store, swap ? view.colDim : view.rowDim);
+  const fmt = (v: number) => (Number.isFinite(v) ? Number(v.toPrecision(4)).toString() : "");
+  const first = (a: ArrayLike<number>) => fmt(Number(a[0] ?? NaN));
+  const last = (a: ArrayLike<number>) => fmt(Number(a[a.length - 1] ?? NaN));
+  const unit = (u: string) => (u ? ` (${u})` : "");
+  const font = Math.round(w / 48);
+  ctx.font = `${font}px system-ui, sans-serif`;
+  const label = (text: string, px: number, py: number, align: CanvasTextAlign, rotate = 0) => {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(rotate);
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+    const m = ctx.measureText(text);
+    const pad = font * 0.3;
+    const left = align === "left" ? 0 : align === "right" ? -m.width : -m.width / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(left - pad, -font * 0.7, m.width + 2 * pad, font * 1.4);
+    ctx.fillStyle = "#eee";
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  };
+  const m = font;
+  label(`${x.name}${unit(x.unit)}`, w / 2, h - m, "center");
+  label(first(x.values), m, h - m, "left");
+  label(last(x.values), w - m, h - m, "right");
+  label(`${y.name}${unit(y.unit)}`, m, h / 2, "center", -Math.PI / 2);
+  label(first(y.values), m, h - 3 * m, "left", -Math.PI / 2);
+  label(last(y.values), m, 3 * m, "left", -Math.PI / 2);
+}
+
+function drawOverlay(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>, o: ViewOptions): void {
+  drawAnnotations(store, view, o.swap);
+  drawAxes(store, view, o.swap);
+}
+
+function drawAnnotations(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>, swap: boolean): void {
   const ctx = overlay.getContext("2d")!;
   const { width: w, height: h } = overlay;
   ctx.clearRect(0, 0, w, h);
@@ -192,7 +289,7 @@ function drawAnnotations(store: DatasetStore, view: Extract<ViewKind, { kind: "h
   ctx.fillStyle = "#ff5370";
   ctx.lineWidth = 2;
   for (const ann of store.annotations.values()) {
-    const path = annotationPath(store, view, ann);
+    const path = annotationPath(store, view, ann, swap);
     if (!path) continue;
     const px = path.map(([x, y]) => [x * w, (1 - y) * h] as const);
     ctx.beginPath();

@@ -28,13 +28,20 @@
       #control #params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
       #control #params label { font-size: 12px; }
       #control #estimates { font: 12px ui-monospace, monospace; white-space: pre; margin: 0; }
-      #datasets { background: #111; color: #ddd; border: 1px solid #444; font: inherit; }
+      #datasets, #transform { background: #111; color: #ddd; border: 1px solid #444; font: inherit; }
     </style>
   </head>
   <body>
     <header>
       <span id="title">Flight Deck</span>
       <label>dataset <select id="datasets"></select></label>
+      <label>view <select id="transform">
+        <option value="raw">raw</option>
+        <option value="d_col">d/d(inner axis)</option>
+        <option value="d_row">d/d(outer axis)</option>
+        <option value="grad">|gradient|</option>
+      </select></label>
+      <label><input id="swap" type="checkbox" /> swap axes</label>
       <label>replay <input id="file" type="file" accept=".qdtrec" /></label>
     </header>
     <div id="status">connecting…</div>

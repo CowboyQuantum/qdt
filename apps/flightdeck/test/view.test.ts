@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Dataset } from "../src/schema/data";
-import { chooseView, meanAlongLeading } from "../src/view";
+import { annotationPath, chooseView, meanAlongLeading, transformMap, transpose } from "../src/view";
+import { DatasetStore } from "../src/stream/store";
 
 const dataset = (dims: [string, number | null][], varDims: string[]): Dataset =>
   ({
@@ -40,5 +41,58 @@ describe("meanAlongLeading", () => {
     const out = new Float64Array(1);
     meanAlongLeading({ values: Float64Array.from([NaN, NaN]), shape: [2, 1, 1], dims: ["k", "y", "x"] }, 0, 1, out);
     expect(out[0]).toBeNaN();
+  });
+});
+
+
+describe("view options", () => {
+  // a 3 × 4 map: value = 10·row + col, so d/d(col) = 1, d/d(row) = 10 everywhere
+  const rows = 3;
+  const cols = 4;
+  const map = Float64Array.from({ length: rows * cols }, (_, i) => 10 * Math.floor(i / cols) + (i % cols));
+
+  it("differentiates along either axis in index units, one-sided at the edges", () => {
+    const out = new Float64Array(rows * cols);
+    expect([...transformMap(map, rows, cols, "d_col", out)]).toEqual(new Array(rows * cols).fill(1));
+    expect([...transformMap(map, rows, cols, "d_row", out)]).toEqual(new Array(rows * cols).fill(10));
+    expect([...transformMap(map, rows, cols, "grad", out)].every((v) => Math.abs(v - Math.hypot(1, 10)) < 1e-12)).toBe(true);
+    expect([...transformMap(map, rows, cols, "raw", out)]).toEqual([...map]);
+  });
+
+  it("keeps unwritten (NaN) cells NaN and steps around them", () => {
+    const m = Float64Array.from(map);
+    m[5] = NaN; // row 1, col 1
+    const out = transformMap(m, rows, cols, "d_col", new Float64Array(rows * cols));
+    expect(out[5]).toBeNaN(); // the unwritten cell itself
+    expect(out[4]).toBeNaN(); // row 1, col 0: no left neighbour and the right one is unwritten
+    expect(out[6]).toBe(1); // row 1, col 2: one-sided to the right, away from the NaN
+    expect(out[7]).toBe(1); // row 1, col 3: the right edge, one-sided
+  });
+
+  it("transposes so the row dimension runs along x", () => {
+    const t = transpose(map, rows, cols, new Float64Array(rows * cols));
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) expect(t[c * rows + r]).toBe(map[r * cols + c]);
+  });
+
+  it("swaps the overlay mapping with the map", () => {
+    const ds = {
+      dataset_id: "d",
+      name: "d",
+      dims: [{ name: "P1", size: 2 }, { name: "P2", size: 4 }],
+      coords: [
+        { kind: "linear", name: "P1", dim: "P1", unit: "V", start: 0, stop: 1, num: 2 },
+        { kind: "linear", name: "P2", dim: "P2", unit: "V", start: 0, stop: 3, num: 4 },
+      ],
+      data_vars: [{ name: "I", dims: ["P1", "P2"], unit: "A", dtype: "float64" }],
+      source: { kind: "synthetic", label: "", registry_ref: null },
+      created_at: "2026-10-13T00:00:00Z",
+    } as unknown as Dataset;
+    const store = new DatasetStore(ds);
+    const view = chooseView(ds)!;
+    if (view.kind !== "heatmap") throw new Error("heatmap expected");
+    const ann = { annotation_id: "a", dataset_id: "d", kind: "marker", coords: ["P1", "P2"], points: [[1, 3]], label: "", attrs: {} } as never;
+    const [plain] = annotationPath(store, view, ann)!;
+    const [swapped] = annotationPath(store, view, ann, true)!;
+    expect(plain).toEqual([swapped![1], swapped![0]]);
   });
 });

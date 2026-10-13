@@ -41,6 +41,7 @@ API contract tests. Session 2: OpenAPI export (`scripts/export_openapi.py`, drif
 `pnpm gen:api` → `src/schema/api.ts`; `src/api/client.ts`; `src/control/` (sweep builders for stage and
 DC sweeps, method parameter forms, the panel: craft, run, runs list, records list with show/analyse,
 analysis with parameter form, show overlays / show output); every announced Dataset selectable;
-`e2e/control.test.ts` drives the whole loop in Chrome against a spawned server. Remaining: the
+`e2e/control.test.ts` drives the whole loop in Chrome against a spawned server. Session 2b: view options
+(derivative / gradient transforms, swap axes, axis labels). Remaining: the
 pulse-sequence editor beyond the one-step template, trace views for 1-D sweeps in the panel, freeze
 `control.py`, a scripted demo entry (`python -m qdt_server --demo`?), polish.

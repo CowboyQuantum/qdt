@@ -4,7 +4,7 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 4b — Control path → `docs/steps/04b-control-path.md` (Step 4 DONE, ADR 0033)
-**Branch:** `step-4b/flightdeck-control` (PR against `main` open; the human merges). PRs #14–#17 merged.
+**Branch:** `step-4b/view-options` (PR against `main` open; the human merges). PRs #14–#18 merged.
 **Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
 (`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
 session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
@@ -67,7 +67,11 @@ in a payload referenced from the result.
   builders from a form; stand channel classification), `src/control/methods.ts` (MethodSpec → defaults,
   parse, check, overrides), `src/control/panel.ts` (craft/run/runs/records/analysis UI); every Dataset
   on the stream selectable (`#datasets`, newest shown first); `e2e/control.test.ts`.
-- 266 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 37 Flight Deck unit tests, 3 e2e.
+- **Flight Deck view options (session 2b):** client-side transforms (raw, derivative along either axis,
+  gradient magnitude; per index step, NaN-aware), a swap-axes toggle, and axis labels with units and
+  extents drawn on the overlay. The plain view keeps the dirty-row live path the bench measures; a view
+  option recomputes the display map client-side with no round trip (FINISH_LINE row 2).
+- 267 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 41 Flight Deck unit tests, 3 e2e.
 
 ## In flight
 - Nothing uncommitted. PR `step-4/result-output` → `main` open. Remote branches `step-4/analysis`,
