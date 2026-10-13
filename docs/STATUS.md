@@ -55,7 +55,7 @@ registry client with cache-first sync, the run recorder, and replay to Flight De
 ## Next action
 **Human:** install Docker Desktop. Merge the `step-3/registry` PR. Then try it:
 `docker compose -f deploy/registry.compose.yml up -d`, set
-`QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@localhost:5432/qdt_test`, and run `uv run pytest packages/qdt-registry`.
+`QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt_test`, and run `uv run pytest packages/qdt-registry`.
 **Then** a session closes Step 3: review the envelope and identity objects against what the registry and
 recorder actually used, write the freeze ADR, decide the `registry_ref` display question, mark Step 3 DONE,
 and open Step 4 (analysis overlays).
