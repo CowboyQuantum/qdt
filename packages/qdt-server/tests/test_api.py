@@ -90,13 +90,20 @@ def test_a_run_streams_records_and_can_be_analysed(client):
         == 404
     )
 
-    r = client.post("/stream/replay", json={"result_id": result.result_id})
-    assert r.status_code == 202
+    # the record's Dataset is already on the stream (it ran live): replay publishes just the overlays;
+    # a result's output is a new Dataset. `collect` stops at the last final chunk, so the output replay
+    # goes second and the overlays, published before it, are read on the way.
+    assert client.post("/stream/replay", json={"record_id": record.record_id}).status_code == 202
+    assert client.post("/stream/replay", json={"result_id": result.result_id}).status_code == 202
     received = asyncio.run(collect(url, n_datasets=2, timeout=30))
+    assert {a.annotation_id for a in received[run.plan_id].annotations} == {
+        a.annotation_id for a in result.annotations
+    }
     assert any(
         d.dataset.source.kind == "registry" and d.dataset.source.registry_ref == result.result_id
         for d in received.values()
     )
+    assert client.post("/stream/replay", json={"result_id": result.result_id}).status_code == 409
 
 
 def test_a_failing_run_says_why(client):

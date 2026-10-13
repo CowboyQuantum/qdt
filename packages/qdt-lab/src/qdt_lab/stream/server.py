@@ -36,6 +36,11 @@ class StreamServer:
     def url(self) -> str:
         return f"ws://{self.host}:{self.port}"
 
+    @property
+    def datasets(self) -> dict[str, Dataset]:
+        """Datasets announced on this stream so far, by id (read-only view)."""
+        return dict(self._datasets)
+
     async def __aenter__(self) -> Self:
         self._loop = asyncio.get_running_loop()
         # permessage-deflate off: float payloads barely compress and deflate costs ~ms per MB (ADR 0010)
