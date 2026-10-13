@@ -1,5 +1,105 @@
 {
   "$defs": {
+    "AnalysisResult": {
+      "additionalProperties": false,
+      "description": "What an analysis found on one measurement, with the measurement and the scenario it came from.",
+      "properties": {
+        "analysis_id": {
+          "description": "Client-minted UUID4 as 32 lowercase hex digits (ADR 0024).",
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "annotations": {
+          "default": [],
+          "description": "Findings as overlays on the measurement's Dataset (lines, markers, regions, curves); every one carries `measurement.dataset_id` and unique ids within the result.",
+          "items": {
+            "$ref": "#/$defs/Annotation"
+          },
+          "title": "Annotations",
+          "type": "array"
+        },
+        "attrs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Free-form scalar metadata.",
+          "title": "Attrs",
+          "type": "object"
+        },
+        "created_at": {
+          "description": "When the analysis ran.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "measurement": {
+          "$ref": "#/$defs/MeasurementRef",
+          "description": "What it ran on. Mandatory."
+        },
+        "model": {
+          "$ref": "#/$defs/FitModel",
+          "description": "What ran, and with which parameters."
+        },
+        "scenario": {
+          "$ref": "#/$defs/ScenarioRef",
+          "description": "What generated the data it ran on. Mandatory."
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "summary": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Scalar outcomes: counts, fitted values, quality figures. Per-feature values go on the annotations.",
+          "title": "Summary",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "analysis_id",
+        "model",
+        "measurement",
+        "scenario",
+        "annotations",
+        "summary",
+        "created_at",
+        "attrs"
+      ],
+      "title": "AnalysisResult",
+      "type": "object"
+    },
     "Annotation": {
       "additionalProperties": false,
       "description": "An overlay (marker, line, region, fitted curve) in the coordinate system of the Dataset it decorates.",
@@ -654,6 +754,59 @@
       "title": "ExecutionPlan",
       "type": "object"
     },
+    "FitModel": {
+      "additionalProperties": false,
+      "description": "The model or detector an analysis ran, with the parameters it ran with.",
+      "properties": {
+        "name": {
+          "description": "Model or detector name, e.g. 'charge_transition_lines'; stable across versions.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Hyperparameters as run (thresholds, smoothing, ...); enough to repeat the analysis.",
+          "title": "Parameters",
+          "type": "object"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "description": "Implementation version that produced the result, e.g. qdt_analysis.__version__.",
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "version",
+        "parameters"
+      ],
+      "title": "FitModel",
+      "type": "object"
+    },
     "IndexedCoordinate": {
       "additionalProperties": false,
       "description": "Implicit coordinate: arbitrary values listed in the definition, one per index of its dimension.",
@@ -1029,6 +1182,52 @@
       "title": "MeasurementRecord",
       "type": "object"
     },
+    "MeasurementRef": {
+      "additionalProperties": false,
+      "description": "Which measurement an analysis ran on: a Dataset, one of its variables, and its record if stored.",
+      "properties": {
+        "dataset_id": {
+          "description": "Dataset analysed; for a recorded sweep this is the plan_id.",
+          "minLength": 1,
+          "title": "Dataset Id",
+          "type": "string"
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MeasurementRecord.record_id when the Dataset is in the registry; None for data that was never recorded (a synthetic map in a test). The registry refuses to store a result without it.",
+          "title": "Record Id"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "variable": {
+          "description": "Data variable of the Dataset that was analysed.",
+          "minLength": 1,
+          "title": "Variable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "dataset_id",
+        "variable",
+        "record_id"
+      ],
+      "title": "MeasurementRef",
+      "type": "object"
+    },
     "ParameterBinding": {
       "additionalProperties": false,
       "description": "How one integer parameter of an emitted or hand-written program is computed at run time.",
@@ -1387,6 +1586,69 @@
         "role"
       ],
       "title": "ResolvedChannel",
+      "type": "object"
+    },
+    "ScenarioRef": {
+      "additionalProperties": false,
+      "description": "The reproducible generator behind a measurement: name + seed regenerate the data and its truth.",
+      "properties": {
+        "kind": {
+          "description": "simulation: a qdt_sim scenario (physics model + noise + sweep). synthetic: a generator with known injected features and no physics. Live data gets its own kind by ADR in Step 5.",
+          "enum": [
+            "simulation",
+            "synthetic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "Scenario name, e.g. 'stability' (a qdt_sim.scenarios sweep) or a test generator's name.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Scenario arguments beyond the defaults (grid size, ranges, noise on/off), scalar only.",
+          "title": "Parameters",
+          "type": "object"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "seed": {
+          "description": "Random seed the scenario ran with; fixes every draw.",
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "name",
+        "seed",
+        "parameters"
+      ],
+      "title": "ScenarioRef",
       "type": "object"
     },
     "Segment": {

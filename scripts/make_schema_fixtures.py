@@ -14,6 +14,7 @@ from qdt_schemas.data import Annotation
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import PERSISTED, current_version
+from qdt_schemas.modeling import AnalysisResult, FitModel, MeasurementRef, ScenarioRef
 from qdt_sim.scenarios import DEVICE_ID, default_stand, stability
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-schemas/tests/fixtures"
@@ -26,18 +27,34 @@ def examples() -> dict[str, object]:
     plan = compile_sweep(
         definition, stand, {"simulated": SimulatedEmitter()}, plan_id="0" * 31 + "1", created_at=T0
     )
+    annotation = Annotation(
+        annotation_id="a1",
+        dataset_id=plan.dataset.dataset_id,
+        kind="line",
+        coords=("P1", "P2"),
+        points=((0.0, 0.0), (0.05, 0.05)),
+        label="transition",
+    )
     return {
         "StandConfig": stand,
         "SweepDefinition": definition,
         "ExecutionPlan": plan,
         "Dataset": plan.dataset,
-        "Annotation": Annotation(
-            annotation_id="a1",
-            dataset_id=plan.dataset.dataset_id,
-            kind="line",
-            coords=("P1", "P2"),
-            points=((0.0, 0.0), (0.05, 0.05)),
-            label="transition",
+        "Annotation": annotation,
+        "AnalysisResult": AnalysisResult(
+            analysis_id="0" * 31 + "2",
+            model=FitModel(
+                name="charge_transition_lines", version="0.1.0", parameters={"sigma": 1.0}
+            ),
+            measurement=MeasurementRef(
+                dataset_id=plan.dataset.dataset_id, variable="I_sensor", record_id="0" * 31 + "1"
+            ),
+            scenario=ScenarioRef(
+                kind="simulation", name="stability", seed=7, parameters={"n_outer": 4, "n_inner": 5}
+            ),
+            annotations=(annotation,),
+            summary={"n_lines": 1},
+            created_at=T0,
         ),
         "DeviceRecord": DeviceRecord(
             device_id=DEVICE_ID, kind="double_dot", simulated=True, registered_at=T0
