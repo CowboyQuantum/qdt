@@ -170,9 +170,9 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | # | Decision | State |
 |---|---|---|
 | 1 | Org + repo name | RESOLVED: `cowboyquantum/qdt` |
-| 2 | `payload_hdf5` location | `qdt-schemas[hdf5]` extra vs `qdt-io`; decide at Step 3 |
+| 2 | `payload_hdf5` location | RESOLVED (ADR 0023): `qdt-schemas[hdf5]` extra, lazy imports |
 | 3 | DAG contract scoping ×3 | Step 8 only |
-| 4 | Offline/prober operation | Working assumption: client local cache + sync; confirm at Step 3 |
+| 4 | Offline/prober operation | RESOLVED (ADR 0024): local cache first, idempotent sync to Postgres, client-minted UUIDs |
 | 5 | Manager sign-off | Pending as of Oct 2026. **Gates Step 7 only.** Steps 0–6 proceed on personal hardware and bench. |
 | 6 | Lab PC OS | Resolve via IT ask at Step 7 |
 | 7 | Bluefors log access mode | Resolve via IT ask at Step 7 |

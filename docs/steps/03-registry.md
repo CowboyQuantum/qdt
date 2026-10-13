@@ -30,8 +30,8 @@ Records land in a remote-capable database with full provenance, and the registry
 - envelope + identity slices frozen with ADR
 
 ## Open decisions
-- #2 `payload_hdf5` location
-- #4 offline cache + sync confirmed
+- #2 `payload_hdf5` location — CLOSED by ADR 0023: `qdt-schemas[hdf5]` extra
+- #4 offline cache + sync — CLOSED by ADR 0024: cache first, idempotent sync, client-minted UUIDs
 
 ## Status
 IN PROGRESS (opened 2026-10-12; no code yet)

@@ -26,3 +26,5 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0020 | `qdt-sim` written fresh: constant-interaction double dot, periodic charge sensor, clocked noise models | Accepted (amends plan §2) |
 | 0021 | Capability protocols frozen; backends are constructed from their channel declarations | Accepted (freezes 0016 + 0017) |
 | 0022 | Stand, activity and pulse schema slices frozen at schema_version 1 | Accepted (freezes 0018 + 0019 objects) |
+| 0023 | `payload_hdf5` lives in `qdt-schemas` behind the `[hdf5]` extra | Accepted (closes plan #2) |
+| 0024 | Registry clients write to a local cache first and sync to Postgres | Accepted (closes plan #4) |
