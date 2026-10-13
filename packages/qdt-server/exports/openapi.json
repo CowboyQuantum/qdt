@@ -1,0 +1,3425 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisResult": {
+        "additionalProperties": false,
+        "description": "The output of one method on one measurement: estimates plus overlays, with dual provenance.",
+        "properties": {
+          "annotations": {
+            "default": [],
+            "description": "Overlays on the originating Dataset, in its coordinate system.",
+            "items": {
+              "$ref": "#/components/schemas/Annotation"
+            },
+            "title": "Annotations",
+            "type": "array"
+          },
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. figures of merit.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "created_at": {
+            "description": "When the analysis ran.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_id": {
+            "description": "Dataset the overlays decorate (the record's plan_id).",
+            "minLength": 1,
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "estimates": {
+            "default": [],
+            "description": "Estimated quantities.",
+            "items": {
+              "$ref": "#/components/schemas/Estimate"
+            },
+            "title": "Estimates",
+            "type": "array"
+          },
+          "message": {
+            "default": "",
+            "description": "Human-readable note, e.g. why it failed.",
+            "title": "Message",
+            "type": "string"
+          },
+          "method": {
+            "$ref": "#/components/schemas/FitModel",
+            "description": "How the data was analysed: the method half of the provenance."
+          },
+          "method_sha256": {
+            "description": "content_sha256 of `method`; checked on validation.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Method Sha256",
+            "type": "string"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayloadRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Arrays the method produced, as a qdt-hdf5-v1 payload holding a Dataset of its own (`source.kind = 'analysis'`) with named variables and coordinates (ADR 0031). None when the method produced only estimates and overlays. Set by the registry when it stores the output."
+          },
+          "record_id": {
+            "description": "MeasurementRecord.record_id analysed: the data half of the provenance.",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "result_id": {
+            "description": "Client-minted UUID4 as 32 lowercase hex digits (ADR 0024).",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "description": "ok: estimates are meaningful. failed: the method ran but found nothing usable; see `message`.",
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id",
+          "record_id",
+          "dataset_id",
+          "method",
+          "method_sha256",
+          "status",
+          "created_at"
+        ],
+        "title": "AnalysisResult",
+        "type": "object"
+      },
+      "Annotation": {
+        "additionalProperties": false,
+        "description": "An overlay (marker, line, region, fitted curve) in the coordinate system of the Dataset it decorates.",
+        "properties": {
+          "annotation_id": {
+            "description": "Unique id; re-sending an id replaces that annotation.",
+            "minLength": 1,
+            "title": "Annotation Id",
+            "type": "string"
+          },
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. fit parameters.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "coords": {
+            "description": "Coordinate names giving the meaning of each component of every point.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Coords",
+            "type": "array"
+          },
+          "dataset_id": {
+            "description": "The Dataset this annotation decorates.",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Geometry: marker = one point, line = two, polyline/curve = many, region = closed polygon.",
+            "enum": [
+              "marker",
+              "line",
+              "polyline",
+              "region",
+              "curve"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "description": "Display label.",
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "description": "Vertices in data coordinates; each has one value per entry in `coords`.",
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "annotation_id",
+          "dataset_id",
+          "kind",
+          "coords",
+          "points"
+        ],
+        "title": "Annotation",
+        "type": "object"
+      },
+      "Call": {
+        "additionalProperties": false,
+        "description": "Insert the named `Segment` here.",
+        "properties": {
+          "op": {
+            "const": "call",
+            "default": "call",
+            "description": "Discriminator.",
+            "title": "Op",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "segment": {
+            "description": "Name of a Segment of this sequence.",
+            "minLength": 1,
+            "title": "Segment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment"
+        ],
+        "title": "Call",
+        "type": "object"
+      },
+      "ChannelMap": {
+        "additionalProperties": false,
+        "description": "Maps a logical channel name to a physical instrument channel.",
+        "properties": {
+          "channel": {
+            "description": "Vendor channel identifier, e.g. 'ch03'.",
+            "title": "Channel",
+            "type": "string"
+          },
+          "instrument": {
+            "description": "Instrument id as declared in StandConfig.instruments.",
+            "title": "Instrument",
+            "type": "string"
+          },
+          "integration_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sensing aperture in seconds a LevelSense driver applies on this channel; None means the instrument default (ADR 0017).",
+            "title": "Integration S"
+          },
+          "logical": {
+            "description": "Logical name used by experiments, e.g. 'gate_L'.",
+            "title": "Logical",
+            "type": "string"
+          },
+          "quantity": {
+            "description": "Physical quantity a level on this channel is expressed in; protocol calls use its SI unit (V or A). ADR 0016.",
+            "enum": [
+              "voltage",
+              "current"
+            ],
+            "title": "Quantity",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "settle_s": {
+            "default": 0.0,
+            "description": "Seconds the executor waits after changing a level on this channel before sensing through it (ADR 0017).",
+            "minimum": 0.0,
+            "title": "Settle S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "logical",
+          "instrument",
+          "channel",
+          "quantity"
+        ],
+        "title": "ChannelMap",
+        "type": "object"
+      },
+      "DataVariable": {
+        "additionalProperties": false,
+        "description": "A named measured quantity laid out over one or more dimensions.",
+        "properties": {
+          "dims": {
+            "description": "Dimension names in array (row-major) order.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Dims",
+            "type": "array"
+          },
+          "dtype": {
+            "description": "Element type of the payload array.",
+            "enum": [
+              "float32",
+              "float64",
+              "int16",
+              "int32",
+              "int64",
+              "uint16",
+              "uint32"
+            ],
+            "title": "Dtype",
+            "type": "string"
+          },
+          "name": {
+            "description": "Variable name, unique among coordinates and data variables.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "Physical unit, e.g. 'A', 'V'. Empty string for dimensionless or arbitrary units.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dims",
+          "unit",
+          "dtype"
+        ],
+        "title": "DataVariable",
+        "type": "object"
+      },
+      "Dataset": {
+        "additionalProperties": false,
+        "description": "xarray-shaped definition of a stream: dimensions, coordinates, variables, attributes, source.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "coords": {
+            "default": [],
+            "description": "Coordinates labelling the dimensions.",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "indexed": "#/components/schemas/IndexedCoordinate",
+                  "linear": "#/components/schemas/LinearCoordinate",
+                  "streamed": "#/components/schemas/StreamedCoordinate"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/LinearCoordinate"
+                },
+                {
+                  "$ref": "#/components/schemas/IndexedCoordinate"
+                },
+                {
+                  "$ref": "#/components/schemas/StreamedCoordinate"
+                }
+              ]
+            },
+            "title": "Coords",
+            "type": "array"
+          },
+          "created_at": {
+            "description": "When the producer created the definition (timezone-aware).",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_vars": {
+            "description": "Measured variables.",
+            "items": {
+              "$ref": "#/components/schemas/DataVariable"
+            },
+            "minItems": 1,
+            "title": "Data Vars",
+            "type": "array"
+          },
+          "dataset_id": {
+            "description": "Unique id; every chunk and annotation refers to it.",
+            "minLength": 1,
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "dims": {
+            "description": "Dimensions, in no particular order.",
+            "items": {
+              "$ref": "#/components/schemas/Dimension"
+            },
+            "minItems": 1,
+            "title": "Dims",
+            "type": "array"
+          },
+          "name": {
+            "description": "Human-readable name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 2,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: `source.kind` admits 'analysis' (ADR 0031).",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceDescriptor",
+            "description": "What kind of source produced this Dataset."
+          }
+        },
+        "required": [
+          "dataset_id",
+          "name",
+          "dims",
+          "data_vars",
+          "source",
+          "created_at"
+        ],
+        "title": "Dataset",
+        "type": "object"
+      },
+      "DeviceRecord": {
+        "additionalProperties": false,
+        "description": "A device under test (or a simulated one) that measurements are recorded against.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. model parameters.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "description": {
+            "default": "",
+            "description": "Human-readable notes.",
+            "title": "Description",
+            "type": "string"
+          },
+          "device_id": {
+            "description": "Stable id chosen when the device is registered, e.g. 'sim-double-dot'. Generic in this repo; site-specific naming lives in the internal extension (rule 7).",
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Device type, e.g. 'double_dot'; free text, used for filtering.",
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "registered_at": {
+            "description": "When the device was first registered.",
+            "format": "date-time",
+            "title": "Registered At",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "simulated": {
+            "description": "True for a model behind a simulated backend (qdt-sim).",
+            "title": "Simulated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "device_id",
+          "kind",
+          "simulated",
+          "registered_at"
+        ],
+        "title": "DeviceRecord",
+        "type": "object"
+      },
+      "Dimension": {
+        "additionalProperties": false,
+        "description": "A named array axis.",
+        "properties": {
+          "name": {
+            "description": "Dimension name, unique within the Dataset, e.g. 'gate_L'.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Length along this axis; None means unbounded (append-only, e.g. a free-running time series).",
+            "title": "Size"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Dimension",
+        "type": "object"
+      },
+      "Drive": {
+        "additionalProperties": false,
+        "description": "Drive `channel` with a tone (ESR / EDSR) for `duration`.",
+        "properties": {
+          "amplitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Amplitude in the channel's quantity unit, or a Symbol.",
+            "title": "Amplitude"
+          },
+          "channel": {
+            "description": "Logical channel (ChannelMap.logical).",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Duration in integer nanoseconds, or a Symbol in 'ns'.",
+            "title": "Duration"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Tone frequency in Hz, or a Symbol.",
+            "title": "Frequency"
+          },
+          "op": {
+            "const": "drive",
+            "default": "drive",
+            "description": "Discriminator.",
+            "title": "Op",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "default": 0.0,
+            "description": "Phase in radians, or a Symbol.",
+            "title": "Phase"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "frequency",
+          "amplitude",
+          "duration"
+        ],
+        "title": "Drive",
+        "type": "object"
+      },
+      "Estimate": {
+        "additionalProperties": false,
+        "description": "One estimated quantity, with its uncertainty when the method provides one.",
+        "properties": {
+          "name": {
+            "description": "Quantity name, unique within the result, e.g. 'slope_steep'.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "stderr": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Standard error in `unit`; None when the method gives none.",
+            "title": "Stderr"
+          },
+          "unit": {
+            "description": "Physical unit, e.g. 'V/V'; empty for dimensionless.",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "description": "Estimated value in `unit`.",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "unit"
+        ],
+        "title": "Estimate",
+        "type": "object"
+      },
+      "EstimateSpec": {
+        "additionalProperties": false,
+        "description": "An estimate a method promises in its results.",
+        "properties": {
+          "description": {
+            "default": "",
+            "description": "One line for display.",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "description": "`Estimate.name` the method reports.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "default": "",
+            "description": "Unit of the estimate; may depend on the data's units.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "EstimateSpec",
+        "type": "object"
+      },
+      "ExecutionPlan": {
+        "additionalProperties": false,
+        "description": "A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.\n\nStructural, not unrolled: the executor walks it (ADR 0019).",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. emitter version.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "channels": {
+            "description": "Every logical channel used, resolved.",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedChannel"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Dataset",
+            "description": "The Dataset the run fills; coordinates are exact (ADR 0015)."
+          },
+          "definition": {
+            "$ref": "#/components/schemas/SweepDefinition",
+            "description": "The experiment this plan was compiled from."
+          },
+          "plan_id": {
+            "description": "Unique id; also the Dataset id.",
+            "minLength": 1,
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 2,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: the nested `dataset` is a Dataset v2 (ADR 0031).",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "stage_parameters": {
+            "default": [],
+            "description": "How each program parameter is computed at run time.",
+            "items": {
+              "$ref": "#/components/schemas/ParameterBinding"
+            },
+            "title": "Stage Parameters",
+            "type": "array"
+          },
+          "stage_program": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SequencerProgram"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The program the stage runs (emitted or hand-written)."
+          },
+          "stand_id": {
+            "description": "Stand it was compiled against.",
+            "minLength": 1,
+            "title": "Stand Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "definition",
+          "stand_id",
+          "dataset",
+          "channels"
+        ],
+        "title": "ExecutionPlan",
+        "type": "object"
+      },
+      "FitModel": {
+        "additionalProperties": false,
+        "description": "An analysis method as data: which function, which version, which parameters.",
+        "properties": {
+          "name": {
+            "description": "Dotted method name, e.g. 'qdt_analysis.transitions.detect_transitions'.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Every parameter the method used, defaults included, so a result can be reproduced.",
+            "title": "Parameters",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "version": {
+            "description": "Method version; bump it whenever the same inputs could give a different result.",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "FitModel",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IndexedCoordinate": {
+        "additionalProperties": false,
+        "description": "Implicit coordinate: arbitrary values listed in the definition, one per index of its dimension.",
+        "properties": {
+          "dim": {
+            "description": "Name of the Dimension this coordinate labels.",
+            "title": "Dim",
+            "type": "string"
+          },
+          "kind": {
+            "const": "indexed",
+            "default": "indexed",
+            "description": "Discriminator: implicit, listed values.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "Coordinate name, unique among coordinates and data variables.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.",
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "description": "Coordinate values; length must equal the dimension size.",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "dim",
+          "unit",
+          "values"
+        ],
+        "title": "IndexedCoordinate",
+        "type": "object"
+      },
+      "InstrumentConfig": {
+        "additionalProperties": false,
+        "description": "One instrument of the stand and the capability protocols its driver honours.",
+        "properties": {
+          "backend": {
+            "description": "Driver / emitter key, e.g. 'simulated', 'qua'. Picks the Emitter for a sequencer and the driver module for a real instrument.",
+            "minLength": 1,
+            "title": "Backend",
+            "type": "string"
+          },
+          "capabilities": {
+            "description": "Protocols the driver implements (ADR 0016 names).",
+            "items": {
+              "enum": [
+                "level_source",
+                "level_sense",
+                "waveform_source",
+                "waveform_sense",
+                "sequencer"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "id": {
+            "description": "Instrument id, unique within the stand, e.g. 'dac0'.",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "settings": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Driver settings, e.g. address; never site-identifying.",
+            "title": "Settings",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "backend",
+          "capabilities"
+        ],
+        "title": "InstrumentConfig",
+        "type": "object"
+      },
+      "LinearCoordinate": {
+        "additionalProperties": false,
+        "description": "Implicit coordinate: evenly spaced values from start to stop inclusive, one per index of its dimension.",
+        "properties": {
+          "dim": {
+            "description": "Name of the Dimension this coordinate labels.",
+            "title": "Dim",
+            "type": "string"
+          },
+          "kind": {
+            "const": "linear",
+            "default": "linear",
+            "description": "Discriminator: implicit, evenly spaced.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "Coordinate name, unique among coordinates and data variables.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "num": {
+            "description": "Number of values; must equal the dimension size.",
+            "minimum": 1.0,
+            "title": "Num",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "start": {
+            "description": "Value at index 0.",
+            "title": "Start",
+            "type": "number"
+          },
+          "stop": {
+            "description": "Value at the last index (inclusive).",
+            "title": "Stop",
+            "type": "number"
+          },
+          "unit": {
+            "description": "Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dim",
+          "unit",
+          "start",
+          "stop",
+          "num"
+        ],
+        "title": "LinearCoordinate",
+        "type": "object"
+      },
+      "Measure": {
+        "additionalProperties": false,
+        "description": "Integrate `channel` for `duration` into the result stream `result`, once per shot.",
+        "properties": {
+          "channel": {
+            "description": "Logical sense channel (ChannelMap.logical).",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Integration time in integer nanoseconds, or a Symbol in 'ns'.",
+            "title": "Duration"
+          },
+          "op": {
+            "const": "measure",
+            "default": "measure",
+            "description": "Discriminator.",
+            "title": "Op",
+            "type": "string"
+          },
+          "result": {
+            "description": "Result stream name; unique within the sequence; becomes a data variable.",
+            "minLength": 1,
+            "title": "Result",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "duration",
+          "result"
+        ],
+        "title": "Measure",
+        "type": "object"
+      },
+      "MeasurementRecord": {
+        "additionalProperties": false,
+        "description": "One run's provenance envelope: answerable by device, stand and definition (Step 3 exit query).",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "campaign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional grouping label for related runs, e.g. a cooldown or a study.",
+            "title": "Campaign"
+          },
+          "definition_name": {
+            "description": "SweepDefinition.name, for display and search.",
+            "minLength": 1,
+            "title": "Definition Name",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "description": "content_sha256 of the SweepDefinition; equal hashes mean the same experiment.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "device_id": {
+            "description": "DeviceRecord.device_id measured.",
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "description": "When the run ended, completed or not.",
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "completed: every declared point was written. aborted: stopped early; unwritten cells are NaN or 0.",
+            "enum": [
+              "completed",
+              "aborted"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/PayloadRef",
+            "description": "The payload file this envelope describes."
+          },
+          "plan_id": {
+            "description": "ExecutionPlan.plan_id; also the Dataset id.",
+            "minLength": 1,
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "record_id": {
+            "description": "Client-minted UUID4 as 32 lowercase hex digits; never a database sequence (ADR 0024).",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceDescriptor",
+            "description": "Kind of source that produced the data ('simulation' or 'live' for a sweep)."
+          },
+          "stand_id": {
+            "description": "StandConfig.stand_id it ran on.",
+            "minLength": 1,
+            "title": "Stand Id",
+            "type": "string"
+          },
+          "stand_sha256": {
+            "description": "content_sha256 of the StandConfig as run; the stand itself is in the payload.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Stand Sha256",
+            "type": "string"
+          },
+          "started_at": {
+            "description": "When the run started.",
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "device_id",
+          "stand_id",
+          "stand_sha256",
+          "definition_name",
+          "definition_sha256",
+          "plan_id",
+          "source",
+          "started_at",
+          "finished_at",
+          "outcome",
+          "payload"
+        ],
+        "title": "MeasurementRecord",
+        "type": "object"
+      },
+      "MethodRequest": {
+        "description": "Run a curated method on a record.",
+        "properties": {
+          "method": {
+            "description": "MethodSpec.name from GET /methods.",
+            "title": "Method",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Parameter values; unset ones take the spec's defaults.",
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "title": "MethodRequest",
+        "type": "object"
+      },
+      "MethodSpec": {
+        "additionalProperties": false,
+        "description": "A curated analysis method as the UI sees it: what it is called, what it takes, what it gives.",
+        "properties": {
+          "applies_to": {
+            "const": "map_2d",
+            "description": "Dataset shape the method accepts; map_2d: a variable over two linear coordinates.",
+            "title": "Applies To",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "What the method does, for the UI.",
+            "title": "Description",
+            "type": "string"
+          },
+          "estimates": {
+            "default": [],
+            "description": "Estimates an `ok` result carries; unique names.",
+            "items": {
+              "$ref": "#/components/schemas/EstimateSpec"
+            },
+            "title": "Estimates",
+            "type": "array"
+          },
+          "name": {
+            "description": "Dotted method name, equal to the `FitModel.name` of its results.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "default": [],
+            "description": "Parameters a caller may set; unique names.",
+            "items": {
+              "$ref": "#/components/schemas/ParameterSpec"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short display name, e.g. 'Charge transitions'.",
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "description": "Method version, equal to `FitModel.version`.",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "title",
+          "applies_to"
+        ],
+        "title": "MethodSpec",
+        "type": "object"
+      },
+      "ParameterBinding": {
+        "additionalProperties": false,
+        "description": "How one integer parameter of an emitted or hand-written program is computed at run time.",
+        "properties": {
+          "axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Axis name for the axis_* sources.",
+            "title": "Axis"
+          },
+          "parameter": {
+            "description": "SequencerProgram parameter name.",
+            "minLength": 1,
+            "title": "Parameter",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "source": {
+            "description": "const: `value`. axis_num: the axis's point count. axis_start / axis_step: the axis's start or step in the parameter's unit, divided by its scale and rounded. axis_value: the stepped axis's current value, likewise scaled; recomputed at every stepped point.",
+            "enum": [
+              "const",
+              "axis_num",
+              "axis_start",
+              "axis_step",
+              "axis_value"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Integer for the const source.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "parameter",
+          "source"
+        ],
+        "title": "ParameterBinding",
+        "type": "object"
+      },
+      "ParameterSpec": {
+        "additionalProperties": false,
+        "description": "One parameter a method takes: enough for a form to offer it and the server to validate it.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "description": "Value used when the caller gives none; also the example.",
+            "title": "Default"
+          },
+          "description": {
+            "default": "",
+            "description": "One line for the form's help text.",
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Scalar type of the value.",
+            "enum": [
+              "float",
+              "int",
+              "str",
+              "bool"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Highest admissible value, if bounded.",
+            "title": "Maximum"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lowest admissible value, if bounded.",
+            "title": "Minimum"
+          },
+          "name": {
+            "description": "Keyword name the method takes.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "default": "",
+            "description": "Unit for display, e.g. 'px', 'deg'; empty if none.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "default"
+        ],
+        "title": "ParameterSpec",
+        "type": "object"
+      },
+      "PayloadRef": {
+        "additionalProperties": false,
+        "description": "Where a record's payload is and how to verify it.",
+        "properties": {
+          "path": {
+            "description": "Path relative to the payload store root, '/'-separated, e.g. '2026/10/<record_id>.h5'. Segments use [A-Za-z0-9._-] and never start with '.', so a path cannot be absolute, carry a drive letter, or climb out of the store with '..' (ADR 0028).",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
+            "title": "Path",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "Hex SHA-256 of the payload file's bytes.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "description": "Size of the payload file in bytes.",
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "type": {
+            "const": "qdt-hdf5-v1",
+            "description": "Payload spec the file follows; selects the validator.",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "path",
+          "sha256",
+          "size_bytes"
+        ],
+        "title": "PayloadRef",
+        "type": "object"
+      },
+      "PulseSequence": {
+        "additionalProperties": false,
+        "description": "What one shot does: `body` in time order, with `segments` available to `call`.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. author, version.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "body": {
+            "description": "The shot, in time order.",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "call": "#/components/schemas/Call",
+                  "drive": "#/components/schemas/Drive",
+                  "measure": "#/components/schemas/Measure",
+                  "ramp": "#/components/schemas/Ramp",
+                  "step": "#/components/schemas/Step",
+                  "wait": "#/components/schemas/Wait"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Step"
+                },
+                {
+                  "$ref": "#/components/schemas/Ramp"
+                },
+                {
+                  "$ref": "#/components/schemas/Wait"
+                },
+                {
+                  "$ref": "#/components/schemas/Drive"
+                },
+                {
+                  "$ref": "#/components/schemas/Measure"
+                },
+                {
+                  "$ref": "#/components/schemas/Call"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Body",
+            "type": "array"
+          },
+          "name": {
+            "description": "Human-readable name.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "segments": {
+            "default": [],
+            "description": "Reusable sub-sequences.",
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "body"
+        ],
+        "title": "PulseSequence",
+        "type": "object"
+      },
+      "Ramp": {
+        "additionalProperties": false,
+        "description": "Ramp `channel` linearly from `start` to `stop` over `duration`.",
+        "properties": {
+          "channel": {
+            "description": "Logical channel (ChannelMap.logical).",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Duration in integer nanoseconds, or a Symbol in 'ns'.",
+            "title": "Duration"
+          },
+          "op": {
+            "const": "ramp",
+            "default": "ramp",
+            "description": "Discriminator.",
+            "title": "Op",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Level at the start, in the channel's quantity unit, or a Symbol.",
+            "title": "Start"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Level at the end, in the channel's quantity unit, or a Symbol.",
+            "title": "Stop"
+          }
+        },
+        "required": [
+          "channel",
+          "start",
+          "stop",
+          "duration"
+        ],
+        "title": "Ramp",
+        "type": "object"
+      },
+      "ReplayRequest": {
+        "description": "Publish a stored payload on the stream: a record (with its overlays) or a result's output.",
+        "properties": {
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Record to replay, with stored overlays.",
+            "title": "Record Id"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Result whose output Dataset to replay.",
+            "title": "Result Id"
+          }
+        },
+        "title": "ReplayRequest",
+        "type": "object"
+      },
+      "ResolvedChannel": {
+        "additionalProperties": false,
+        "description": "A logical channel bound to its instrument, physical channel and the role the plan uses it in.",
+        "properties": {
+          "channel": {
+            "description": "Vendor channel identifier.",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "instrument": {
+            "description": "Instrument id.",
+            "minLength": 1,
+            "title": "Instrument",
+            "type": "string"
+          },
+          "integration_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sensing aperture; None = instrument default. A record only: the backend was given it at construction (ADR 0021).",
+            "title": "Integration S"
+          },
+          "logical": {
+            "description": "Logical channel name.",
+            "minLength": 1,
+            "title": "Logical",
+            "type": "string"
+          },
+          "quantity": {
+            "description": "Declared quantity (unit of every value on it).",
+            "enum": [
+              "voltage",
+              "current"
+            ],
+            "title": "Quantity",
+            "type": "string"
+          },
+          "role": {
+            "description": "Protocol the executor uses this channel through.",
+            "enum": [
+              "level_source",
+              "level_sense",
+              "waveform_source",
+              "waveform_sense",
+              "sequencer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "settle_s": {
+            "description": "Settle time after a level change.",
+            "minimum": 0.0,
+            "title": "Settle S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "logical",
+          "instrument",
+          "channel",
+          "quantity",
+          "settle_s",
+          "integration_s",
+          "role"
+        ],
+        "title": "ResolvedChannel",
+        "type": "object"
+      },
+      "Run": {
+        "additionalProperties": false,
+        "description": "The lifecycle of one execution of a plan on the server.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. seed, campaign.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "created_at": {
+            "description": "When the run was accepted.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_name": {
+            "description": "SweepDefinition.name, for display.",
+            "minLength": 1,
+            "title": "Definition Name",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "description": "content_sha256 of the SweepDefinition.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "device_id": {
+            "description": "Device it runs against.",
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "error": {
+            "default": "",
+            "description": "Why it failed; empty otherwise.",
+            "title": "Error",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it left `running`.",
+            "title": "Finished At"
+          },
+          "plan_id": {
+            "description": "ExecutionPlan.plan_id; also the Dataset id.",
+            "minLength": 1,
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The MeasurementRecord it produced, once ingested (completed or aborted).",
+            "title": "Record Id"
+          },
+          "run_id": {
+            "description": "Server-minted UUID4 as 32 lowercase hex digits.",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "stand_id": {
+            "description": "Stand it runs on.",
+            "minLength": 1,
+            "title": "Stand Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When frames started.",
+            "title": "Started At"
+          },
+          "state": {
+            "description": "queued \u2192 running \u2192 completed | aborted | failed.",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "aborted",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "plan_id",
+          "definition_name",
+          "definition_sha256",
+          "stand_id",
+          "device_id",
+          "state",
+          "created_at"
+        ],
+        "title": "Run",
+        "type": "object"
+      },
+      "RunRequest": {
+        "description": "Start a run: the experiment and its options.",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/SweepDefinition",
+            "description": "The sweep to compile and run on the stand."
+          },
+          "options": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Backend and recording options: seed (int), noise (bool), campaign (str), and any scalar field of the simulated model, e.g. sensor_width_v (float) for a colder sensor.",
+            "title": "Options",
+            "type": "object"
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "title": "RunRequest",
+        "type": "object"
+      },
+      "Segment": {
+        "additionalProperties": false,
+        "description": "A named, reusable sub-sequence (e.g. 'initialise', 'read_out').",
+        "properties": {
+          "name": {
+            "description": "Segment name, unique within the sequence.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "ops": {
+            "description": "Primitives in time order.",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "call": "#/components/schemas/Call",
+                  "drive": "#/components/schemas/Drive",
+                  "measure": "#/components/schemas/Measure",
+                  "ramp": "#/components/schemas/Ramp",
+                  "step": "#/components/schemas/Step",
+                  "wait": "#/components/schemas/Wait"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Step"
+                },
+                {
+                  "$ref": "#/components/schemas/Ramp"
+                },
+                {
+                  "$ref": "#/components/schemas/Wait"
+                },
+                {
+                  "$ref": "#/components/schemas/Drive"
+                },
+                {
+                  "$ref": "#/components/schemas/Measure"
+                },
+                {
+                  "$ref": "#/components/schemas/Call"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Ops",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "ops"
+        ],
+        "title": "Segment",
+        "type": "object"
+      },
+      "SensedLevel": {
+        "additionalProperties": false,
+        "description": "A level read at every stepped point; becomes a data variable over the stepped axes.",
+        "properties": {
+          "channel": {
+            "description": "Logical LevelSense channel (ChannelMap.logical).",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "name": {
+            "description": "Data variable name.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "channel"
+        ],
+        "title": "SensedLevel",
+        "type": "object"
+      },
+      "SequencerParameter": {
+        "additionalProperties": false,
+        "description": "A runtime input of a compiled program: sent as an integer, meaning `integer \u00d7 scale` in `unit`.",
+        "properties": {
+          "name": {
+            "description": "Parameter name, unique within the program; the key the executor supplies at run time.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scale": {
+            "default": 1.0,
+            "description": "Value in `unit` = integer \u00d7 scale. Fractional quantities travel as scaled integers because fixed-typed input streams do not compile (ADR 0015); counts use 1.",
+            "exclusiveMinimum": 0.0,
+            "title": "Scale",
+            "type": "number"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "Physical unit of the parameter's value, e.g. 'V'; empty for counts and dimensionless.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit"
+        ],
+        "title": "SequencerParameter",
+        "type": "object"
+      },
+      "SequencerProgram": {
+        "additionalProperties": false,
+        "description": "A compiled-once program for a `Sequencer`: typed parameter and result contract around an opaque body.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. the generating experiment and its version.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "backend": {
+            "description": "Language or target the body is written for, e.g. 'qua'. A Sequencer accepts the backends it names; the simulated one accepts any and ignores the body.",
+            "minLength": 1,
+            "title": "Backend",
+            "type": "string"
+          },
+          "body": {
+            "description": "The program itself, opaque to the schema (QUA source, a serialized program, ...).",
+            "title": "Body",
+            "type": "string"
+          },
+          "parameters": {
+            "default": [],
+            "description": "Runtime inputs that change between runs without recompiling.",
+            "items": {
+              "$ref": "#/components/schemas/SequencerParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "results": {
+            "description": "Result streams the program produces; positional, no in-band coordinates.",
+            "items": {
+              "$ref": "#/components/schemas/SequencerResult"
+            },
+            "minItems": 1,
+            "title": "Results",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "backend",
+          "body",
+          "results"
+        ],
+        "title": "SequencerProgram",
+        "type": "object"
+      },
+      "SequencerResult": {
+        "additionalProperties": false,
+        "description": "A result stream of a compiled program; fills one data variable of the Dataset a run is given.",
+        "properties": {
+          "dims": {
+            "description": "Parameter names, in array (row-major) order, whose integer values at run time are the lengths of this result's axes.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Dims",
+            "type": "array"
+          },
+          "dtype": {
+            "description": "Element type the sequencer delivers (int saves fetch as int64 on the OPX, ADR 0015).",
+            "enum": [
+              "float32",
+              "float64",
+              "int16",
+              "int32",
+              "int64",
+              "uint16",
+              "uint32"
+            ],
+            "title": "Dtype",
+            "type": "string"
+          },
+          "name": {
+            "description": "Result name, unique within the program; must match a DataVariable name in the run's Dataset.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "Physical unit of the result values; empty for raw counts.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dims",
+          "dtype",
+          "unit"
+        ],
+        "title": "SequencerResult",
+        "type": "object"
+      },
+      "SequencerStage": {
+        "additionalProperties": false,
+        "description": "The part of a sweep a `Sequencer` runs: the innermost axes, the per-shot sequence, the shots.\n\nExactly one of `sequence` (emitted per backend, ADR 0018) or `program` (hand-written escape hatch,\nbound through `parameters`).",
+        "properties": {
+          "axes": {
+            "default": [],
+            "description": "Names of the axes the program sweeps internally, outer to inner. They must be the innermost axes of the SweepDefinition, in order.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Axes",
+            "type": "array"
+          },
+          "bindings": {
+            "default": [],
+            "description": "One binding per Symbol of `sequence`.",
+            "items": {
+              "$ref": "#/components/schemas/SymbolBinding"
+            },
+            "title": "Bindings",
+            "type": "array"
+          },
+          "instrument": {
+            "description": "Instrument id of the Sequencer that runs it.",
+            "minLength": 1,
+            "title": "Instrument",
+            "type": "string"
+          },
+          "parameters": {
+            "default": [],
+            "description": "With `program`: one binding per program parameter.",
+            "items": {
+              "$ref": "#/components/schemas/ParameterBinding"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SequencerProgram"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Escape hatch: a hand-written program instead of `sequence`."
+          },
+          "reduce": {
+            "additionalProperties": {
+              "enum": [
+                "keep",
+                "mean",
+                "sum"
+              ],
+              "type": "string"
+            },
+            "description": "Per result name: 'keep' every shot (adds a 'shot' dimension when shots > 1), or reduce on the sequencer by 'mean' or 'sum'. Default keep.",
+            "title": "Reduce",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PulseSequence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The per-shot sequence."
+          },
+          "shots": {
+            "default": 1,
+            "description": "Repetitions of the sequence per pixel (innermost loop).",
+            "minimum": 1.0,
+            "title": "Shots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instrument"
+        ],
+        "title": "SequencerStage",
+        "type": "object"
+      },
+      "SourceDescriptor": {
+        "additionalProperties": false,
+        "description": "What kind of source produced a Dataset. Never identifies an instrument (rule 8).",
+        "properties": {
+          "kind": {
+            "description": "Source category. Consumers may branch on this; they may not learn the producing instrument. analysis: produced by an analysis method from other data (ADR 0031).",
+            "enum": [
+              "live",
+              "replay",
+              "synthetic",
+              "simulation",
+              "registry",
+              "analysis"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "description": "Human-readable label for display, e.g. 'synthetic stability map'.",
+            "title": "Label",
+            "type": "string"
+          },
+          "registry_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Registry reference when the Dataset is addressable in the registry (Step 3); None otherwise.",
+            "title": "Registry Ref"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SourceDescriptor",
+        "type": "object"
+      },
+      "StandConfig": {
+        "additionalProperties": false,
+        "description": "Instruments and the logical \u2192 physical channel map of one measurement stand.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "channels": {
+            "description": "Logical channel map.",
+            "items": {
+              "$ref": "#/components/schemas/ChannelMap"
+            },
+            "minItems": 1,
+            "title": "Channels",
+            "type": "array"
+          },
+          "instruments": {
+            "description": "Instruments present.",
+            "items": {
+              "$ref": "#/components/schemas/InstrumentConfig"
+            },
+            "minItems": 1,
+            "title": "Instruments",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "stand_id": {
+            "description": "Stand id; generic, never a site name (rule 7).",
+            "minLength": 1,
+            "title": "Stand Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stand_id",
+          "instruments",
+          "channels"
+        ],
+        "title": "StandConfig",
+        "type": "object"
+      },
+      "Step": {
+        "additionalProperties": false,
+        "description": "Hold `channel` at `level` for `duration`.",
+        "properties": {
+          "channel": {
+            "description": "Logical channel (ChannelMap.logical).",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Duration in integer nanoseconds, or a Symbol in 'ns'.",
+            "title": "Duration"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Level in the channel's quantity unit, or a Symbol.",
+            "title": "Level"
+          },
+          "op": {
+            "const": "step",
+            "default": "step",
+            "description": "Discriminator.",
+            "title": "Op",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "level",
+          "duration"
+        ],
+        "title": "Step",
+        "type": "object"
+      },
+      "StreamInfo": {
+        "description": "Where Flight Deck connects for data.",
+        "properties": {
+          "url": {
+            "description": "WebSocket URL of the Dataset stream.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "StreamInfo",
+        "type": "object"
+      },
+      "StreamedCoordinate": {
+        "additionalProperties": false,
+        "description": "Explicit coordinate: values are not known up front and arrive in-band with each chunk (e.g. a scope time axis).",
+        "properties": {
+          "dim": {
+            "description": "Name of the Dimension this coordinate labels.",
+            "title": "Dim",
+            "type": "string"
+          },
+          "dtype": {
+            "default": "float64",
+            "description": "Element type of the in-band coordinate array.",
+            "enum": [
+              "float32",
+              "float64",
+              "int16",
+              "int32",
+              "int64",
+              "uint16",
+              "uint32"
+            ],
+            "title": "Dtype",
+            "type": "string"
+          },
+          "kind": {
+            "const": "streamed",
+            "default": "streamed",
+            "description": "Discriminator: explicit, values in the payload.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "Coordinate name, unique among coordinates and data variables.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "dim",
+          "unit"
+        ],
+        "title": "StreamedCoordinate",
+        "type": "object"
+      },
+      "SweepAxis": {
+        "additionalProperties": false,
+        "description": "One swept coordinate: `num` evenly spaced values of a logical channel from `start` to `stop`.",
+        "properties": {
+          "channel": {
+            "description": "Logical channel (ChannelMap.logical) that is swept.",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "name": {
+            "description": "Axis name; the Dataset dimension and coordinate are named after it.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "num": {
+            "description": "Number of points.",
+            "minimum": 1.0,
+            "title": "Num",
+            "type": "integer"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "start": {
+            "description": "Value at index 0, in the channel's quantity unit.",
+            "title": "Start",
+            "type": "number"
+          },
+          "stop": {
+            "description": "Value at the last index (inclusive).",
+            "title": "Stop",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "channel",
+          "start",
+          "stop",
+          "num"
+        ],
+        "title": "SweepAxis",
+        "type": "object"
+      },
+      "SweepDefinition": {
+        "additionalProperties": false,
+        "description": "An experiment as data: axes outer to inner, what is sensed, what a sequencer runs, how often.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "axes": {
+            "default": [],
+            "description": "Swept axes, outer to inner.",
+            "items": {
+              "$ref": "#/components/schemas/SweepAxis"
+            },
+            "title": "Axes",
+            "type": "array"
+          },
+          "name": {
+            "description": "Human-readable name.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "repeats": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 1,
+            "description": "Outermost loop, run by the executor: repeat the whole scan this many times (None = until stopped). Adds a 'repeat' dimension when not 1; never averaged by the executor (ADR 0018).",
+            "title": "Repeats"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sensed": {
+            "default": [],
+            "description": "Levels sensed at every stepped point.",
+            "items": {
+              "$ref": "#/components/schemas/SensedLevel"
+            },
+            "title": "Sensed",
+            "type": "array"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SequencerStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sequencer-run inner part."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SweepDefinition",
+        "type": "object"
+      },
+      "Symbol": {
+        "additionalProperties": false,
+        "description": "A named placeholder for a value the sweep supplies (bound to an axis or a constant).",
+        "properties": {
+          "name": {
+            "description": "Symbol name; the same name means the same value everywhere.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "Physical unit of the value, e.g. 'V', 'ns', 'Hz'; empty for dimensionless.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit"
+        ],
+        "title": "Symbol",
+        "type": "object"
+      },
+      "SymbolBinding": {
+        "additionalProperties": false,
+        "description": "What a `PulseSequence` Symbol takes: an axis's current value, or a constant. Exactly one.",
+        "properties": {
+          "axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Axis whose value the symbol takes. A stage axis is swept inside the program; a stepped axis is passed as a per-run constant.",
+            "title": "Axis"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "symbol": {
+            "description": "Symbol name in the stage's PulseSequence.",
+            "minLength": 1,
+            "title": "Symbol",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Constant value in the symbol's unit.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "symbol"
+        ],
+        "title": "SymbolBinding",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Wait": {
+        "additionalProperties": false,
+        "description": "All channels hold their current level for `duration`.",
+        "properties": {
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "$ref": "#/components/schemas/Symbol"
+              }
+            ],
+            "description": "Duration in integer nanoseconds, or a Symbol in 'ns'.",
+            "title": "Duration"
+          },
+          "op": {
+            "const": "wait",
+            "default": "wait",
+            "description": "Discriminator.",
+            "title": "Op",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "duration"
+        ],
+        "title": "Wait",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "qdt-server",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/devices": {
+      "get": {
+        "operationId": "get_devices_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceRecord"
+                  },
+                  "title": "Response Get Devices Devices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Devices"
+      }
+    },
+    "/methods": {
+      "get": {
+        "operationId": "list_methods_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MethodSpec"
+                  },
+                  "title": "Response List Methods Methods Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Methods"
+      }
+    },
+    "/records": {
+      "get": {
+        "operationId": "find_records_records_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "definition_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Definition Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MeasurementRecord"
+                  },
+                  "title": "Response Find Records Records Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Find Records"
+      }
+    },
+    "/records/{record_id}": {
+      "get": {
+        "operationId": "get_record_records__record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Record"
+      }
+    },
+    "/records/{record_id}/results": {
+      "post": {
+        "operationId": "analyse_records__record_id__results_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MethodRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyse"
+      }
+    },
+    "/results": {
+      "get": {
+        "operationId": "list_results_results_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "record_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Record Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Method"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AnalysisResult"
+                  },
+                  "title": "Response List Results Results Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Results"
+      }
+    },
+    "/results/{result_id}": {
+      "get": {
+        "operationId": "get_result_results__result_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Result"
+      }
+    },
+    "/runs": {
+      "get": {
+        "operationId": "list_runs_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Run"
+                  },
+                  "title": "Response List Runs Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Runs"
+      },
+      "post": {
+        "operationId": "start_run_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run"
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/stand": {
+      "get": {
+        "operationId": "get_stand_stand_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Stand"
+      }
+    },
+    "/stream": {
+      "get": {
+        "operationId": "get_stream_stream_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Stream"
+      }
+    },
+    "/stream/replay": {
+      "post": {
+        "description": "Put a stored record (with its overlays) or a result's output on the stream. A record whose\nDataset is already on the stream (it was just run live) gets only its overlays published, so\n\"analyse, then show me\" works without a second copy of the data.",
+        "operationId": "replay_stream_replay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replay"
+      }
+    },
+    "/sweeps/compile": {
+      "post": {
+        "operationId": "compile_sweep_route_sweeps_compile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SweepDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPlan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compile Sweep Route"
+      }
+    }
+  }
+}
