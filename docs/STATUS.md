@@ -91,6 +91,14 @@ validate + compile a `SweepDefinition`, start a run against `SimulatedDevice` th
 results; `control.py` (`Run`, `MethodSpec`) with fixtures and exports; API contract tests against the
 simulator. Flight Deck editors and browser come in the following sessions.
 
+## Direction recorded (human, 2026-10-13)
+- The end state is a web app: users run **curated** analyses from Flight Deck; no method authoring in
+  the browser. Multi-record analyses deferred. Results may carry arrays as Datasets (ADR 0031).
+- **The control path comes before the drivers** (ADR 0032): Step 4b, `docs/steps/04b-control-path.md`.
+  `packages/qdt-server` (HTTP API beside the stream; simulated backend only), Flight Deck sweep and
+  pulse-sequence editors, run panel, records browser, analysis panel; `control.py` (`Run`,
+  `MethodSpec`). Exit: a fresh browser + the server does the whole loop on the simulator.
+
 ## Decisions pending
 - #10 surrogate DUT design (by Step 5 entry). Advisory treatment of the two wall-clock CI gates. Whether to
   fix the zero-clipping duplicate states in the dot model (ADR 0020 amendment, regenerates a fixture).
