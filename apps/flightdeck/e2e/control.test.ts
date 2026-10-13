@@ -87,16 +87,21 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
 
   await page.getByRole("button", { name: "show overlays" }).click();
   await page.waitForFunction(() => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
-  // the overlay canvas gets painted on the next frames: some non-transparent pixels
+  // the overlay canvas gets painted on the next frames: red segment pixels (axis labels are white)
   await page.waitForFunction(
     () => {
       const c = document.getElementById("overlay") as HTMLCanvasElement;
       const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
-      for (let i = 3; i < d.length; i += 4) if (d[i]! > 0) return true;
-      return false;
+      let red = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3]! > 0 && d[i]! > 200 && d[i + 1]! < 140) red++;
+      return red > 100;
     },
     null,
     { timeout: 20_000 },
   );
+  // the view options are client-side: switching to the derivative and swapping axes keeps the view alive
+  await page.selectOption("#transform", "grad");
+  await page.check("#swap");
+  await page.waitForFunction(() => /\|gradient\|.*axes swapped/.test(document.querySelector("#status")?.textContent ?? ""));
   await page.close();
 });
