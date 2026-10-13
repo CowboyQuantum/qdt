@@ -18,6 +18,7 @@ from .activity import ExecutionPlan, SweepDefinition
 from .data import Annotation, Dataset
 from .envelope import MeasurementRecord
 from .identity import DeviceRecord
+from .modeling import AnalysisResult
 from .stand import StandConfig
 
 Migration = Callable[[dict[str, Any]], dict[str, Any]]
@@ -25,6 +26,7 @@ Migration = Callable[[dict[str, Any]], dict[str, Any]]
 PERSISTED: dict[str, type[QdtModel]] = {
     t.__name__: t
     for t in (
+        AnalysisResult,
         Annotation,
         Dataset,
         DeviceRecord,

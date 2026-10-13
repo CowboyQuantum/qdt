@@ -8,10 +8,16 @@ covers. The last frame is `final`. No database is touched here (rule 4): the cal
 """
 
 import math
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 
-from qdt_schemas.data import DatasetChunk, IndexSlice, SourceDescriptor, StreamedCoordinate
+from qdt_schemas.data import (
+    Annotation,
+    DatasetChunk,
+    IndexSlice,
+    SourceDescriptor,
+    StreamedCoordinate,
+)
 from qdt_schemas.payload_hdf5 import Payload
 
 from .frame import Frame
@@ -20,7 +26,14 @@ from .frame import Frame
 class PayloadSource:
     """A `Source` over a finished payload; `annotations` are announced before the frames."""
 
-    def __init__(self, payload: Payload, registry_ref: str, max_points: int = 1 << 20) -> None:
+    def __init__(
+        self,
+        payload: Payload,
+        registry_ref: str,
+        max_points: int = 1 << 20,
+        annotations: Iterable[Annotation] = (),
+    ) -> None:
+        """`annotations` are added to the payload's own, e.g. overlays from stored analysis results."""
         d = payload.dataset
         self.dataset = d.model_copy(
             update={
@@ -29,7 +42,9 @@ class PayloadSource:
                 )
             }
         )
-        self.annotations = payload.annotations
+        self.annotations = (*payload.annotations, *annotations)
+        for a in self.annotations:
+            d.check_annotation(a)
         self._arrays = payload.arrays
         self._max_points = max_points
 

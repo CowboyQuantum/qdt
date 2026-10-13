@@ -106,6 +106,16 @@ class DoubleDotModel:
         states, p = self.occupation_probabilities(np.asarray(v, dtype=float))
         return states[rng.choice(len(p), p=p)]
 
+    def charge_lattice(self, x_gate: str = "P1", y_gate: str = "P2") -> np.ndarray:
+        """Electrons per volt on (dot 1, dot 2) from (x_gate, y_gate): rows of C_gate / e, shape (2, 2).
+
+        The honeycomb is periodic under one-electron shifts of the gate-induced charge, so these rows are
+        its reciprocal lattice vectors in the (x, y) gate plane: the injection truth that charge-lattice
+        estimation must recover (away from the empty-dot corner, where the pattern is not periodic).
+        """
+        i, j = self.gate_names.index(x_gate), self.gate_names.index(y_gate)
+        return self.c_gate[:, [i, j]] / E_UNIT
+
     # --- sensor --------------------------------------------------------------------------------
 
     def sensor_potential(self, v: np.ndarray, n: np.ndarray, delta_phi: float = 0.0) -> np.ndarray:
