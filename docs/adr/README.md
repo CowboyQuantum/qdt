@@ -34,3 +34,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0028 | Identity, envelope and `qdt-hdf5-v1` frozen at schema_version 1 | Accepted (freezes 0025 objects + 0023 layout) |
 | 0029 | `modeling.py`: `AnalysisResult` with dual provenance; a scenario ref is a generator name plus seed | Accepted (slice not yet frozen) |
 | 0030 | The registry stores `AnalysisResult`s in an `analyses` table; DDL changes are additive migration steps | Accepted (DDL_VERSION 2) |
+| 0031 | The charge sensor is a biased SET: source–drain bias in `qdt-sim`, Coulomb diamonds as a scenario | Accepted (regenerates the sim fixture) |
