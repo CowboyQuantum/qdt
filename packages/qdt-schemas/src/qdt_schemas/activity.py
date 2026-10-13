@@ -1,5 +1,4 @@
-"""Step 2 schema slice: activity — what an experiment asks a stand to do. Frozen only after Step 2's
-test ladder passes.
+"""Step 2 schema slice: activity — what an experiment asks a stand to do. Frozen by ADR 0022.
 
 `SequencerProgram` (ADR 0017) is the envelope the executor hands to a `Sequencer`: a typed contract
 (runtime parameters, result streams) around an opaque, backend-specific body. `SweepDefinition`
@@ -399,12 +398,18 @@ class SweepDefinition(QdtModel):
 class ResolvedChannel(QdtModel):
     """A logical channel bound to its instrument, physical channel and the role the plan uses it in."""
 
-    logical: str = Field(description="Logical channel name.")
-    instrument: str = Field(description="Instrument id.")
-    channel: str = Field(description="Vendor channel identifier.")
+    logical: str = Field(min_length=1, description="Logical channel name.")
+    instrument: str = Field(min_length=1, description="Instrument id.")
+    channel: str = Field(min_length=1, description="Vendor channel identifier.")
     quantity: Quantity = Field(description="Declared quantity (unit of every value on it).")
-    settle_s: float = Field(description="Settle time after a level change.")
-    integration_s: float | None = Field(description="Sensing aperture; None = instrument default.")
+    settle_s: float = Field(ge=0, description="Settle time after a level change.")
+    integration_s: float | None = Field(
+        gt=0,
+        description=(
+            "Sensing aperture; None = instrument default. A record only: the backend was given it at "
+            "construction (ADR 0021)."
+        ),
+    )
     role: Capability = Field(description="Protocol the executor uses this channel through.")
 
 
@@ -416,7 +421,7 @@ class ExecutionPlan(QdtModel):
 
     plan_id: str = Field(min_length=1, description="Unique id; also the Dataset id.")
     definition: SweepDefinition = Field(description="The experiment this plan was compiled from.")
-    stand_id: str = Field(description="Stand it was compiled against.")
+    stand_id: str = Field(min_length=1, description="Stand it was compiled against.")
     dataset: Dataset = Field(
         description="The Dataset the run fills; coordinates are exact (ADR 0015)."
     )

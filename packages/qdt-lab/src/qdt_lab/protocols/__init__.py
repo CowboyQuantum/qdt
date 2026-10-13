@@ -19,6 +19,10 @@ Anything that produces arrays (`WaveformSense`, `Sequencer`) is given the `Datas
 returns a stream `Source` for it (ADR 0017): declared coordinates are exact and meeting them is the
 producer's job (ADR 0015). Each protocol has a Simulated* twin in ../simulated and is covered by the
 single conformance suite in tests/.
+
+A backend learns its channels' declarations (quantity, integration time) once, when a `BackendFactory`
+builds it from its `InstrumentConfig` and `ChannelMap`s; the methods never carry them (ADR 0021).
+The five protocols and that construction convention are frozen by ADR 0021.
 """
 
 from collections.abc import Mapping
@@ -28,6 +32,7 @@ import numpy as np
 
 from qdt_schemas.activity import SequencerProgram
 from qdt_schemas.data import Dataset
+from qdt_schemas.stand import ChannelMap, InstrumentConfig
 
 from ..stream.source import Source
 
@@ -101,3 +106,16 @@ class Sequencer(Protocol):
         """Run `compiled` with integer `parameters` to fill `dataset`. Returns the `Source` of
         positional result frames. Raises ValueError unless `compiled.program.check_run` passes."""
         ...
+
+
+class BackendFactory(Protocol):
+    """Builds the backend object for one instrument of a stand (ADR 0021).
+
+    `channels` are the stand's `ChannelMap`s on that instrument (`StandConfig.instrument_channels`):
+    the backend keeps each channel's quantity and integration time from here and honours them on every
+    call. Raises ValueError for a channel or quantity the backend cannot serve.
+    """
+
+    def __call__(
+        self, instrument: InstrumentConfig, channels: tuple[ChannelMap, ...]
+    ) -> object: ...

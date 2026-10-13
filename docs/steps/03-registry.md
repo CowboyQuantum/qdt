@@ -34,4 +34,4 @@ Records land in a remote-capable database with full provenance, and the registry
 - #4 offline cache + sync confirmed
 
 ## Status
-NOT STARTED
+IN PROGRESS (opened 2026-10-12; no code yet)

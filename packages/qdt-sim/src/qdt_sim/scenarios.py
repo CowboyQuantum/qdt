@@ -28,9 +28,18 @@ def default_noise(seed: int = 0) -> DeviceNoise:
     )
 
 
-def default_device(seed: int = 0, noise: bool = True, **kwargs) -> SimulatedDevice:
-    return SimulatedDevice(
-        default_model(), noise=default_noise(seed) if noise else DeviceNoise(), seed=seed, **kwargs
+def default_device(
+    seed: int = 0, noise: bool = True, stand: StandConfig | None = None, **kwargs
+) -> SimulatedDevice:
+    """The default device, built from `stand` (default `default_stand()`) by its factory (ADR 0021)."""
+    stand = stand or default_stand()
+    return SimulatedDevice.from_config(
+        stand.instrument(DEVICE_ID),
+        stand.instrument_channels(DEVICE_ID),
+        default_model(),
+        noise=default_noise(seed) if noise else DeviceNoise(),
+        seed=seed,
+        **kwargs,
     )
 
 

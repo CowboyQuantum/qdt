@@ -1,10 +1,11 @@
 // View selection and the coordinate system shared by data and annotations. Chosen from the Dataset's
 // *shape* only — never from its source or producer (rule 8).
 import type { Annotation, Dataset } from "./schema/data";
-import type { DatasetStore } from "./stream/store";
+import type { DenseArray, DatasetStore } from "./stream/store";
 
 export type ViewKind =
-  | { kind: "heatmap"; variable: string; rowDim: string; colDim: string }
+  /** `stackDim`: a leading dimension the map is averaged over on display (repeated scans). */
+  | { kind: "heatmap"; variable: string; rowDim: string; colDim: string; stackDim: string | null }
   | { kind: "trace"; variable: string; xDim: string; latestAlong: string | null };
 
 export function chooseView(dataset: Dataset): ViewKind | null {
@@ -14,10 +15,35 @@ export function chooseView(dataset: Dataset): ViewKind | null {
   if (v.dims.length === 1) return { kind: "trace", variable: v.name, xDim: v.dims[0], latestAlong: null };
   if (v.dims.length === 2) {
     const [a, b] = v.dims as [string, string];
-    if (size(a) != null && size(b) != null) return { kind: "heatmap", variable: v.name, rowDim: a, colDim: b };
+    if (size(a) != null && size(b) != null)
+      return { kind: "heatmap", variable: v.name, rowDim: a, colDim: b, stackDim: null };
     if (size(a) == null && size(b) != null) return { kind: "trace", variable: v.name, xDim: b, latestAlong: a };
   }
+  if (v.dims.length === 3) {
+    const [s, a, b] = v.dims as [string, string, string];
+    if (size(a) != null && size(b) != null)
+      return { kind: "heatmap", variable: v.name, rowDim: a, colDim: b, stackDim: s };
+  }
   return null;
+}
+
+/** Mean over the leading axis of a (stack, rows, cols) array into `out` (rows × cols), for rows
+ * [r0, r1) only, ignoring unwritten (NaN) cells; a cell no slice has written stays NaN. */
+export function meanAlongLeading(data: DenseArray, r0: number, r1: number, out: Float64Array): void {
+  const [n, rows, cols] = data.shape as [number, number, number];
+  const plane = rows * cols;
+  for (let i = r0 * cols; i < r1 * cols; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let k = 0; k < n; k++) {
+      const x = Number(data.values[k * plane + i]!);
+      if (x === x) {
+        sum += x;
+        count++;
+      }
+    }
+    out[i] = count ? sum / count : NaN;
+  }
 }
 
 /** Coordinate values labelling `dim`, or plain indices if the Dataset defines none. */

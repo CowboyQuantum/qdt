@@ -9,6 +9,10 @@ levels at that instant.
 
 As a `Sequencer` it compiles only backend `"simulated"` programs: the body emitted by
 `qdt_lab.experiment.SimulatedEmitter` (sequence JSON, symbol → parameter map, reductions).
+
+Built from a stand with `SimulatedDevice.from_config` (the ADR 0021 `BackendFactory`): gate channels
+must be declared `voltage`, the sensor `current`, and a sensor channel's `integration_s` is the device
+time one `sense` integrates for (default `sense_integration_s`).
 """
 
 import json
@@ -24,6 +28,7 @@ from qdt_lab.stream.frame import Frame
 from qdt_schemas.activity import SequencerProgram
 from qdt_schemas.data import Dataset, DatasetChunk, IndexSlice
 from qdt_schemas.pulse import PulseSequence, Symbol
+from qdt_schemas.stand import ChannelMap, InstrumentConfig
 
 from .dot import DoubleDotModel
 from .noise import NoiseModel, NoNoise
@@ -66,6 +71,7 @@ class SimulatedDevice:
         shot_overhead_s: float = 10e-6,
         sense_integration_s: float = 1e-3,
         points_per_second: float | None = None,
+        integration_s: Mapping[str, float] | None = None,
     ) -> None:
         self.model = model or DoubleDotModel()
         self.channels = dict(
@@ -89,9 +95,39 @@ class SimulatedDevice:
         self.sample_charge = sample_charge
         self.shot_overhead_s, self.sense_integration_s = shot_overhead_s, sense_integration_s
         self.points_per_second = points_per_second
+        self.integration_s = dict(integration_s or {})
+        unknown = set(self.integration_s) - set(self.channels)
+        if unknown:
+            raise ValueError(f"integration times for unknown channels {sorted(unknown)}")
         self._rng = np.random.default_rng(seed)
         self._dc: dict[str, float] = dict.fromkeys(self.channels, 0.0)
         self.clock_s = 0.0
+
+    @classmethod
+    def from_config(
+        cls,
+        instrument: InstrumentConfig,
+        channels: tuple[ChannelMap, ...],
+        model: DoubleDotModel | None = None,
+        roles: Mapping[str, str] | None = None,
+        **kwargs,
+    ) -> "SimulatedDevice":
+        """`BackendFactory` (ADR 0021). `roles` maps vendor channel → gate or `"sensor"` (default: the
+        constructor's); every declared channel must have a role, and its quantity must match it."""
+        if instrument.backend != cls.backend:
+            raise ValueError(
+                f"SimulatedDevice serves backend 'simulated', not {instrument.backend!r}"
+            )
+        integration = {c.channel: c.integration_s for c in channels if c.integration_s is not None}
+        device = cls(model, roles, integration_s=integration, **kwargs)
+        for c in channels:
+            role = device.channels.get(c.channel)
+            if role is None:
+                raise ValueError(f"channel {c.channel!r} has no role on the device")
+            want = "current" if role == SENSOR else "voltage"
+            if c.quantity != want:
+                raise ValueError(f"channel {c.channel!r} ({role}) is {want}, declared {c.quantity}")
+        return device
 
     # --- LevelSource ----------------------------------------------------------------------------
 
@@ -111,7 +147,8 @@ class SimulatedDevice:
             raise ValueError(
                 f"channel {channel!r} is a gate ({self.channels[channel]}); sense the sensor"
             )
-        return float(self.read(self.gate_vector(), 1, self.sense_integration_s)[0])
+        aperture = self.integration_s.get(channel, self.sense_integration_s)
+        return float(self.read(self.gate_vector(), 1, aperture)[0])
 
     # --- Sequencer ------------------------------------------------------------------------------
 

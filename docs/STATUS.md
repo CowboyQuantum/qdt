@@ -3,56 +3,55 @@
 > Rewritten at the end of every session. Never appended. History: `git log -- docs/STATUS.md`.
 > A fresh session must be able to continue from this file alone.
 
-**Current step:** 2 — Experiments over a simulated device → `docs/steps/02-experiments-over-simulated-device.md`
-**Branch:** `claude/session-plan-review-wudauu` (session-assigned name; restarted from `main` after PR #4.
-Every session ends with a PR against `main`; the human merges)
-**Last session:** 2026-10-12 — session (11): `qdt-sim` written fresh (ADR 0020): `DoubleDotModel`, noise
-models, `SimulatedDevice` behind all three protocols, scenarios + committed fixture, `python -m qdt_sim`
-streams a stability diagram live. The first Step 2 exit criterion is met end to end.
+**Current step:** 3 — Measurement registry → `docs/steps/03-registry.md`
+**Branch:** `step-2/freeze` (PR against `main` open; the human merges). Next session: `step-3/<short-name>` from `main`.
+**Last session:** 2026-10-12, session (12). Closed Step 2: the human confirmed the live honeycomb in Flight
+Deck; a pre-freeze review fixed how backends learn channel declarations (ADR 0021); froze the protocols
+(ADR 0021) and the stand + activity + pulse slices (ADR 0022); Flight Deck averages repeated scans on display.
 
-## Step 2 exit criteria
+## Step 3 exit criteria
 | Criterion | State |
 |---|---|
-| `SweepDefinition` round-trips and runs on `SimulatedDevice`, live in Flight Deck | ✔ `python -m qdt_sim` → `StreamServer` → Flight Deck `?ws=`; collected over WebSocket in the session (32² and 96² maps). Human to eyeball in the browser |
-| stand + activity + pulse slices frozen with ADR | ✘ objects complete; freeze ADR at exit |
-| Protocols frozen with ADR (second deliberate freeze, ADR 0007) | ✘ complete (ADR 0016/0017); freeze ADR at exit |
-| L0: dry-run count/order/shape; reproducibility; scenario within tolerance; conformance on all `Simulated*` | ✔ 167 tests |
+| any simulated measurement answerable by query (device, stand, definition) | ✘ not started |
+| envelope + identity slices frozen with ADR | ✘ not started |
+| L0: ephemeral Postgres round trip; migration fixtures; JSON Schema + DDL no-diff; sweep → record → Flight Deck replay | ✘ not started |
 
 ## Done
-- Steps 0–1 DONE. ADR 0001–0020. Contract frozen (ADR 0015). CI green on `main` at 696ad20.
-- **`qdt-sim`** (`dot.py`, `noise.py`, `device.py`, `scenarios.py`, `__main__.py`; package CLAUDE.md):
-  constant-interaction double dot (capacitance matrices, Boltzmann occupation, periodic Coulomb-peak
-  sensor); `WhiteNoise`, `TelegraphNoise` (exact propagator), `OneOverFNoise` (fluctuator ensemble),
-  `Composite`; `SimulatedDevice` = `LevelSource` + `LevelSense` + `Sequencer` on roled vendor channels,
-  pulses add to DC (bias tee), device clock drives noise, shots sample the charge state; `compile` accepts
-  only backend `simulated` and interprets the `SimulatedEmitter` body. Oracle test: no-noise sweep equals
-  `model.current` on the grid. Fixture `tests/fixtures/stability_24x32.npy` (seed 7, 3 shots mean)
-  reproduced at rtol 1e-9; regenerate with `scripts/make_sim_fixtures.py`.
-- **Experiments as data** (ADR 0018/0019): `PulseSequence`, `SweepDefinition`, `ExecutionPlan`,
-  `compile_sweep`, `Executor`, `SimulatedEmitter`. Tutorials 00–01.
-- **Protocols + twins + conformance** (ADR 0016/0017). **Stream + Flight Deck** (ADR 0010–0014).
+- Steps 0–2 DONE. ADR 0001–0022. Two deliberate freezes made: the `Dataset` contract (ADR 0015) and the
+  capability protocols (ADR 0021). Stand/activity/pulse frozen at `schema_version` 1 (ADR 0022).
+- **Backend construction (ADR 0021):** every backend is built by a `BackendFactory`
+  `(InstrumentConfig, tuple[ChannelMap, ...])` (usually `from_config`); `build_backends(stand, factories)`
+  wires a stand; `StandConfig.instrument_channels`. Conformance test `sense_honours_declared_integration_time`.
+  `SimulatedDevice.from_config` checks quantity against role and takes the sensor aperture from the map.
+- **Flight Deck:** a 3-D variable with two bounded trailing dims renders as the NaN-aware mean over the
+  leading dim (`view.ts` `meanAlongLeading`), so `python -m qdt_sim --repeats N` / `--repeats 0` is viewable.
+- `qdt-sim` (ADR 0020), experiments as data (ADR 0018/0019), protocols + twins + conformance (ADR 0016/0017),
+  stream + Flight Deck (ADR 0010–0014). 171 Python tests, 25 Flight Deck unit + 2 e2e.
 
 ## In flight
-- Nothing uncommitted. PR against `main` open for this session; human merges.
+- Nothing uncommitted. PR `step-2/freeze` → `main` open; human merges.
 
 ## Known broken / not yet real
-- Model has no tunnel coupling, spin, valley or Pauli blockade; pulses are quasi-static (durations only
-  advance the clock). Each is an ADR when a sweep needs it. Per-shot Python loop: fine to ~10⁵ pixels.
-- Flight Deck shows the first Dataset only, no axes/colorbar/cursors/zoom, and no display reduction over
-  `repeat` yet, so `--repeats 0` streams passes it cannot average on screen.
-- `test_wire_path_keeps_design_target_line_rate` is wall-clock bound off hardware (passed this run; fails
-  ~2/3 on the 4-vCPU container). Decide advisory treatment (cf. ADR 0014).
-- QUA emitter (Step 5, `[opx]`). Scope captures per stepped point deferred (ADR 0019). Probe 01 scope
-  half unrun. Server history unbounded (Step 6). `FINISH_LINE.md` TODO (human). `BENCH.md` skeleton; DUT #10.
+- Model has no tunnel coupling, spin, valley or Pauli blockade; pulses are quasi-static; `Drive` only
+  advances the clock. Each is an ADR when a sweep needs it. Per-shot Python loop: fine to ~10⁵ pixels.
+- Flight Deck: first Dataset only; no axes/colorbar/cursors/zoom. Repeat averaging recomputes dirty rows over
+  every pass (cost grows with passes; fine at demo sizes). Client store and server history unbounded (Step 6).
+- `test_wire_path_keeps_design_target_line_rate` is wall-clock bound off hardware (fails ~2/3 on a 4-vCPU
+  container). Decide advisory treatment (cf. ADR 0014).
+- Waveform protocols are frozen without a real call site (ADR 0021 accepts the risk). QUA emitter (Step 5).
+  Scope captures per stepped point deferred (ADR 0019). Probe 01 scope half unrun. `FINISH_LINE.md` TODO
+  (human). `BENCH.md` skeleton; DUT #10.
+- Windows dev box: `pnpm` is not on PATH; use `corepack pnpm ...` in `apps/flightdeck` (or `corepack enable`
+  from an admin shell).
 
 ## Next action
-**Human:** merge the open PR, check CI; run `uv run python -m qdt_sim` and `pnpm dev` in `apps/flightdeck`
-with `?ws=ws://127.0.0.1:8765` and confirm the live honeycomb renders.
-**Then** close Step 2: a session on `step-2/freeze` writes the two freeze ADRs (capability protocols; stand +
-activity + pulse slices), reviews each protocol signature and schema object against what the executor and
-`SimulatedDevice` actually needed, adds the Flight Deck display reduction over `repeat` if small, marks the
-step DONE and opens Step 3 (registry).
+**Human:** merge the `step-2/freeze` PR, check CI.
+**Then** a session on `step-3/<short-name>` starts Step 3: settle open decisions #2 (`payload_hdf5` location)
+and #4 (offline cache + sync) with the human first. Then add the `identity.py` + `envelope.py` slice
+(`MeasurementRecord` first, `migrations.py` begins), stand up `qdt-registry` against a localhost Postgres
+(compose; check Docker availability on the dev box) and an ephemeral Postgres in CI, and have the executor
+write one `MeasurementRecord` per run of a Step 2 sweep.
 
 ## Decisions pending (see plan §12)
-- #10 surrogate DUT design — by Step 5 entry. #2 `payload_hdf5` location — Step 3.
+- #2 `payload_hdf5` location, #4 offline cache + sync — Step 3, before code. #10 surrogate DUT — by Step 5 entry.
 - Whether the stream line-rate test becomes advisory off hardware (see Known broken).

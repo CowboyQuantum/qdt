@@ -1,8 +1,9 @@
-"""Step 2 schema slice: stand configuration. Frozen only after Step 2's test ladder passes.
+"""Step 2 schema slice: stand configuration. Frozen by ADR 0022.
 
 A stand is instruments plus the map from logical channels (what experiments name) to physical ones.
 Protocol calls take floats in the SI unit of the channel's declared `quantity` (ADR 0016); settle and
-integration times live here too (ADR 0017).
+integration times live here too (ADR 0017). A backend is constructed from its `InstrumentConfig` and
+its `ChannelMap`s, so it knows each channel's quantity and integration time before any call (ADR 0021).
 """
 
 from typing import Literal
@@ -103,3 +104,9 @@ class StandConfig(QdtModel):
             if i.id == instrument_id:
                 return i
         raise KeyError(f"unknown instrument {instrument_id!r}")
+
+    def instrument_channels(self, instrument_id: str) -> tuple[ChannelMap, ...]:
+        """The channels mapped onto one instrument: with its `InstrumentConfig`, what its backend is
+        constructed from (ADR 0021)."""
+        self.instrument(instrument_id)
+        return tuple(c for c in self.channels if c.instrument == instrument_id)
