@@ -4,7 +4,8 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 4b — Control path → `docs/steps/04b-control-path.md` (Step 4 DONE, ADR 0033)
-**Branch:** `step-4/close` (PR against `main` open; the human merges), then `step-4b/<short-name>`.
+**Branch:** `step-4b/server` (PR against `main` open, stacked on `step-4/close` PR #14; the human merges
+#14 first). Next session: `step-4b/<short-name>` from `main`.
 **Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
 (`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
 session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
@@ -24,8 +25,8 @@ in a payload referenced from the result.
 ## Step 4b exit criteria
 | Criterion | State |
 |---|---|
-| from a fresh browser with only `qdt-server` running against the simulator: craft a sweep + pulse sequence, run, watch live, find the record, run a curated analysis, see overlays and output — e2e in CI and as a scripted demo | ✘ not started |
-| `control.py` (`Run`, `MethodSpec`) frozen with ADR | ✘ not started |
+| from a fresh browser with only `qdt-server` running against the simulator: craft a sweep + pulse sequence, run, watch live, find the record, run a curated analysis, see overlays and output — e2e in CI and as a scripted demo | ◐ the server side of the loop runs under `TestClient` (`packages/qdt-server/tests/test_api.py`); no UI for it yet |
+| `control.py` (`Run`, `MethodSpec`) frozen with ADR | ✘ defined (ADR 0032/0034), not frozen |
 
 ## Done
 - Steps 0–4 DONE. ADR 0001–0033. Frozen: `Dataset` contract (0015; v2 by 0031), protocols (0021),
@@ -53,8 +54,15 @@ in a payload referenced from the result.
   `Registry.add_result(result, output)` writes `analysis/<YYYY>/<MM>/<result_id>.h5`, fills the ref and
   returns the stored result; `Registry.result`/`output`; `sync` uploads outputs; `serve --output
   <result_id>` streams one to Flight Deck. Both methods output their detection map (gradient + edges).
-- 247 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 26 Flight Deck unit tests, 2 e2e.
-  Flight Deck source unchanged except the generated `src/schema/data.ts`.
+- **Step 4b session 1 (ADR 0034):** `qdt_schemas.control` (`ParameterSpec`, `EstimateSpec`, `MethodSpec`
+  with `resolve`/`fit_model`; `Run` with a checked lifecycle). `packages/qdt-server` (FastAPI; `python -m
+  qdt_server --root --port --stream-port`): `GET /stand /devices /stream /methods /runs /runs/{id}
+  /records /records/{id} /results /results/{id}`, `POST /sweeps/compile` (plan or 400), `POST /runs`
+  (202, queued `Run`; executes on the simulator through the `StreamServer`, records, ingests; one at a
+  time), `POST /records/{id}/results` (curated method by `MethodSpec`, stores result + output, 201),
+  `POST /stream/replay` (record with overlays, or a result's output). `catalogue.METHODS` pins each spec
+  to its function's signature. `fastapi`/`uvicorn` are `qdt-server` deps only; `httpx` dev.
+- 266 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 26 Flight Deck unit tests, 2 e2e.
 
 ## In flight
 - Nothing uncommitted. PR `step-4/result-output` → `main` open. Remote branches `step-4/analysis`,
@@ -81,15 +89,16 @@ in a payload referenced from the result.
   Windows: `corepack pnpm ...` in `apps/flightdeck`.
 
 ## Next action
-**Human:** merge the Step 4 close PR.
-**Then** Step 4b, first build session, on `step-4b/<short-name>`: ADR for the web framework and API
-shape (proposal: FastAPI + uvicorn, REST for commands and queries, the existing WebSocket stream for
-data, TS client generated from the OpenAPI document as the stream types are from JSON Schema); scaffold
-`packages/qdt-server` as a workspace member (`python -m qdt_server --root <registry>`): stands/devices,
-validate + compile a `SweepDefinition`, start a run against `SimulatedDevice` that streams through the
-`StreamServer` and records into the registry, list runs/records, list methods, run a method, fetch
-results; `control.py` (`Run`, `MethodSpec`) with fixtures and exports; API contract tests against the
-simulator. Flight Deck editors and browser come in the following sessions.
+**Human:** merge PR #14 (Step 4 close), then the `step-4b/server` PR. Try the server:
+`uv run python -m qdt_server` then open http://127.0.0.1:8700/docs; `corepack pnpm dev` in
+`apps/flightdeck` shows whatever the server streams (a `POST /runs` from the docs page runs a sweep live).
+**Then** Step 4b session 2 on `step-4b/<short-name>`: generate the Flight Deck API client from the
+server's OpenAPI document (`pnpm gen:api`, drift-checked in CI like `gen:types`); a run panel that posts
+a `SweepDefinition` (start with a stability-sweep form over the generated types) and watches the `Run`;
+a records list from `GET /records` with replay (`POST /stream/replay`); then the analysis panel from
+`GET /methods` (form from `MethodSpec.parameters`). Pulse-sequence editor after. Flight Deck must handle
+more than one Dataset per connection (choose which to show) before replay and live runs coexist.
+Freeze `control.py` at 4b exit.
 
 ## Direction recorded (human, 2026-10-13)
 - The end state is a web app: users run **curated** analyses from Flight Deck; no method authoring in
