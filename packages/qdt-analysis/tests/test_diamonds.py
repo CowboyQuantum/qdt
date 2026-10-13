@@ -79,7 +79,7 @@ def synthetic(period=0.1, e_c=1e-3, n_gate=96, n_bias=80, noise=0.01, seed=4):
 
 def test_recovers_injected_diamonds():
     payload, truth, period, e_c = synthetic()
-    result = detect_diamonds(record_for("map"), payload)
+    result, _output = detect_diamonds(record_for("map"), payload)
     assert result.status == "ok", result.message
     r = recovery(result, payload.dataset, truth, tolerance=1.5)
     assert r.precision > 0.9 and r.recall > 0.85, r
@@ -124,7 +124,7 @@ def edge_truth(model, sg: np.ndarray, v_sd: np.ndarray) -> np.ndarray:
 @pytest.mark.parametrize("noise", [False, True], ids=["clean", "noisy"])
 def test_recovers_the_sensor_models_diamonds_through_a_sweep(noise):
     payload, sg, v_sd, model = sweep(seed=2, noise=noise)
-    result = detect_diamonds(record_for(payload.dataset.dataset_id), payload)
+    result, output = detect_diamonds(record_for(payload.dataset.dataset_id), payload)
     assert result.status == "ok", result.message
     r = recovery(result, payload.dataset, edge_truth(model, sg, v_sd), tolerance=2.0)
     assert r.precision > 0.9 and r.recall > 0.85, r
@@ -137,13 +137,15 @@ def test_recovers_the_sensor_models_diamonds_through_a_sweep(noise):
         model.diamond_edges(0)[0][1], rel=0.08
     )
     assert all(a.coords == ("SG", "V_sd") for a in result.annotations)
+    assert output is not None and output.dataset.source.kind == "analysis"
+    assert output.arrays["gradient"].shape == (64, 64)
     assert result.record_id == "cd" * 16 and result.method.name == NAME
 
 
 def test_a_map_without_diamonds_fails_instead_of_inventing_them():
     rng = np.random.default_rng(3)
     payload = map_payload(rng.normal(0, 1, (64, 64)), (0.0, 0.1), (-1e-3, 1e-3))
-    result = detect_diamonds(record_for("map"), payload)
+    result, _output = detect_diamonds(record_for("map"), payload)
     assert result.status == "failed" and not result.estimates
 
 

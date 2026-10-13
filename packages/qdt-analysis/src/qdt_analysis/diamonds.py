@@ -12,7 +12,8 @@ Detection and estimation are separate stages:
    symmetric leads its bias is the charging energy (`E_c = e · V_apex`, so eV for V), and the lever arm
    is `E_c / period`. Each complete diamond is a `region` overlay.
 
-Rows of the map are the gate, columns the bias. Pure: schema objects in, `AnalysisResult` out (rule 5).
+Rows of the map are the gate, columns the bias. Pure: schema objects in, `Analysis` (result plus the
+detection map as an in-memory output payload, ADR 0031) out (rule 5).
 """
 
 import itertools
@@ -28,7 +29,7 @@ from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel
 from qdt_schemas.payload_hdf5 import Payload
 
-from .transitions import _pick, detect_segments
+from .transitions import Analysis, _pick, detect_segments, detection_map
 
 NAME = "qdt_analysis.diamonds.detect_diamonds"
 VERSION = "1"
@@ -136,9 +137,9 @@ def detect_diamonds(
     min_segment_px: int = 6,
     max_segments: int = 200,
     point_tolerance_px: float = 3.0,
-) -> AnalysisResult:
+) -> Analysis:
     """Detect Coulomb-diamond edges on a (gate, bias) map and estimate period, charging energy, lever
-    arm and edge slopes.
+    arm and edge slopes. The output is the detection map (ADR 0031).
 
     `variable` defaults to the first data variable whose last two dims carry linear coordinates; the
     row coordinate is the gate, the column coordinate the bias. Raises ValueError when no such variable
@@ -173,9 +174,11 @@ def detect_diamonds(
     gate = np.linspace(row.start, row.stop, row.num)
     bias = np.linspace(col.start, col.stop, col.num)
     result_id = uuid.uuid4().hex
+    now = datetime.now(UTC)
+    found = None
 
     def done(status, message="", estimates=(), annotations=(), **attrs):
-        return AnalysisResult(
+        result = AnalysisResult(
             result_id=result_id,
             record_id=record.record_id,
             dataset_id=dataset.dataset_id,
@@ -185,9 +188,17 @@ def detect_diamonds(
             message=message,
             estimates=tuple(estimates),
             annotations=tuple(annotations),
-            created_at=datetime.now(UTC),
+            created_at=now,
             attrs={"variable": var.name, **attrs},
         )
+        output = (
+            detection_map(
+                result_id, "diamond detection map", dataset, row, col, found, list(annotations), now
+            )
+            if found is not None
+            else None
+        )
+        return Analysis(result, output)
 
     if min(image.shape) < 16 or gate.size < 2 or bias.size < 2:
         return done("failed", "map smaller than 16 × 16 points")
