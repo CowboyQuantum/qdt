@@ -1,0 +1,28 @@
+{
+  "attrs": {},
+  "campaign": null,
+  "definition_name": "fixture stability 4x5",
+  "definition_sha256": "63c09a42538a08e2fa57e120404ec5e4bde6d166a5a54485574b567afec73c50",
+  "device_id": "dot",
+  "finished_at": "2026-10-13T12:00:00Z",
+  "outcome": "completed",
+  "payload": {
+    "path": "2026/10/00000000000000000000000000000001.h5",
+    "schema_version": 1,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size_bytes": 0,
+    "type": "qdt-hdf5-v1"
+  },
+  "plan_id": "00000000000000000000000000000001",
+  "record_id": "00000000000000000000000000000001",
+  "schema_version": 1,
+  "source": {
+    "kind": "simulation",
+    "label": "fixture stability 4x5",
+    "registry_ref": null,
+    "schema_version": 1
+  },
+  "stand_id": "simulated-double-dot",
+  "stand_sha256": "4da04c60102ee8486075722cef336c44df1b86b0ce483861579d6a774da6cef9",
+  "started_at": "2026-10-13T12:00:00Z"
+}

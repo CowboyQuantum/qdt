@@ -79,7 +79,7 @@ Adapters (arbok), site DDL migrations, bootstrap seeds, `deploy/` compose bundle
 |---|---|---|---|
 | 1 | Data | `Dataset`, `DatasetChunk`, `Annotation`, `SourceDescriptor` | `data.py` |
 | 2 | Stand + Activity + Pulse | `InstrumentConfig`, `ChannelMap`, `StandConfig`; `SweepDefinition`, `ExecutionPlan`, `SequencerProgram`; `PulseSequence` (ADR 0018) | `stand.py`, `activity.py`, `pulse.py` |
-| 3 | Envelope + identity | `MeasurementRecord`, `DeviceRecord`, `CIRecord`, `AssetRecord`, `BaselineRecord` | `identity.py`, `envelope.py` |
+| 3 | Envelope + identity | `MeasurementRecord`, `DeviceRecord` (`CIRecord`, `AssetRecord`, `BaselineRecord` deferred until consumed, ADR 0025) | `identity.py`, `envelope.py` |
 | 4 | Modeling | `FitModel`, `AnalysisResult` | `modeling.py` |
 | 5 | — | (drivers; no new family) | |
 | 6 | Modeling | `SimScenario`, `SimResult`, `CalibrationNode` | `modeling.py` |

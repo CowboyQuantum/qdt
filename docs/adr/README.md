@@ -28,3 +28,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0022 | Stand, activity and pulse schema slices frozen at schema_version 1 | Accepted (freezes 0018 + 0019 objects) |
 | 0023 | `payload_hdf5` lives in `qdt-schemas` behind the `[hdf5]` extra | Accepted (closes plan #2) |
 | 0024 | Registry clients write to a local cache first and sync to Postgres | Accepted (closes plan #4) |
+| 0025 | `MeasurementRecord` is a reference-and-hash envelope; Step 3 builds only device identity | Accepted |

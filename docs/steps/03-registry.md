@@ -6,7 +6,7 @@
 Records land in a remote-capable database with full provenance, and the registry becomes a first-class Flight Deck source. First DDL.
 
 ## Schema slice
-`identity.py`, `envelope.py`: `MeasurementRecord`, `DeviceRecord`, `AssetRecord`, `CIRecord`, `BaselineRecord`; `payload_hdf5.py` v1; `migrations.py`. JSON Schema + DDL exports begin.
+`identity.py`, `envelope.py`: `MeasurementRecord`, `DeviceRecord` (the other three deferred, ADR 0025); `payload_hdf5.py` v1 (ADR 0023); `migrations.py`. JSON Schema + DDL exports begin.
 
 ## Deliverables
 - `qdt-registry`: Postgres via `QDT_REGISTRY_DSN`, localhost compose on personal hardware, client with offline cache + sync
