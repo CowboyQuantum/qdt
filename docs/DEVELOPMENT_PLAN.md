@@ -80,7 +80,8 @@ Adapters (arbok), site DDL migrations, bootstrap seeds, `deploy/` compose bundle
 | 1 | Data | `Dataset`, `DatasetChunk`, `Annotation`, `SourceDescriptor` | `data.py` |
 | 2 | Stand + Activity + Pulse | `InstrumentConfig`, `ChannelMap`, `StandConfig`; `SweepDefinition`, `ExecutionPlan`, `SequencerProgram`; `PulseSequence` (ADR 0018) | `stand.py`, `activity.py`, `pulse.py` |
 | 3 | Envelope + identity | `MeasurementRecord`, `DeviceRecord` (`CIRecord`, `AssetRecord`, `BaselineRecord` deferred until consumed, ADR 0025) | `identity.py`, `envelope.py` |
-| 4 | Modeling | `FitModel`, `AnalysisResult` | `modeling.py` |
+| 4 | Modeling | `FitModel`, `Estimate`, `AnalysisResult` | `modeling.py` |
+| 4b | Control | `Run`, `MethodSpec` (ADR 0032) | `control.py` |
 | 5 | — | (drivers; no new family) | |
 | 6 | Modeling | `SimScenario`, `SimResult`, `CalibrationNode` | `modeling.py` |
 | 7 | Cryo | `CooldownRecord`, `FridgeEvent`, `TelemetryChannel`, `TelemetrySample` | `cryo.py` |
@@ -129,12 +130,13 @@ Prototype on lab PC via Docker Compose (`qdt-diraq/deploy/`); localhost-bound du
 | 2 | Experiments over a simulated device | `SweepDefinition` runs on `qdt-sim`'s `SimulatedDevice`; protocols frozen; stability diagram streams live | `steps/02-experiments-over-simulated-device.md` |
 | 3 | Registry | Records land with provenance; first DDL; registry is a Flight Deck source | `steps/03-registry.md` |
 | 4 | Analysis overlays | Fits/detections as `Annotation`s with dual provenance; injection–recovery in CI | `steps/04-analysis-overlays.md` |
+| 4b | Control path (ADR 0032) | A user crafts a sweep + pulse sequence, runs it on the simulator, finds the record, runs a curated analysis — all from Flight Deck via `qdt-server` | `steps/04b-control-path.md` |
 | 5 | Instrument drivers — last mile | Real OPX/QDAC/scope/SMU behind the protocols; L1 loopback; L2 surrogate DUT; first bench reports | `steps/05-instrument-drivers-last-mile.md` |
 | 6 | Closed-loop tuning | DAG runs unattended against sim; first fridge contact as confirmation | `steps/06-closed-loop-tuning.md` |
 | 7 | Other sources | Telemetry, internal extension, lab PC, IT, substrate pilot demo | `steps/07-other-sources.md` |
 | 8 | Frameworks | Governance as data; HTML demoted to renderers | `steps/08-frameworks.md` |
 
-**Sequencing notes.** Steps 0–4 are serial and run entirely against simulated backends on personal hardware. Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 7 is off the critical path and is the only step gated by manager sign-off (Open Decision #5). Steps 6 and 7 can interleave.
+**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 7 is off the critical path and is the only step gated by manager sign-off (Open Decision #5). Steps 6 and 7 can interleave.
 
 ## 8. Flight Deck finish-line sketch
 

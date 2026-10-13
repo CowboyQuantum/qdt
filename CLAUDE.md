@@ -34,7 +34,7 @@ Run `/session-check` before claiming anything is done.
 5. `qdt-analysis` is pure-functional: schema objects in, `AnalysisResult` out. No I/O, no registry dependency.
 6. `qdt-frameworks` contains no instance data; renderers only.
 7. Provenance: nothing in this repo names a real test stand, device lot, internal system, tolerance, or person. `scripts/provenance_check.sh` is the grep test. Site-specific content lives in the internal extension package, not here.
-8. `apps/flightdeck` never imports an instrument driver and never knows which instrument produced a `Dataset`. It consumes the `Dataset` stream contract only.
+8. `apps/flightdeck` never imports an instrument driver and never knows which instrument produced a `Dataset`. It consumes the `Dataset` stream contract and, from Step 4b, the `qdt-server` request API (ADR 0032); it never holds an instrument or registry handle.
 
 ## Discipline
 

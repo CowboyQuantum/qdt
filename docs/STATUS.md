@@ -4,7 +4,8 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 4 — Analysis as a consumer → `docs/steps/04-analysis-overlays.md`
-**Branch:** `step-4/result-output` (PR against `main` open; the human merges). PR #11 (diamonds) merged.
+**Branch:** `step-4b/plan` (PR against `main` open; the human merges). PRs #9, #11, #12 merged; stale
+branches deleted; `main` is the only branch.
 **Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
 (`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
 session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
@@ -86,18 +87,20 @@ draws lines, markers and regions in data coordinates).
 diamond edges, `g<k>` markers and `E_c` regions on the sensor's diamonds. The demo also prints
 `serve --output <result_id>`: the detection map the method worked on, as a Dataset of its own.
 **Then** close Step 4: review `FitModel`/`Estimate`/`AnalysisResult` against what both methods, the
-registry and Tutorial 03 used; write the freeze ADR; mark Step 4 DONE (`docs/steps/04-…`, `README.md`);
-delete `step-4/analysis-overlays`; open Step 5 (instrument drivers) and settle #10 (surrogate DUT) with
-the human at Step 5 entry.
+registry and Tutorial 03 used; write the freeze ADR; mark Step 4 DONE (`docs/steps/04-…`, `README.md`).
+**Then** open Step 4b on `step-4b/<short-name>`: first build session decides the web framework and API
+shape by ADR, scaffolds `packages/qdt-server` (workspace member, `python -m qdt_server`, serves stands/
+devices, validate/compile, start a run against `SimulatedDevice` with the existing `StreamServer`), and
+adds `control.py` (`Run`, `MethodSpec`) with fixtures and exports. Step 5 (drivers) follows 4b.
 
-## Direction recorded (ADR 0031, human, 2026-10-13)
+## Direction recorded (human, 2026-10-13)
 - The end state is a web app: users run **curated** analyses from Flight Deck; no method authoring in
-  the browser. Multi-record analyses deferred. Results may carry arrays as Datasets.
-- Not yet on the roadmap: the backend service that lets the UI query the registry, run a method, and
-  craft/compile/run a sweep (the "control path"). Today Flight Deck has one channel in (the stream) and
-  one planned channel out (click-to-set, Step 6). A method catalogue (name, version, parameter schema
-  for forms, applicable shapes, promised estimates) enters with that service. Needs a step and a
-  `FINISH_LINE.md` row; proposed to the human.
+  the browser. Multi-record analyses deferred. Results may carry arrays as Datasets (ADR 0031).
+- **The control path comes before the drivers** (ADR 0032): Step 4b, `docs/steps/04b-control-path.md`.
+  `packages/qdt-server` (HTTP API beside the stream; simulated backend only), Flight Deck sweep and
+  pulse-sequence editors, run panel, records browser, analysis panel; `control.py` (`Run`,
+  `MethodSpec`). Exit: a fresh browser + the server does the whole loop on the simulator. Web
+  framework and API shape by ADR in the first build session. Estimated six to eight sessions.
 
 ## Decisions pending
 - #10 surrogate DUT design (by Step 5 entry). Advisory treatment of the two wall-clock CI gates. Whether to
