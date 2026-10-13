@@ -14,6 +14,7 @@ from qdt_lab.simulated import (
     SimulatedWaveformSource,
 )
 from qdt_schemas.activity import SequencerParameter, SequencerProgram, SequencerResult
+from qdt_schemas.stand import ChannelMap, InstrumentConfig
 
 LEVEL_SOURCE_BACKENDS = [pytest.param(SimulatedLevelSource, id="simulated")]
 
@@ -23,19 +24,32 @@ def level_source(request):
     return request.param()
 
 
-def _simulated_loopback():
-    source = SimulatedLevelSource()
-    return source, SimulatedLevelSense(follow=source)
+def _simulated_loopback(sense_channels: tuple[ChannelMap, ...] = ()):
+    source = SimulatedLevelSource.from_config(
+        InstrumentConfig(id="src", backend="simulated", capabilities=("level_source",)), ()
+    )
+    sense = SimulatedLevelSense.from_config(
+        InstrumentConfig(id="sense", backend="simulated", capabilities=("level_sense",)),
+        sense_channels,
+        follow=source,
+    )
+    return source, sense
 
 
 # A (LevelSource, LevelSense) pair wired so the sense terminal reads what the source applies: the bench
-# loopback of BENCH.md. Real pairs register here with their loopback tolerance.
+# loopback of BENCH.md. Each entry builds the pair given the sense instrument's ChannelMaps, through the
+# backends' factories (ADR 0021). Real pairs register here with their loopback tolerance.
 LEVEL_LOOPBACK_BACKENDS = [pytest.param(_simulated_loopback, id="simulated")]
 
 
 @pytest.fixture(params=LEVEL_LOOPBACK_BACKENDS)
-def level_loopback(request):
-    return request.param()
+def level_loopback_factory(request):
+    return request.param
+
+
+@pytest.fixture
+def level_loopback(level_loopback_factory):
+    return level_loopback_factory()
 
 
 WAVEFORM_SOURCE_BACKENDS = [pytest.param(SimulatedWaveformSource, id="simulated")]

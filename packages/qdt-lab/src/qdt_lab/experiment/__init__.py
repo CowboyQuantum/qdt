@@ -8,13 +8,14 @@ returns a stream `Source`.
 
 from .compile import compile_sweep
 from .emit import DEFAULT_SCALES, Emitter, SimulatedEmitter, scale_for
-from .execute import Executor
+from .execute import Executor, build_backends
 
 __all__ = [
     "DEFAULT_SCALES",
     "Emitter",
     "Executor",
     "SimulatedEmitter",
+    "build_backends",
     "compile_sweep",
     "scale_for",
 ]

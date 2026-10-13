@@ -22,8 +22,9 @@ from qdt_schemas.data import (
     IndexSlice,
     LinearCoordinate,
 )
+from qdt_schemas.stand import StandConfig
 
-from ..protocols import LevelSense, LevelSource, Sequencer
+from ..protocols import BackendFactory, LevelSense, LevelSource, Sequencer
 from ..stream.frame import Frame
 from .compile import REPEAT_DIM, SHOT_DIM
 
@@ -50,6 +51,22 @@ def resolve_parameters(
             out[b.parameter] = round(axis.step / scale)
         else:  # axis_value
             out[b.parameter] = round(current[b.axis] / scale)
+    return out
+
+
+def build_backends(
+    stand: StandConfig, factories: Mapping[str, BackendFactory]
+) -> dict[str, object]:
+    """Instrument id → backend, each built by the factory for its `backend` key from its config and
+    its channels (ADR 0021). Raises ValueError when no factory serves an instrument's backend."""
+    out: dict[str, object] = {}
+    for instrument in stand.instruments:
+        factory = factories.get(instrument.backend)
+        if factory is None:
+            raise ValueError(
+                f"no backend factory for {instrument.backend!r} (instrument {instrument.id!r})"
+            )
+        out[instrument.id] = factory(instrument, stand.instrument_channels(instrument.id))
     return out
 
 

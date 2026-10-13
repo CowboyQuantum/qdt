@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from qdt_lab.experiment import Executor, SimulatedEmitter, compile_sweep
+from qdt_lab.experiment import Executor, SimulatedEmitter, build_backends, compile_sweep
 from qdt_lab.experiment.execute import expected_points
 from qdt_lab.simulated import SimulatedLevelSense, SimulatedLevelSource, SimulatedSequencer
 from qdt_lab.stream import Source, assemble
@@ -313,3 +313,29 @@ def test_executor_rejects_backend_without_the_protocol():
     b["meter"] = object()
     with pytest.raises(TypeError, match="LevelSense"):
         Executor(plan, b)
+
+
+def test_build_backends_hands_each_factory_its_instrument_and_channels():
+    stand = StandConfig(
+        stand_id="s",
+        instruments=(
+            InstrumentConfig(id="dac", backend="simulated", capabilities=("level_source",)),
+            InstrumentConfig(id="dmm", backend="simulated", capabilities=("level_sense",)),
+        ),
+        channels=(
+            ChannelMap(logical="g", instrument="dac", channel="ch00", quantity="voltage"),
+            ChannelMap(
+                logical="i", instrument="dmm", channel="ch00", quantity="current", integration_s=0.1
+            ),
+        ),
+    )
+    seen = {}
+
+    def factory(instrument, channels):
+        seen[instrument.id] = channels
+        return instrument.id
+
+    assert build_backends(stand, {"simulated": factory}) == {"dac": "dac", "dmm": "dmm"}
+    assert [c.logical for c in seen["dmm"]] == ["i"] and seen["dmm"][0].integration_s == 0.1
+    with pytest.raises(ValueError, match="no backend factory"):
+        build_backends(stand, {})

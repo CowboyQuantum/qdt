@@ -96,3 +96,25 @@ def test_noise_drifts_the_map_between_repeats():
     assert out["I_sensor"].shape == (2, 4, 6)
     a, b = out["I_sensor"].values
     assert not np.allclose(a, b, rtol=1e-3, atol=0)
+
+
+def test_from_config_takes_the_sensor_aperture_from_the_channel_map():
+    stand = default_stand()
+    channels = tuple(
+        c.model_copy(update={"integration_s": 5e-3}) if c.channel == "sensor" else c
+        for c in stand.instrument_channels(DEVICE_ID)
+    )
+    d = SimulatedDevice.from_config(stand.instrument(DEVICE_ID), channels, noise=DeviceNoise())
+    t0 = d.clock_s
+    d.sense("sensor")
+    assert d.clock_s - t0 == pytest.approx(5e-3 + d.shot_overhead_s, rel=1e-12)
+
+
+def test_from_config_rejects_a_quantity_that_contradicts_the_role():
+    stand = default_stand()
+    channels = tuple(
+        c.model_copy(update={"quantity": "voltage"}) if c.channel == "sensor" else c
+        for c in stand.instrument_channels(DEVICE_ID)
+    )
+    with pytest.raises(ValueError, match="sensor"):
+        SimulatedDevice.from_config(stand.instrument(DEVICE_ID), channels)

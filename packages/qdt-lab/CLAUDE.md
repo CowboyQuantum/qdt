@@ -16,6 +16,8 @@ qdt_lab/
 ## Adding a driver (`/add-driver`)
 - It implements every existing protocol its instrument honours (an SMU is `LevelSource` + `LevelSense`). A new protocol is an ADR-level decision; names follow the `<Level|Waveform><Source|Sense>` grid plus `Sequencer` (ADR 0016).
 - The physical quantity (voltage, current), settle time and integration time are declared on the channel in `ChannelMap`, never in a method name. `LevelSource.get` is the setpoint; `LevelSense.sense` is the measurement.
+- Construction is the `BackendFactory` convention (ADR 0021): `factory(instrument: InstrumentConfig, channels: tuple[ChannelMap, ...])`, usually a `from_config` classmethod. The driver keeps each channel's quantity and integration time from there and honours them on every call; it raises ValueError for a channel or quantity it cannot serve. `build_backends(stand, {backend: factory})` wires a stand.
+- The five protocols are frozen (ADR 0021). A signature change is a superseding ADR, not an edit.
 - Anything that produces arrays (`WaveformSense.arm`, `Sequencer.run`) is handed the `Dataset` to fill and returns a stream `Source` for it (ADR 0017). The backend puts data on the declared grid; the consumer never aligns.
 - Vendor SDK goes in `pyproject.toml` under `[project.optional-dependencies]` as an extra — never core. Check its pins against `qdt-schemas` first; report conflicts rather than downgrading schemas (ADR 0006).
 - Do not write new tests. Register the backend in `tests/conftest.py` parametrization. The suite must pass unchanged on `Simulated*` and, under `-m hardware`, on the real instrument.

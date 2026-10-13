@@ -1,4 +1,4 @@
-"""Step 2 schema slice: the per-shot pulse sequence (ADR 0018). Frozen only after Step 2's test ladder passes.
+"""Step 2 schema slice: the per-shot pulse sequence (ADR 0018). Frozen by ADR 0022.
 
 A `PulseSequence` says what happens on logical channels during one shot, in backend-neutral terms:
 hold a level, ramp, wait, drive at a frequency, measure. Timing is integer nanoseconds; any level,
@@ -27,7 +27,8 @@ class Symbol(QdtModel):
     )
 
 
-Quantity = float | Symbol
+Value = float | Symbol
+"""A number or a Symbol the sweep binds. (Not `stand.Quantity`, which names a physical quantity.)"""
 Duration = int | Symbol
 
 
@@ -36,7 +37,7 @@ class Step(QdtModel):
 
     op: Literal["step"] = Field(default="step", description="Discriminator.")
     channel: str = Field(min_length=1, description="Logical channel (ChannelMap.logical).")
-    level: Quantity = Field(description="Level in the channel's quantity unit, or a Symbol.")
+    level: Value = Field(description="Level in the channel's quantity unit, or a Symbol.")
     duration: Duration = Field(description="Duration in integer nanoseconds, or a Symbol in 'ns'.")
 
 
@@ -45,10 +46,10 @@ class Ramp(QdtModel):
 
     op: Literal["ramp"] = Field(default="ramp", description="Discriminator.")
     channel: str = Field(min_length=1, description="Logical channel (ChannelMap.logical).")
-    start: Quantity = Field(
+    start: Value = Field(
         description="Level at the start, in the channel's quantity unit, or a Symbol."
     )
-    stop: Quantity = Field(
+    stop: Value = Field(
         description="Level at the end, in the channel's quantity unit, or a Symbol."
     )
     duration: Duration = Field(description="Duration in integer nanoseconds, or a Symbol in 'ns'.")
@@ -66,11 +67,9 @@ class Drive(QdtModel):
 
     op: Literal["drive"] = Field(default="drive", description="Discriminator.")
     channel: str = Field(min_length=1, description="Logical channel (ChannelMap.logical).")
-    frequency: Quantity = Field(description="Tone frequency in Hz, or a Symbol.")
-    phase: Quantity = Field(default=0.0, description="Phase in radians, or a Symbol.")
-    amplitude: Quantity = Field(
-        description="Amplitude in the channel's quantity unit, or a Symbol."
-    )
+    frequency: Value = Field(description="Tone frequency in Hz, or a Symbol.")
+    phase: Value = Field(default=0.0, description="Phase in radians, or a Symbol.")
+    amplitude: Value = Field(description="Amplitude in the channel's quantity unit, or a Symbol.")
     duration: Duration = Field(description="Duration in integer nanoseconds, or a Symbol in 'ns'.")
 
 
