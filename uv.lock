@@ -1171,12 +1171,19 @@ dependencies = [
     { name = "sqlalchemy" },
 ]
 
+[package.optional-dependencies]
+serve = [
+    { name = "qdt-lab" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "qdt-lab", marker = "extra == 'serve'", editable = "packages/qdt-lab" },
     { name = "qdt-schemas", extras = ["hdf5"], editable = "packages/qdt-schemas" },
     { name = "sqlalchemy", specifier = ">=2,<3" },
 ]
+provides-extras = ["serve"]
 
 [[package]]
 name = "qdt-schemas"

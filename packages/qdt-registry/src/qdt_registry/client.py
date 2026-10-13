@@ -68,7 +68,9 @@ def _insert_absent(conn: Connection, table: Table, row: dict[str, Any]) -> bool:
         from sqlalchemy.dialects.postgresql import insert
     else:
         from sqlalchemy.dialects.sqlite import insert
-    return conn.execute(insert(table).values(row).on_conflict_do_nothing()).rowcount == 1
+    # RETURNING, not rowcount: psycopg's rowcount for INSERT .. ON CONFLICT is not reliable
+    stmt = insert(table).values(row).on_conflict_do_nothing().returning(*table.primary_key.columns)
+    return conn.execute(stmt).first() is not None
 
 
 def _prepare(engine: Engine) -> None:

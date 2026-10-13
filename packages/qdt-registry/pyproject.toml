@@ -9,6 +9,9 @@ dependencies = [
     "sqlalchemy>=2,<3",
 ]
 
+[project.optional-dependencies]
+serve = ["qdt-lab"]  # `python -m qdt_registry serve`: replay a record through the stream server
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

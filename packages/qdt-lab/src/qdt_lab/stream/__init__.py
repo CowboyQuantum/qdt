@@ -8,6 +8,7 @@ binary Arrow IPC message with the envelope in its schema metadata.
 from .assemble import assemble
 from .client import Received, collect, subscribe
 from .frame import Frame
+from .payload import PayloadSource
 from .replay import ReplaySource, read_recording, write_recording
 from .server import StreamServer
 from .source import Source
@@ -16,6 +17,7 @@ from .wire import decode_chunk, decode_text, encode_chunk, encode_text
 
 __all__ = [
     "Frame",
+    "PayloadSource",
     "Received",
     "ReplaySource",
     "Source",
