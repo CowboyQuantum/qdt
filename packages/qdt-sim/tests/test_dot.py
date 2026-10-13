@@ -44,12 +44,19 @@ def test_sensor_is_periodic_and_peaked():
     m = DoubleDotModel()
     phi = np.linspace(-0.6, 0.6, 12001)
     i = m.sensor_current(phi)
-    assert i.max() == pytest.approx(m.sensor_peak_a + m.sensor_background_a, rel=1e-6)
-    valley = (
+    # at the default (small) bias the peaks are the linear-response sech² train within a few percent
+    assert i.max() == pytest.approx(m.sensor_peak_a + m.sensor_background_a, rel=0.03)
+    valley = (  # halfway between two peaks both tails contribute
         m.sensor_background_a
-        + m.sensor_peak_a / np.cosh(m.sensor_period_v / 2 / m.sensor_width_v) ** 2
+        + 2 * m.sensor_peak_a / np.cosh(m.sensor_period_v / 2 / m.sensor_width_v) ** 2
     )
-    assert i.min() == pytest.approx(valley, rel=1e-3)
+    assert i.min() == pytest.approx(valley, rel=0.05)
+    # in the linear-response limit the train is exactly the ADR 0020 sech² train (summed over peaks)
+    tiny = (m.sensor_current(phi, v_sd=1e-9) - m.sensor_background_a) * m.sensor_bias_v / 1e-9
+    k = np.arange(-3, 4)
+    d = phi[:, None] - m.sensor_phase_v - k * m.sensor_period_v
+    sech = (m.sensor_peak_a / np.cosh(d / m.sensor_width_v) ** 2).sum(axis=1)
+    np.testing.assert_allclose(tiny, sech, rtol=1e-4)
     peaks = np.flatnonzero((i[1:-1] > i[:-2]) & (i[1:-1] > i[2:])) + 1
     spacing = np.diff(phi[peaks])
     np.testing.assert_allclose(spacing, m.sensor_period_v, rtol=1e-2)
@@ -103,3 +110,25 @@ def test_transition_map_marks_lines_where_the_ground_state_changes():
     diff = (np.diff(n, axis=0) != 0).any(-1)[:, :-1] | (np.diff(n, axis=1) != 0).any(-1)[:-1, :]
     np.testing.assert_array_equal(t[:-1, :-1] != 0, diff)
     assert (t == 1).sum() > 50 and (t == 2).sum() > 50  # both families cross the window
+
+
+def test_sensor_bias_opens_coulomb_diamonds():
+    """Blockade inside the diamond, saturation outside; the apex sits at V_sd = E_c / e, the edges at
+    `diamond_edges`, and the current reverses with the bias."""
+    m = DoubleDotModel()
+    phi = m.sensor_phase_v + m.sensor_period_v / 2  # halfway between two degeneracy points
+    e_c = m.sensor_charging_ev
+    # the sensor is warm (kT_s ≈ 0.08 E_c, from sensor_width_v), so blockade is soft near the apex
+    assert m.sensor_current(phi, 0.2 * e_c) < m.sensor_background_a + 0.1 * m.sensor_peak_a
+    assert m.sensor_current(phi, 1.3 * e_c) > m.sensor_background_a + m.sensor_peak_a
+    assert m.sensor_current(phi, -1.3 * e_c) < m.sensor_background_a - m.sensor_peak_a
+    (phi_0, s_up), (_, s_down) = m.diamond_edges(0)
+    assert phi_0 == m.sensor_phase_v and s_down == -s_up
+    v_apex = (m.sensor_period_v / 2) * s_up  # where the rising edge of k meets the falling edge of k+1
+    assert v_apex == pytest.approx(e_c, rel=1e-12)
+    # on an edge the current is half-way between blockade and saturation
+    for d in (-0.08, 0.05):
+        v = s_up * d
+        i_on, i_off = m.sensor_current(phi_0 + d, v * 1.3), m.sensor_current(phi_0 + d, v * 0.7)
+        i_edge = m.sensor_current(phi_0 + d, v)
+        assert min(i_on, i_off) < i_edge < max(i_on, i_off)

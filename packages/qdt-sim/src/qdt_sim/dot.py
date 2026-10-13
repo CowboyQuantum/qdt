@@ -11,9 +11,18 @@ window of integer states around `n_g`. A charge sensor (SET-like) sees a potenti
 
     φ_s = α · V + β · ⟨N⟩ + δφ                                [V-equivalent]
 
-and conducts a periodic train of thermally broadened Coulomb peaks in φ_s, so every dot transition shows
-as a step in sensor current and the sensor's own peaks show as background stripes. Everything is a pure
-function of (V, T, noise offsets): `SimulatedDevice` adds the time axis and the noise.
+and is itself a single-electron transistor (SET) with charging energy `E_c = sensor_charging_ev` and
+lever arm `α_s = E_c / sensor_period_v` (eV per V of φ_s), biased by a source–drain voltage `V_sd`
+(ADR 0031). Its levels are `μ_k = E_c·k − α_s·(φ_s − sensor_phase_v)`; sequential tunnelling at the
+sensor's thermal energy `kT_s = α_s·sensor_width_v / 2` gives
+
+    I = I_bg + I_0 · Σ_k [ f((μ_k − eV_sd/2)/kT_s) − f((μ_k + eV_sd/2)/kT_s) ],   f(x) = 1/(1+eˣ),
+
+a periodic train of thermally broadened Coulomb peaks at small bias (every dot transition shows as a
+step in sensor current; the sensor's own peaks show as background stripes) and Coulomb diamonds of
+height `E_c/e` against `V_sd`. `I_0 = 4 kT_s · sensor_peak_a / (e · sensor_bias_v)` makes
+`sensor_peak_a` the linear-response peak current at the default bias `sensor_bias_v`. Everything is a
+pure function of (V, V_sd, T, noise offsets): `SimulatedDevice` adds the time axis and the noise.
 """
 
 import itertools
@@ -55,8 +64,13 @@ class DoubleDotModel:
     sensor_phase_v: float = -0.06
     """φ_s of one sensor peak (V); the rest follow at `sensor_period_v`. The default puts the empty
     dot at 1.5 widths above a peak, so ~20 added electrons walk the sensor up the flank monotonically."""
+    sensor_charging_ev: float = 1.0e-3
+    """Charging energy of the sensor SET (eV): e times the bias at a Coulomb diamond's apex (ADR 0031)."""
+    sensor_bias_v: float = 50e-6
+    """Source–drain bias the sensor is read at unless a `bias` channel sets it (V). `sensor_peak_a` is
+    the linear-response peak current at this bias; the diamonds' saturation current follows from it."""
     temperature_k: float = 0.15
-    """Electron temperature (K)."""
+    """Electron temperature of the dots (K). The sensor's own thermal width is `sensor_width_v`."""
     window: int = 2
     """Integer occupations considered: round(n_g) ± window per dot."""
 
@@ -134,12 +148,44 @@ class DoubleDotModel:
         """φ_s for gate voltages `v` (..., gates) and occupation `n` (..., 2)."""
         return np.asarray(v) @ self.sensor_alpha + np.asarray(n) @ self.sensor_beta + delta_phi
 
-    def sensor_current(self, phi: np.ndarray) -> np.ndarray:
-        """Periodic thermally broadened Coulomb peaks: I(φ_s) in A."""
-        p = self.sensor_period_v
-        d = np.mod(np.asarray(phi) - self.sensor_phase_v + p / 2, p) - p / 2
-        return self.sensor_background_a + self.sensor_peak_a / np.cosh(d / self.sensor_width_v) ** 2
+    @property
+    def sensor_lever_arm(self) -> float:
+        """α_s: sensor level shift per volt of φ_s (eV/V); one period in φ_s adds one electron."""
+        return self.sensor_charging_ev / self.sensor_period_v
 
-    def current(self, v: np.ndarray, delta_phi: float = 0.0) -> np.ndarray:
+    @property
+    def sensor_kt_ev(self) -> float:
+        """Thermal energy of the sensor SET (eV), set so its zero-bias peaks have width `sensor_width_v`."""
+        return self.sensor_lever_arm * self.sensor_width_v / 2
+
+    def sensor_levels(self, phi: np.ndarray) -> np.ndarray:
+        """μ_k (..., 5) in eV: the five sensor levels nearest the bias window at potential `phi`."""
+        x = (np.asarray(phi, dtype=float) - self.sensor_phase_v) / self.sensor_period_v
+        k = np.rint(x)[..., None] + np.arange(-2, 3)
+        return self.sensor_charging_ev * (k - x[..., None])
+
+    def sensor_current(self, phi: np.ndarray, v_sd: float | np.ndarray | None = None) -> np.ndarray:
+        """Sensor current (A) at potential `phi` and source–drain bias `v_sd` (V; default
+        `sensor_bias_v`): thermally broadened Coulomb peaks at small bias, diamonds at finite bias."""
+        v_sd = self.sensor_bias_v if v_sd is None else np.asarray(v_sd, dtype=float)
+        kt = self.sensor_kt_ev
+        mu = self.sensor_levels(phi)
+        half = np.asarray(v_sd)[..., None] / 2  # eV numerically, for V_sd in V
+        with np.errstate(over="ignore"):
+            window = 1 / (1 + np.exp((mu - half) / kt)) - 1 / (1 + np.exp((mu + half) / kt))
+        i_0 = 4 * kt * self.sensor_peak_a / self.sensor_bias_v
+        return self.sensor_background_a + i_0 * window.sum(axis=-1)
+
+    def diamond_edges(self, k: int) -> tuple[tuple[float, float], tuple[float, float]]:
+        """The two Coulomb-diamond edge lines through the k-th zero-bias degeneracy point, as
+        (φ_s intercept at V_sd = 0, slope dV_sd/dφ_s): the edge rising with φ_s and the falling one.
+        An edge is where level k crosses a lead: μ_k = ±eV_sd/2 → V_sd = ±2 α_s (φ_s − φ_k)."""
+        phi_k = self.sensor_phase_v + k * self.sensor_period_v
+        s = 2 * self.sensor_lever_arm
+        return (phi_k, s), (phi_k, -s)
+
+    def current(
+        self, v: np.ndarray, delta_phi: float = 0.0, v_sd: float | np.ndarray | None = None
+    ) -> np.ndarray:
         """Sensor current (A) at gate voltages `v` (..., gates) with thermal-average occupation."""
-        return self.sensor_current(self.sensor_potential(v, self.mean_occupation(v), delta_phi))
+        return self.sensor_current(self.sensor_potential(v, self.mean_occupation(v), delta_phi), v_sd)

@@ -5,13 +5,22 @@ The committed fixture `tests/fixtures/stability_24x32.npy` is `stability_fixture
 
 A `ScenarioRef` (ADR 0029) names one of `SCENARIOS` plus a seed and scalar parameters; `resolve` turns
 it back into the sweep, the stand and the device, so the truth behind a recorded simulation (the model's
-`transition_map`) can be regenerated from the ref alone.
+`transition_map`, `diamond_edges`) can be regenerated from the ref alone. Parameters are routed by name:
+`DEVICE_PARAMETERS` to the device, `MODEL_PARAMETERS` to the model, `<axis>_start`/`_stop` pairs as
+ranges, the rest to the sweep function.
 """
 
+import dataclasses
 from collections.abc import Callable
 from typing import NamedTuple
 
-from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, SymbolBinding
+from qdt_schemas.activity import (
+    SensedLevel,
+    SequencerStage,
+    SweepAxis,
+    SweepDefinition,
+    SymbolBinding,
+)
 from qdt_schemas.modeling import ScenarioRef
 from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
@@ -37,14 +46,18 @@ def default_noise(seed: int = 0) -> DeviceNoise:
 
 
 def default_device(
-    seed: int = 0, noise: bool = True, stand: StandConfig | None = None, **kwargs
+    seed: int = 0,
+    noise: bool = True,
+    stand: StandConfig | None = None,
+    model: DoubleDotModel | None = None,
+    **kwargs,
 ) -> SimulatedDevice:
     """The default device, built from `stand` (default `default_stand()`) by its factory (ADR 0021)."""
     stand = stand or default_stand()
     return SimulatedDevice.from_config(
         stand.instrument(DEVICE_ID),
         stand.instrument_channels(DEVICE_ID),
-        default_model(),
+        model or default_model(),
         noise=default_noise(seed) if noise else DeviceNoise(),
         seed=seed,
         **kwargs,
@@ -52,7 +65,8 @@ def default_device(
 
 
 def default_stand() -> StandConfig:
-    """One instrument, three roles: DC plungers and sensor gate, pulse lines on the plungers, sensor."""
+    """One instrument, four roles: DC plungers and sensor gate, pulse lines on the plungers, the
+    sensor's source–drain bias (DC and pulse, ADR 0031), and the sensor."""
     return StandConfig(
         stand_id="simulated-double-dot",
         instruments=(
@@ -71,6 +85,10 @@ def default_stand() -> StandConfig:
             ),
             ChannelMap(
                 logical="P2_pulse", instrument=DEVICE_ID, channel="P2_pulse", quantity="voltage"
+            ),
+            ChannelMap(logical="bias", instrument=DEVICE_ID, channel="bias", quantity="voltage"),
+            ChannelMap(
+                logical="bias_pulse", instrument=DEVICE_ID, channel="bias_pulse", quantity="voltage"
             ),
             ChannelMap(
                 logical="sensor", instrument=DEVICE_ID, channel="sensor", quantity="current"
@@ -120,6 +138,28 @@ def stability(
     )
 
 
+def diamonds(
+    n_outer: int = 64,
+    n_inner: int = 64,
+    *,
+    sg: tuple[float, float] = (-0.2, 0.2),
+    bias: tuple[float, float] = (-1.5e-3, 1.5e-3),
+    repeats: int | None = 1,
+    name: str = "simulated Coulomb diamonds",
+) -> SweepDefinition:
+    """The sensor's Coulomb diamonds (ADR 0031): sensor gate stepped by its DC line, source–drain bias
+    stepped by the `bias` DC line, sensor current sensed at every point. Plungers stay at their DC levels."""
+    return SweepDefinition(
+        name=name,
+        axes=(
+            SweepAxis(name="SG", channel="SG", start=sg[0], stop=sg[1], num=n_outer),
+            SweepAxis(name="V_sd", channel="bias", start=bias[0], stop=bias[1], num=n_inner),
+        ),
+        sensed=(SensedLevel(name="I_sensor", channel="sensor"),),
+        repeats=repeats,
+    )
+
+
 def stability_fixture() -> SweepDefinition:
     """The committed-fixture sweep: small, noisy, 3 shots averaged on the device."""
     return stability(24, 32, shots=3, reduce="mean", name="fixture stability 24x32")
@@ -128,11 +168,18 @@ def stability_fixture() -> SweepDefinition:
 SCENARIOS: dict[str, Callable[..., SweepDefinition]] = {
     "stability": stability,
     "stability_fixture": stability_fixture,
+    "diamonds": diamonds,
 }
 """Sweeps a `ScenarioRef.name` may name. Tuple arguments are passed as `<name>_start` / `<name>_stop`."""
 
 DEVICE_PARAMETERS = {"noise", "sample_charge"}
 """`ScenarioRef.parameters` keys that configure the device rather than the sweep."""
+
+MODEL_PARAMETERS = {
+    f.name for f in dataclasses.fields(DoubleDotModel) if f.type in ("float", "int", float, int)
+}
+"""`ScenarioRef.parameters` keys that override a scalar of the default `DoubleDotModel`
+(e.g. `sensor_width_v` for a colder sensor, `sensor_charging_ev`)."""
 
 
 class Scenario(NamedTuple):
@@ -151,6 +198,7 @@ def resolve(ref: ScenarioRef) -> Scenario:
         raise ValueError(f"unknown scenario {ref.name!r}; have {sorted(SCENARIOS)}")
     params = dict(ref.parameters)
     device_kwargs = {k: params.pop(k) for k in list(params) if k in DEVICE_PARAMETERS}
+    model_kwargs = {k: params.pop(k) for k in list(params) if k in MODEL_PARAMETERS}
     ranges: dict[str, dict[str, float]] = {}
     for key in list(params):
         if key.endswith(("_start", "_stop")):
@@ -162,4 +210,6 @@ def resolve(ref: ScenarioRef) -> Scenario:
         params[axis] = (ends["start"], ends["stop"])
     stand = default_stand()
     definition = SCENARIOS[ref.name](**params)
-    return Scenario(definition, stand, default_device(seed=ref.seed, stand=stand, **device_kwargs))
+    model = dataclasses.replace(default_model(), **model_kwargs)
+    device = default_device(seed=ref.seed, stand=stand, model=model, **device_kwargs)
+    return Scenario(definition, stand, device)
