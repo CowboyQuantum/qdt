@@ -132,9 +132,8 @@ def test_analysis_results_are_stored_queried_and_synced(tmp_path, server, device
     reg.register_device(device)
     record, path, _, _ = recorded_run(tmp_path, n=(32, 32))
     reg.ingest(record, path)
-    result = detect_transitions(record, reg.payload(record.record_id))
-    reg.add_result(result)
-    reg.add_result(result)  # idempotent
+    result = reg.add_result(*detect_transitions(record, reg.payload(record.record_id)))
+    assert reg.add_result(result) == result  # idempotent, output already in the store
 
     assert reg.results(record_id=record.record_id) == [result]
     assert reg.results(method_name=NAME) == [result]
@@ -149,9 +148,9 @@ def test_a_result_needs_its_record(tmp_path, device, recorded_run):
 
     reg = Registry(tmp_path / "client")
     record, path, _, _ = recorded_run(tmp_path, n=(32, 32))
-    result = detect_transitions(record, read_payload(path))
+    result, output = detect_transitions(record, read_payload(path))
     with pytest.raises(ValueError, match="not in this registry"):
-        reg.add_result(result)
+        reg.add_result(result, output)
 
 
 def test_a_version_1_server_is_upgraded_by_adding_tables_only(tmp_path):

@@ -4,6 +4,8 @@
     reg.register_device(device)
     reg.ingest(record, "run.h5")                      # validates payload ↔ envelope, copies it into the store
     reg.find(device_id="dev", definition_sha256=h)    # the Step 3 exit query, offline
+    reg.add_result(result, output)                    # an AnalysisResult (+ its output payload, ADR 0031)
+    reg.results(record_id=...); reg.output(result_id) # ... and back
     reg.sync()                                        # needs remote_dsn + remote_store (or the env vars)
 
 Every write is insert-if-absent keyed by a client-minted id or a content hash, so a sync can be retried
@@ -22,11 +24,11 @@ from sqlalchemy import Engine, Table, and_, create_engine, event, select
 from sqlalchemy.engine import Connection
 
 from qdt_schemas import QdtModel
-from qdt_schemas.envelope import MeasurementRecord
+from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import load
 from qdt_schemas.modeling import AnalysisResult
-from qdt_schemas.payload_hdf5 import Payload, read_payload
+from qdt_schemas.payload_hdf5 import PAYLOAD_TYPE, Payload, read_payload, write_payload
 
 from .tables import (
     ADDITIVE_UPGRADES,
@@ -195,9 +197,12 @@ class Registry:
             if _insert_absent(conn, records, row):
                 self._mark(conn, "records", record.record_id, False)
 
-    def add_result(self, result: AnalysisResult) -> None:
-        """Store an analysis of a record already in this cache (append-only, idempotent)."""
-        with self._cache.begin() as conn:
+    def add_result(self, result: AnalysisResult, output: Payload | None = None) -> AnalysisResult:
+        """Store an analysis of a record already in this cache (append-only, idempotent) and, when the
+        method produced arrays, its `output` payload (ADR 0031): written once to the store as
+        `analysis/<YYYY>/<MM>/<result_id>.h5`; `result.output` is filled from it. Returns the stored
+        result. A result that already names an output must find that file in the store."""
+        with self._cache.connect() as conn:
             if (
                 conn.execute(
                     select(records.c.record_id).where(records.c.record_id == result.record_id)
@@ -205,6 +210,34 @@ class Registry:
                 is None
             ):
                 raise ValueError(f"record {result.record_id!r} is not in this registry")
+        if output is not None:
+            if result.output is not None:
+                raise ValueError("result already names an output payload; pass one or the other")
+            if output.dataset.source.kind != "analysis":
+                raise ValueError("an analysis output Dataset has source.kind 'analysis'")
+            relative = f"analysis/{result.created_at:%Y/%m}/{result.result_id}.h5"
+            target = self.store / relative
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                tmp = target.with_suffix(".tmp")
+                tmp.unlink(missing_ok=True)
+                write_payload(tmp, output.dataset, output.arrays, annotations=output.annotations)
+                tmp.replace(target)
+            result = result.model_copy(
+                update={
+                    "output": PayloadRef(
+                        type=PAYLOAD_TYPE,
+                        path=relative,
+                        sha256=file_sha256(target),
+                        size_bytes=target.stat().st_size,
+                    )
+                }
+            )
+        elif result.output is not None:
+            target = self.store / result.output.path
+            if not target.exists() or file_sha256(target) != result.output.sha256:
+                raise ValueError(f"output payload {result.output.path!r} is not in this client's store")
+        with self._cache.begin() as conn:
             row = {
                 "result_id": result.result_id,
                 "record_id": result.record_id,
@@ -217,6 +250,7 @@ class Registry:
             }
             if _insert_absent(conn, analysis_results, row):
                 self._mark(conn, "analysis_results", result.result_id, False)
+        return result
 
     # --- reads (cache or server) -----------------------------------------------------------------
 
@@ -297,6 +331,22 @@ class Registry:
         with self._engine(remote).connect() as conn:
             return [load("AnalysisResult", b) for b in conn.execute(q).scalars()]
 
+    def result(self, result_id: str, *, remote: bool = False) -> AnalysisResult:
+        with self._engine(remote).connect() as conn:
+            body = conn.execute(
+                select(analysis_results.c.body).where(analysis_results.c.result_id == result_id)
+            ).scalar_one_or_none()
+        if body is None:
+            raise KeyError(f"no analysis result {result_id!r}")
+        return load("AnalysisResult", body)
+
+    def output(self, result_id: str) -> Payload:
+        """The output payload of a result in this client's store (ADR 0031); KeyError without one."""
+        ref = self.result(result_id).output
+        if ref is None:
+            raise KeyError(f"result {result_id!r} has no output payload")
+        return read_payload(self.store / ref.path)
+
     def unsynced(self) -> dict[str, int]:
         with self._cache.connect() as conn:
             rows = conn.execute(select(sync_state.c.table_name).where(~sync_state.c.synced))
@@ -309,7 +359,7 @@ class Registry:
 
     def sync(self) -> SyncReport:
         """Upload everything not yet confirmed: devices, objects, each record after its payload, then
-        analysis results.
+        analysis results, each after its output payload if it has one.
         Safe to repeat and to interrupt; raises RuntimeError without a server configured."""
         if not self.remote_dsn or self.remote_store is None:
             raise RuntimeError(f"sync needs a server: set {DSN_ENV} and {STORE_ENV}")
@@ -323,10 +373,15 @@ class Registry:
             ("analysis_results", analysis_results, "result_id"),
         ):
             for row in self._pending(name, table, key):
+                payload = None
                 if name == "records":
-                    source = self.store / row["payload_path"]
-                    target = self.remote_store / row["payload_path"]
-                    if _place(source, target, row["payload_sha256"]):
+                    payload = (row["payload_path"], row["payload_sha256"])
+                elif name == "analysis_results" and row["body"].get("output"):
+                    payload = (row["body"]["output"]["path"], row["body"]["output"]["sha256"])
+                if payload is not None:
+                    source = self.store / payload[0]
+                    target = self.remote_store / payload[0]
+                    if _place(source, target, payload[1]):
                         sent_bytes += source.stat().st_size
                 with remote.begin() as conn:
                     counts[name] += _insert_absent(conn, table, row)
