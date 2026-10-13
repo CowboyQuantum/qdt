@@ -8,7 +8,7 @@ UI code may be written once `docs/FINISH_LINE.md` is authored (done) and the `Da
 - a contract change regenerates `src/schema/` and must keep every Flight Deck test green in the same commit.
 
 ## Rules
-- Rule 8: never import an instrument driver; never branch on which instrument produced a `Dataset`. `scripts/check_imports.py` greps for violations.
+- Rule 8: never import an instrument driver; never branch on which instrument produced a `Dataset`. `scripts/check_imports.py` greps for violations. The only permitted read of `dataset.source` is `registry_ref`, to label the view (ADR 0027); `test/render.test.ts` enforces it.
 - All data enters through a `Source` implementation (`replay`, `websocket`, later `registry`). A new source must pass the source-equivalence test: the same `Dataset` through any source renders identically.
 - Types under `src/schema/` are **generated** from `packages/qdt-schemas/exports/jsonschema/data.schema.json` (`pnpm gen:types`); CI fails on drift. Never edit them by hand.
 - Transforms (derivative, filter, normalize) are client-side on typed arrays; no server round-trip per toggle.

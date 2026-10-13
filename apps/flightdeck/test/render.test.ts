@@ -65,12 +65,22 @@ describe("view selection (by shape only — rule 8)", () => {
 });
 
 describe("rule 8 boundary", () => {
+  // The one permitted read is `dataset.source.registry_ref`, for display only (ADR 0027): a record id,
+  // not a producer. Anything else on `.source` (kind, label, the object itself) stays forbidden.
+  const FORBIDDEN = /dataset\.source\b(?!\.registry_ref\b)|\.source\.(kind|label)/;
+
   it("no Flight Deck source reads a Dataset's producer (`.source`) to make decisions", () => {
     const files = readdirSync(new URL("../src", import.meta.url), { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".ts") && !f.startsWith("schema"));
     for (const f of files) {
       const text = readFileSync(new URL(`../src/${f.replaceAll("\\", "/")}`, import.meta.url), "utf8");
-      expect(text, f).not.toMatch(/dataset\.source\b|\.source\.(kind|label)/);
+      expect(text, f).not.toMatch(FORBIDDEN);
     }
+  });
+
+  it("the guard still catches every read except the registry ref", () => {
+    for (const bad of ["dataset.source.kind", "dataset.source", "const { kind } = dataset.source;", "s.source.label"])
+      expect(bad).toMatch(FORBIDDEN);
+    expect("store.dataset.source.registry_ref").not.toMatch(FORBIDDEN);
   });
 });
