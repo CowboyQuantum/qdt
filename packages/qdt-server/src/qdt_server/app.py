@@ -5,6 +5,7 @@ run or a method parameter out of range, 422 (FastAPI) for a body that is not the
 """
 
 import asyncio
+import dataclasses
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -24,17 +25,27 @@ from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import AnalysisResult
 from qdt_schemas.stand import StandConfig
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_stand
+from qdt_sim.dot import DoubleDotModel
+from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
 
 from . import catalogue
 from .runs import BackendFactory, RunManager
 
+MODEL_OPTIONS = {
+    f.name for f in dataclasses.fields(DoubleDotModel) if f.type in ("float", "int", float, int)
+}
+"""Run options that override a scalar of the default `DoubleDotModel`, e.g. `sensor_width_v` for the
+cold sensor a diamond measurement wants (ADR 0030)."""
+
 
 def simulated_backends(options: dict[str, AttrValue]) -> Mapping[str, Any]:
-    """The Step 4b backend: the default simulated double dot, seeded and noisy by option."""
+    """The Step 4b backend: the default simulated double dot, seeded and noisy by option, with any
+    `MODEL_OPTIONS` applied to its model."""
     seed = int(options.get("seed", 0))
     noise = bool(options.get("noise", True))
-    return {DEVICE_ID: default_device(seed=seed, noise=noise)}
+    overrides = {k: v for k, v in options.items() if k in MODEL_OPTIONS}
+    model = dataclasses.replace(default_model(), **overrides) if overrides else None
+    return {DEVICE_ID: default_device(seed=seed, noise=noise, model=model)}
 
 
 @dataclass
@@ -62,7 +73,10 @@ class RunRequest(BaseModel):
     definition: SweepDefinition = Field(description="The sweep to compile and run on the stand.")
     options: dict[str, AttrValue] = Field(
         default_factory=dict,
-        description="Backend and recording options: seed (int), noise (bool), campaign (str).",
+        description=(
+            "Backend and recording options: seed (int), noise (bool), campaign (str), and any scalar "
+            "field of the simulated model, e.g. sensor_width_v (float) for a colder sensor."
+        ),
     )
 
 
