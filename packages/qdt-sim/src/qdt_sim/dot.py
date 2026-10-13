@@ -101,6 +101,28 @@ class DoubleDotModel:
         states, p = self.occupation_probabilities(v)
         return np.einsum("...k,...ki->...i", p, states)
 
+    def ground_state(self, v: np.ndarray) -> np.ndarray:
+        """Lowest-energy occupation (..., 2) for gate voltages `v`: the T → 0 charge state."""
+        states, u = self.energies(self.induced_charge(v))
+        k = np.argmin(u, axis=-1)
+        return np.take_along_axis(states, k[..., None, None], axis=-2)[..., 0, :]
+
+    def transition_map(self, v: np.ndarray) -> np.ndarray:
+        """The true charge-transition lines on a grid of gate voltages `v` (rows, cols, gates), as an
+        int8 mask: 0 = no transition, 1 = dot 1 changes against a neighbour, 2 = dot 2 changes, 3 = both
+        (an interdot transition or a vertex). A cell is marked when its ground state differs from the
+        next cell along either axis, so a line is one cell wide and sits on its low-index side."""
+        n = self.ground_state(v)
+        out = np.zeros(n.shape[:2], dtype=np.int8)
+        for axis in (0, 1):
+            a = np.diff(n, axis=axis) != 0  # (..., 2) per neighbour pair
+            flag = (a[..., 0].astype(np.int8) * 1) | (a[..., 1].astype(np.int8) * 2)
+            if axis == 0:
+                out[:-1, :] |= flag
+            else:
+                out[:, :-1] |= flag
+        return out
+
     def sample_occupation(self, v: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         """One occupation (2,) drawn from the Boltzmann distribution at gate voltages `v` (1-D)."""
         states, p = self.occupation_probabilities(np.asarray(v, dtype=float))

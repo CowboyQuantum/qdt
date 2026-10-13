@@ -80,3 +80,26 @@ def test_sample_occupation_matches_mean_in_expectation():
 def test_shapes_are_validated():
     with pytest.raises(ValueError):
         DoubleDotModel(c_gate=np.zeros((2, 2)))
+
+
+def test_ground_state_is_the_zero_temperature_limit():
+    m = DoubleDotModel()
+    cold = DoubleDotModel(temperature_k=1e-4)
+    v = np.stack(np.meshgrid(np.linspace(-0.02, 0.06, 9), np.linspace(-0.02, 0.06, 9), indexing="ij"), -1)
+    v = np.concatenate([v, np.zeros(v.shape[:-1] + (1,))], axis=-1)
+    np.testing.assert_array_equal(m.ground_state(v), np.rint(cold.mean_occupation(v)))
+
+
+def test_transition_map_marks_lines_where_the_ground_state_changes():
+    m = DoubleDotModel()
+    p1 = np.linspace(-0.02, 0.06, 64)
+    p2 = np.linspace(-0.02, 0.06, 64)
+    v = np.stack([*np.meshgrid(p1, p2, indexing="ij"), np.zeros((64, 64))], axis=-1)
+    t = m.transition_map(v)
+    n = m.ground_state(v)
+    assert t.shape == (64, 64) and t.dtype == np.int8
+    assert set(np.unique(t)) <= {0, 1, 2, 3}
+    # every marked cell borders a different ground state; every unmarked cell borders none
+    diff = (np.diff(n, axis=0) != 0).any(-1)[:, :-1] | (np.diff(n, axis=1) != 0).any(-1)[:-1, :]
+    np.testing.assert_array_equal(t[:-1, :-1] != 0, diff)
+    assert (t == 1).sum() > 50 and (t == 2).sum() > 50  # both families cross the window

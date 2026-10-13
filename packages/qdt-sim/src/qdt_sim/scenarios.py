@@ -2,9 +2,17 @@
 
 The committed fixture `tests/fixtures/stability_24x32.npy` is `stability_fixture()` run on
 `default_device(seed=7)`; `scripts/make_sim_fixtures.py` regenerates it.
+
+A `ScenarioRef` (ADR 0029) names one of `SCENARIOS` plus a seed and scalar parameters; `resolve` turns
+it back into the sweep, the stand and the device, so the truth behind a recorded simulation (the model's
+`transition_map`) can be regenerated from the ref alone.
 """
 
+from collections.abc import Callable
+from typing import NamedTuple
+
 from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, SymbolBinding
+from qdt_schemas.modeling import ScenarioRef
 from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 
@@ -115,3 +123,43 @@ def stability(
 def stability_fixture() -> SweepDefinition:
     """The committed-fixture sweep: small, noisy, 3 shots averaged on the device."""
     return stability(24, 32, shots=3, reduce="mean", name="fixture stability 24x32")
+
+
+SCENARIOS: dict[str, Callable[..., SweepDefinition]] = {
+    "stability": stability,
+    "stability_fixture": stability_fixture,
+}
+"""Sweeps a `ScenarioRef.name` may name. Tuple arguments are passed as `<name>_start` / `<name>_stop`."""
+
+DEVICE_PARAMETERS = {"noise", "sample_charge"}
+"""`ScenarioRef.parameters` keys that configure the device rather than the sweep."""
+
+
+class Scenario(NamedTuple):
+    """A resolved `ScenarioRef`: what to run, where, and on which (seeded) device."""
+
+    definition: SweepDefinition
+    stand: StandConfig
+    device: SimulatedDevice
+
+
+def resolve(ref: ScenarioRef) -> Scenario:
+    """Rebuild the sweep and the seeded device a `ScenarioRef` of kind 'simulation' describes."""
+    if ref.kind != "simulation":
+        raise ValueError(f"qdt_sim resolves 'simulation' scenarios, not {ref.kind!r}")
+    if ref.name not in SCENARIOS:
+        raise ValueError(f"unknown scenario {ref.name!r}; have {sorted(SCENARIOS)}")
+    params = dict(ref.parameters)
+    device_kwargs = {k: params.pop(k) for k in list(params) if k in DEVICE_PARAMETERS}
+    ranges: dict[str, dict[str, float]] = {}
+    for key in list(params):
+        if key.endswith(("_start", "_stop")):
+            axis, end = key.rsplit("_", 1)
+            ranges.setdefault(axis, {})[end] = float(params.pop(key))
+    for axis, ends in ranges.items():
+        if set(ends) != {"start", "stop"}:
+            raise ValueError(f"scenario parameter {axis!r} needs both _start and _stop")
+        params[axis] = (ends["start"], ends["stop"])
+    stand = default_stand()
+    definition = SCENARIOS[ref.name](**params)
+    return Scenario(definition, stand, default_device(seed=ref.seed, stand=stand, **device_kwargs))
