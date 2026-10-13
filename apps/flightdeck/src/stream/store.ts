@@ -67,6 +67,7 @@ export class DatasetStore {
   private readonly arrays = new Map<string, Backing>();
   private readonly sizes = new Map<string, number>();
   private readonly listeners = new Set<(u: Update) => void>();
+  private readonly annotationListeners = new Set<(a: import("../schema/data").Annotation) => void>();
   lastSeq = -1;
   complete = false;
 
@@ -106,6 +107,18 @@ export class DatasetStore {
   onUpdate(listener: (u: Update) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Add or replace an annotation (re-sending an id replaces it, ADR 0010) and tell the listeners:
+   * overlays may arrive long after the last chunk (an analysis of a finished run, Step 4b). */
+  addAnnotation(annotation: import("../schema/data").Annotation): void {
+    this.annotations.set(annotation.annotation_id, annotation);
+    for (const l of this.annotationListeners) l(annotation);
+  }
+
+  onAnnotation(listener: (a: import("../schema/data").Annotation) => void): () => void {
+    this.annotationListeners.add(listener);
+    return () => this.annotationListeners.delete(listener);
   }
 
   apply(frame: Frame): void {

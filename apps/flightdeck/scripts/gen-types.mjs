@@ -11,13 +11,17 @@ const outPath = fileURLToPath(new URL("src/schema/data.ts", root));
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 // pydantic titles every property; the generator would turn each into a type alias. Keep only the
 // titles of $defs entries (the model names) and the descriptions (they become doc comments).
-const stripTitles = (node, keep) => {
+const stripTitles = (node, keep, propertiesMap = false) => {
   if (Array.isArray(node)) return node.forEach((n) => stripTitles(n, false));
   if (node === null || typeof node !== "object") return;
+  if (propertiesMap) return Object.values(node).forEach((v) => stripTitles(v, false)); // keys are field names
   if (!keep) delete node.title;
   // `{$ref, description}` makes the generator clone the referenced type (Dataset1, ...); keep the bare ref.
   if ("$ref" in node) for (const k of Object.keys(node)) if (k !== "$ref") delete node[k];
-  for (const [k, v] of Object.entries(node)) stripTitles(v, k === "$defs" ? "defs" : keep === "defs");
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "properties") stripTitles(v, false, true);
+    else stripTitles(v, k === "$defs" ? "defs" : keep === "defs");
+  }
 };
 stripTitles(schema, false);
 // Root is a $defs container; expose every definition as a named export.

@@ -58,7 +58,7 @@ export async function consume(
       stores.set(e.dataset.dataset_id, store);
       onStore(store);
     } else if (e.kind === "annotation") {
-      stores.get(e.annotation.dataset_id)!.annotations.set(e.annotation.annotation_id, e.annotation);
+      stores.get(e.annotation.dataset_id)!.addAnnotation(e.annotation);
     } else {
       stores.get(e.frame.chunk.dataset_id)!.apply(e.frame);
     }
