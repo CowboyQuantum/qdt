@@ -3,6 +3,8 @@
 import asyncio
 import time
 
+import pytest
+
 from qdt_lab.stream import collect
 from qdt_schemas.activity import SweepDefinition
 from qdt_schemas.control import Run
@@ -115,16 +117,21 @@ def test_a_failing_run_says_why(client):
     assert client.get("/results/" + "0" * 32).status_code == 404
 
 
-def test_diamonds_run_through_the_api(client):
-    d = diamonds(24, 24, name="api diamonds").model_dump(mode="json")
+def test_diamonds_run_through_the_api_with_a_cold_sensor(client):
+    d = diamonds(64, 64, name="api diamonds").model_dump(mode="json")
+    options = {"noise": False, "sensor_width_v": 0.01, "seed": 2}  # a model field as a run option
     run = Run.model_validate(
-        client.post("/runs", json={"definition": d, "options": {"noise": False}}).json()
+        client.post("/runs", json={"definition": d, "options": options}).json()
     )
     run = wait_for(client, run.run_id)
     assert run.state == "completed", run.error
+    assert run.attrs["sensor_width_v"] == 0.01
     assert SweepDefinition.model_validate(d).sensed[0].name == "I_sensor"
     r = client.post(
         f"/records/{run.record_id}/results",
         json={"method": "qdt_analysis.diamonds.detect_diamonds"},
     )
-    assert r.status_code == 201 and r.json()["status"] in ("ok", "failed")
+    assert r.status_code == 201, r.text
+    result = AnalysisResult.model_validate(r.json())
+    assert result.status == "ok", result.message
+    assert result.estimate("charging_energy").value == pytest.approx(1e-3, rel=0.05)
