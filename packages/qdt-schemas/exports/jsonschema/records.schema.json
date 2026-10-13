@@ -1099,9 +1099,9 @@
       "description": "Where a record's payload is and how to verify it.",
       "properties": {
         "path": {
-          "description": "Path relative to the payload store root, '/'-separated, e.g. '2026/10/<record_id>.h5'. Never absolute: the store root differs per client and server.",
+          "description": "Path relative to the payload store root, '/'-separated, e.g. '2026/10/<record_id>.h5'. Segments use [A-Za-z0-9._-] and never start with '.', so a path cannot be absolute, carry a drive letter, or climb out of the store with '..' (ADR 0028).",
           "minLength": 1,
-          "pattern": "^[^/\\\\][^\\\\]*$",
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$",
           "title": "Path",
           "type": "string"
         },

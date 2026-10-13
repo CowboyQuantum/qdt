@@ -1,4 +1,5 @@
 """Payload spec `qdt-hdf5-v1`: one finished `Dataset` at rest in one HDF5 file (ADR 0001, ADR 0023).
+Frozen by ADR 0028: a layout change is a new payload type, never an edit of v1.
 
 Layout (names are the spec; a change is a new payload type, not an edit):
 

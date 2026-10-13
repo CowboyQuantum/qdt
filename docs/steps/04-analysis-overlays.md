@@ -29,4 +29,4 @@ Fits and feature detection run from registry queries, emit `AnalysisResult` with
 - none
 
 ## Status
-NOT STARTED
+IN PROGRESS (opened 2026-10-13; no code yet)
