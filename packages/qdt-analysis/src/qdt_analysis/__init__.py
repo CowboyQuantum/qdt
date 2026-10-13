@@ -6,6 +6,7 @@ a result against the truth its scenario knows. Nothing here opens a file, a sock
 
 __version__ = "0.1.0"
 
+from .diamonds import Diamonds, Edge, coulomb_diamonds, estimate_diamonds
 from .recovery import Recovery, recovery, score
 from .transitions import (
     DEFAULTS,
@@ -21,12 +22,16 @@ __all__ = [
     "DEFAULTS",
     "MODEL_NAME",
     "Detection",
+    "Diamonds",
+    "Edge",
     "Recovery",
     "Segment",
     "__version__",
     "charge_transitions",
+    "coulomb_diamonds",
     "detect",
     "estimate",
+    "estimate_diamonds",
     "recovery",
     "score",
 ]

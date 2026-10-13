@@ -7,6 +7,7 @@ registry, no sockets, no files. `scripts/check_imports.py` greps for violations.
 ```
 qdt_analysis/
   transitions.py  # charge-transition lines on a 2-D map: detect (ridges → families → runs) / estimate (TLS segments) / charge_transitions (→ AnalysisResult)
+  diamonds.py     # Coulomb diamonds on a (gate, bias) map: edges via transitions.detect/estimate; estimate_diamonds (points, period, apex → E_c, lever arm) / coulomb_diamonds
   recovery.py     # injection–recovery scoring of a result against a truth mask, in pixels
 ```
 
