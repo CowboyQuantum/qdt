@@ -22,6 +22,7 @@ Pure: schema objects and arrays in, `AnalysisResult` out (rule 5).
 
 import math
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import numpy as np
@@ -34,6 +35,82 @@ from qdt_schemas.payload_hdf5 import Payload
 
 NAME = "qdt_analysis.transitions.detect_transitions"
 VERSION = "1"
+
+
+@dataclass(frozen=True)
+class Segments:
+    """The detection stage's output: ridge pixels and the straight segments found on them."""
+
+    magnitude: np.ndarray
+    """Gradient magnitude of the smoothed map (rows, cols)."""
+    edges: np.ndarray
+    """Ridge pixels above threshold (bool, rows × cols)."""
+    threshold: float
+    noise: float
+    """Estimated pixel noise of the map."""
+    families: tuple[tuple[str, float], ...]
+    """(label, normal angle) of the gradient-direction families, strongest first."""
+    segments: tuple[tuple[str, tuple[float, float], tuple[float, float]], ...]
+    """(family, start, stop) per 8-connected run, endpoints in data coordinates (row, col)."""
+
+
+def detect_segments(
+    image: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    smooth_px: float = 1.0,
+    threshold_rel: float = 0.3,
+    threshold_noise: float = 5.0,
+    min_separation_deg: float = 15.0,
+    window_deg: float = 12.0,
+    min_segment_px: int = 6,
+    max_segments: int = 200,
+    family_space: str = "voltage",
+) -> Segments:
+    """Stage 1 on a finite 2-D map with linear row coordinates `x` and column coordinates `y`:
+    smoothed gradient, relative + noise-floor threshold, non-maximum suppression, two gradient-direction
+    families, one straight segment per 8-connected run. Shared by every edge-based method (diamonds reuse
+    it, ADR 0030).
+
+    `family_space` says where gradient directions are compared: `"voltage"` (physical slopes; the
+    honeycomb's steep/shallow lines) or `"pixel"` (the map as drawn; needed when the two axes span very
+    different ranges, as a bias axis of millivolts against a gate axis of hundreds of millivolts, where
+    voltage-space normals of distinct edge families nearly coincide)."""
+    dx = (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else 0.0
+    dy = (y[-1] - y[0]) / (len(y) - 1) if len(y) > 1 else 0.0
+    g_r = gaussian_filter(image, smooth_px, order=(1, 0))
+    g_c = gaussian_filter(image, smooth_px, order=(0, 1))
+    mag = np.hypot(g_r, g_c)
+    diffs = np.concatenate([np.diff(image, axis=0).ravel(), np.diff(image, axis=1).ravel()])
+    sigma = 1.4826 * float(np.median(np.abs(diffs - np.median(diffs)))) / math.sqrt(2)
+    threshold = max(
+        threshold_rel * float(np.percentile(mag, 99.5)),
+        threshold_noise * sigma * _derivative_gain(smooth_px),
+    )
+    edges = (mag > threshold) & _ridge(mag, g_r, g_c)
+    if family_space == "voltage":
+        theta = np.mod(np.arctan2(g_c / dy, g_r / dx), np.pi)  # normal direction in voltage space
+    elif family_space == "pixel":
+        theta = np.mod(np.arctan2(g_c, g_r), np.pi)
+    else:
+        raise ValueError(f"family_space is 'voltage' or 'pixel', not {family_space!r}")
+    families = tuple(_families(theta[edges], mag[edges], min_separation_deg)) if edges.any() else ()
+    segments: list[tuple[str, tuple[float, float], tuple[float, float]]] = []
+    for family, normal in families:
+        mask = edges & (
+            np.abs(np.angle(np.exp(2j * (theta - normal)))) / 2 < math.radians(window_deg)
+        )
+        labels, n = label(mask, structure=np.ones((3, 3), dtype=int))
+        for k in range(1, n + 1):
+            if len(segments) >= max_segments:
+                break
+            ii, jj = np.nonzero(labels == k)
+            if len(ii) < min_segment_px:
+                continue
+            p0, p1 = _endpoints(x[ii], y[jj], dx, dy)
+            segments.append((family, p0, p1))
+    return Segments(mag, edges, threshold, sigma, families, tuple(segments))
 
 
 def detect_transitions(
@@ -112,22 +189,24 @@ def detect_transitions(
     image = np.where(finite, image, np.nanmedian(image))
 
     # 1. detect
-    g_r = gaussian_filter(image, smooth_px, order=(1, 0))
-    g_c = gaussian_filter(image, smooth_px, order=(0, 1))
-    mag = np.hypot(g_r, g_c)
-    diffs = np.concatenate([np.diff(image, axis=0).ravel(), np.diff(image, axis=1).ravel()])
-    sigma = 1.4826 * float(np.median(np.abs(diffs - np.median(diffs)))) / math.sqrt(2)
-    threshold = max(
-        threshold_rel * float(np.percentile(mag, 99.5)),
-        threshold_noise * sigma * _derivative_gain(smooth_px),
+    found = detect_segments(
+        image,
+        x,
+        y,
+        smooth_px=smooth_px,
+        threshold_rel=threshold_rel,
+        threshold_noise=threshold_noise,
+        min_separation_deg=min_separation_deg,
+        window_deg=window_deg,
+        min_segment_px=min_segment_px,
+        max_segments=max_segments,
     )
-    edges = (mag > threshold) & _ridge(mag, g_r, g_c)
-    n_edges = int(edges.sum())
+    n_edges = int(found.edges.sum())
     if n_edges < 20:
         return done("failed", f"only {n_edges} transition pixels found", n_edge_pixels=n_edges)
 
     # 2. estimate the lattice from the gradient-magnitude spectrum
-    lattice = _lattice(mag, dx, dy, min_periods, zero_pad)
+    lattice = _lattice(found.magnitude, dx, dy, min_periods, zero_pad)
     if lattice is None:
         return done("failed", "no two non-collinear lattice peaks", n_edge_pixels=n_edges)
     a, b = lattice  # electrons per volt on the dot dominated by the row gate (a) / column gate (b)
@@ -142,37 +221,24 @@ def detect_transitions(
     ]
 
     # 3. overlays: segments of the two gradient-direction families
-    theta = np.mod(np.arctan2(g_c / dy, g_r / dx), np.pi)  # normal direction in voltage space
-    annotations: list[Annotation] = []
-    for family, normal in _families(theta[edges], mag[edges], min_separation_deg):
-        mask = edges & (
-            np.abs(np.angle(np.exp(2j * (theta - normal)))) / 2 < math.radians(window_deg)
+    annotations = [
+        Annotation(
+            annotation_id=f"{result_id[:12]}-{family}-{k}",
+            dataset_id=dataset.dataset_id,
+            kind="line",
+            coords=(row.name, col.name),
+            points=(p0, p1),
+            attrs={"family": family},
         )
-        labels, n = label(mask, structure=np.ones((3, 3), dtype=int))
-        for k in range(1, n + 1):
-            if len(annotations) >= max_segments:
-                break
-            ii, jj = np.nonzero(labels == k)
-            if len(ii) < min_segment_px:
-                continue
-            p0, p1 = _endpoints(x[ii], y[jj], dx, dy)
-            annotations.append(
-                Annotation(
-                    annotation_id=f"{result_id[:12]}-{family}-{len(annotations)}",
-                    dataset_id=dataset.dataset_id,
-                    kind="line",
-                    coords=(row.name, col.name),
-                    points=(p0, p1),
-                    attrs={"family": family},
-                )
-            )
+        for k, (family, p0, p1) in enumerate(found.segments)
+    ]
     return done(
         "ok",
         estimates=estimates,
         annotations=annotations,
         n_edge_pixels=n_edges,
-        threshold=threshold,
-        noise=sigma,
+        threshold=found.threshold,
+        noise=found.noise,
     )
 
 
