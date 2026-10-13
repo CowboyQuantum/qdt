@@ -17,6 +17,9 @@ qdt_analysis/
   its `FitModel`. Bump `VERSION` whenever the same inputs could give a different result.
 - Separate detection (what to draw: `Annotation`s on the record's Dataset) from estimation (what to
   report: `Estimate`s). Report only estimates whose bias is understood (ADR 0029).
+- A method returns `Analysis(result, output)`: the `AnalysisResult`, and the arrays it produced as an
+  in-memory `Payload` whose Dataset has `source.kind="analysis"` (or None). It never writes the payload;
+  `Registry.add_result(result, output)` does and fills `result.output` (ADR 0031).
 - A method that finds nothing returns `status="failed"` with a message. It never invents overlays or
   estimates, and a pure-noise test pins this.
 - Injection–recovery is the test: inject truth (a synthetic lattice or diamond train, or `qdt_sim` model

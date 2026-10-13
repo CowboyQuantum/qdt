@@ -1,0 +1,250 @@
+{
+  "attrs": {},
+  "channels": [
+    {
+      "channel": "P1",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "P1",
+      "quantity": "voltage",
+      "role": "level_source",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "P2_pulse",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "P2_pulse",
+      "quantity": "voltage",
+      "role": "sequencer",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "sensor",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "sensor",
+      "quantity": "current",
+      "role": "sequencer",
+      "schema_version": 1,
+      "settle_s": 0.0
+    }
+  ],
+  "dataset": {
+    "attrs": {
+      "I_sensor.reduced": "shot:mean",
+      "definition": "fixture stability 4x5",
+      "repeats": 1,
+      "shots": 2
+    },
+    "coords": [
+      {
+        "dim": "P1",
+        "kind": "linear",
+        "name": "P1",
+        "num": 4,
+        "schema_version": 1,
+        "start": -0.05,
+        "stop": 0.1,
+        "unit": "V"
+      },
+      {
+        "dim": "P2",
+        "kind": "linear",
+        "name": "P2",
+        "num": 5,
+        "schema_version": 1,
+        "start": -0.05,
+        "stop": 0.1,
+        "unit": "V"
+      }
+    ],
+    "created_at": "2026-10-13T12:00:00Z",
+    "data_vars": [
+      {
+        "dims": [
+          "P1",
+          "P2"
+        ],
+        "dtype": "float64",
+        "name": "I_sensor",
+        "schema_version": 1,
+        "unit": "A"
+      }
+    ],
+    "dataset_id": "00000000000000000000000000000001",
+    "dims": [
+      {
+        "name": "P1",
+        "schema_version": 1,
+        "size": 4
+      },
+      {
+        "name": "P2",
+        "schema_version": 1,
+        "size": 5
+      }
+    ],
+    "name": "fixture stability 4x5",
+    "schema_version": 2,
+    "source": {
+      "kind": "simulation",
+      "label": "fixture stability 4x5",
+      "registry_ref": null,
+      "schema_version": 1
+    }
+  },
+  "definition": {
+    "attrs": {},
+    "axes": [
+      {
+        "channel": "P1",
+        "name": "P1",
+        "num": 4,
+        "schema_version": 1,
+        "start": -0.05,
+        "stop": 0.1
+      },
+      {
+        "channel": "P2_pulse",
+        "name": "P2",
+        "num": 5,
+        "schema_version": 1,
+        "start": -0.05,
+        "stop": 0.1
+      }
+    ],
+    "name": "fixture stability 4x5",
+    "repeats": 1,
+    "schema_version": 1,
+    "sensed": [],
+    "stage": {
+      "axes": [
+        "P2"
+      ],
+      "bindings": [
+        {
+          "axis": "P2",
+          "schema_version": 1,
+          "symbol": "v_p2",
+          "value": null
+        }
+      ],
+      "instrument": "dot",
+      "parameters": [],
+      "program": null,
+      "reduce": {
+        "I_sensor": "mean"
+      },
+      "schema_version": 1,
+      "sequence": {
+        "attrs": {},
+        "body": [
+          {
+            "channel": "P2_pulse",
+            "duration": 500,
+            "level": {
+              "name": "v_p2",
+              "schema_version": 1,
+              "unit": "V"
+            },
+            "op": "step",
+            "schema_version": 1
+          },
+          {
+            "channel": "sensor",
+            "duration": 2000,
+            "op": "measure",
+            "result": "I_sensor",
+            "schema_version": 1
+          }
+        ],
+        "name": "read sensor at a P2 pulse level",
+        "schema_version": 1,
+        "segments": []
+      },
+      "shots": 2
+    }
+  },
+  "plan_id": "00000000000000000000000000000001",
+  "schema_version": 2,
+  "stage_parameters": [
+    {
+      "axis": "P2",
+      "parameter": "n_P2",
+      "schema_version": 1,
+      "source": "axis_num",
+      "value": null
+    },
+    {
+      "axis": "P2",
+      "parameter": "v_p2_start",
+      "schema_version": 1,
+      "source": "axis_start",
+      "value": null
+    },
+    {
+      "axis": "P2",
+      "parameter": "v_p2_step",
+      "schema_version": 1,
+      "source": "axis_step",
+      "value": null
+    },
+    {
+      "axis": null,
+      "parameter": "shots",
+      "schema_version": 1,
+      "source": "const",
+      "value": 2
+    }
+  ],
+  "stage_program": {
+    "attrs": {
+      "emitter": "SimulatedEmitter",
+      "sequence": "read sensor at a P2 pulse level"
+    },
+    "backend": "simulated",
+    "body": "{\"reduce\": {\"I_sensor\": \"mean\"}, \"sequence\": {\"attrs\": {}, \"body\": [{\"channel\": \"P2_pulse\", \"duration\": 500, \"level\": {\"name\": \"v_p2\", \"schema_version\": 1, \"unit\": \"V\"}, \"op\": \"step\", \"schema_version\": 1}, {\"channel\": \"sensor\", \"duration\": 2000, \"op\": \"measure\", \"result\": \"I_sensor\", \"schema_version\": 1}], \"name\": \"read sensor at a P2 pulse level\", \"schema_version\": 1, \"segments\": []}, \"symbols\": {\"v_p2\": {\"axis\": \"n_P2\", \"start\": \"v_p2_start\", \"step\": \"v_p2_step\"}}}",
+    "parameters": [
+      {
+        "name": "n_P2",
+        "scale": 1.0,
+        "schema_version": 1,
+        "unit": ""
+      },
+      {
+        "name": "v_p2_start",
+        "scale": 1e-06,
+        "schema_version": 1,
+        "unit": "V"
+      },
+      {
+        "name": "v_p2_step",
+        "scale": 1e-06,
+        "schema_version": 1,
+        "unit": "V"
+      },
+      {
+        "name": "shots",
+        "scale": 1.0,
+        "schema_version": 1,
+        "unit": ""
+      }
+    ],
+    "results": [
+      {
+        "dims": [
+          "n_P2"
+        ],
+        "dtype": "float64",
+        "name": "I_sensor",
+        "schema_version": 1,
+        "unit": "A"
+      }
+    ],
+    "schema_version": 1
+  },
+  "stand_id": "simulated-double-dot"
+}

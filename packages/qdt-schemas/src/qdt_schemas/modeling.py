@@ -6,6 +6,11 @@ version and parameters, content-addressed). The same record analysed by the same
 parameters gives results with the same `method_sha256`. Overlays are ordinary `Annotation`s on the
 originating Dataset, so Flight Deck draws them with no analysis-specific code.
 
+A method may also produce arrays (a fitted map, a residual, the image it detected on, a derived graph).
+Those never live in the result: they are a `Dataset` of their own, with `source.kind = "analysis"`,
+written as a `qdt-hdf5-v1` payload and referenced by `AnalysisResult.output` (ADR 0031), so Flight
+Deck draws them like any measurement and the registry stores them like any payload.
+
 Simulated ground truth (`SimScenario`) is a Step 6 family. Until then, injection-recovery truth lives in
 the tests, not in results.
 """
@@ -16,6 +21,7 @@ from pydantic import AwareDatetime, Field, model_validator
 
 from ._base import QdtModel
 from .data import Annotation, AttrValue
+from .envelope import PayloadRef
 
 SHA256 = r"^[0-9a-f]{64}$"
 
@@ -77,6 +83,14 @@ class AnalysisResult(QdtModel):
     estimates: tuple[Estimate, ...] = Field(default=(), description="Estimated quantities.")
     annotations: tuple[Annotation, ...] = Field(
         default=(), description="Overlays on the originating Dataset, in its coordinate system."
+    )
+    output: PayloadRef | None = Field(
+        default=None,
+        description=(
+            "Arrays the method produced, as a qdt-hdf5-v1 payload holding a Dataset of its own "
+            "(`source.kind = 'analysis'`) with named variables and coordinates (ADR 0031). None when the "
+            "method produced only estimates and overlays. Set by the registry when it stores the output."
+        ),
     )
     created_at: AwareDatetime = Field(description="When the analysis ran.")
     attrs: dict[str, AttrValue] = Field(

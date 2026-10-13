@@ -80,7 +80,7 @@ def test_recovers_an_injected_synthetic_lattice(truth):
     v = np.stack(np.meshgrid(x, np.linspace(*span, n[1]), indexing="ij"), axis=-1)
     occupation = np.floor(v @ truth.T)  # electrons on each dot: steps at every lattice plane
     current = occupation @ np.array([1.0, 0.7]) + rng.normal(0, 0.1, n)
-    result = detect_transitions(record_for("map"), map_payload(current, span, span))
+    result, _output = detect_transitions(record_for("map"), map_payload(current, span, span))
     assert result.status == "ok", result.message
     np.testing.assert_allclose(estimates(result), truth, atol=0.02 * truth.max())
 
@@ -95,7 +95,7 @@ def test_recovers_the_dot_models_gate_capacitances_through_a_noisy_sweep(seed):
     frames = Executor(plan, {DEVICE_ID: default_device(seed=seed, noise=True)}).run().frames()
     data = assemble(plan.dataset, frames)
     payload = Payload(plan.dataset, {"I_sensor": data["I_sensor"].values}, (), plan, None)
-    result = detect_transitions(record_for(plan.dataset.dataset_id), payload)
+    result, output = detect_transitions(record_for(plan.dataset.dataset_id), payload)
 
     truth = default_model().charge_lattice("P1", "P2")  # electrons per volt: rows of C_gate / e
     est = estimates(result)
@@ -104,6 +104,13 @@ def test_recovers_the_dot_models_gate_capacitances_through_a_noisy_sweep(seed):
     assert abs(result.estimate("cross_ratio_a").value - truth[0, 1] / truth[0, 0]) < 0.02
     assert abs(result.estimate("cross_ratio_b").value - truth[1, 0] / truth[1, 1]) < 0.02
     assert result.annotations, "transition segments are overlaid"
+    # the detection map is a Dataset of its own over the input's coordinates (ADR 0031)
+    assert output is not None and output.dataset.source.kind == "analysis"
+    assert output.dataset.coords == plan.dataset.coords
+    assert output.arrays["gradient"].shape == output.arrays["edges"].shape == (96, 96)
+    assert output.arrays["edges"].dtype == np.uint16 and output.arrays["edges"].max() == 1
+    assert {a.dataset_id for a in output.annotations} == {output.dataset.dataset_id}
+    assert result.output is None  # the registry fills the reference when it stores the output
     assert {a.attrs["family"] for a in result.annotations} == {"steep", "shallow"}
     assert all(
         a.coords == ("P1", "P2") and a.dataset_id == plan.dataset.dataset_id
@@ -114,10 +121,11 @@ def test_recovers_the_dot_models_gate_capacitances_through_a_noisy_sweep(seed):
 def test_a_map_without_transitions_fails_instead_of_inventing_lines():
     rng = np.random.default_rng(3)
     span = (0.0, 0.1)
-    result = detect_transitions(
+    result, output = detect_transitions(
         record_for("map"), map_payload(rng.normal(0, 1, (64, 64)), span, span)
     )
     assert result.status == "failed" and not result.annotations and not result.estimates
+    assert output is not None  # the map was examined: what the detector saw is still worth keeping
 
 
 def test_dual_provenance_names_the_record_and_the_method():
@@ -125,7 +133,7 @@ def test_dual_provenance_names_the_record_and_the_method():
     x = np.linspace(*span, 64)
     v = np.stack(np.meshgrid(x, x, indexing="ij"), axis=-1)
     current = np.floor(v @ np.array([[60.0, 14.0], [12.0, 55.0]]).T).sum(-1)
-    result = detect_transitions(record_for("map"), map_payload(current, span, span), smooth_px=1.2)
+    result, _output = detect_transitions(record_for("map"), map_payload(current, span, span), smooth_px=1.2)
     assert result.record_id == "ab" * 16
     assert result.method.name == NAME and result.method.parameters["smooth_px"] == 1.2
     assert result.method_sha256 == result.method.content_sha256()

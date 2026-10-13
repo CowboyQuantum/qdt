@@ -38,8 +38,22 @@ PERSISTED: dict[str, type[QdtModel]] = {
 }
 """Types the registry or a payload stores; each must have a fixture per version."""
 
-MIGRATIONS: dict[tuple[str, int], Migration] = {}
-"""(type name, from version) → transform to from version + 1. Empty: everything is still at v1."""
+def _dataset_1_to_2(data: dict[str, Any]) -> dict[str, Any]:
+    """v2 only widens `source.kind` (adds 'analysis', ADR 0031): every v1 Dataset is a v2 Dataset."""
+    return data
+
+
+def _plan_1_to_2(data: dict[str, Any]) -> dict[str, Any]:
+    """v2 carries a Dataset v2 (ADR 0031): the nested definition is upgraded in place."""
+    data["dataset"] = upgrade("Dataset", dict(data["dataset"]))
+    return data
+
+
+MIGRATIONS: dict[tuple[str, int], Migration] = {
+    ("Dataset", 1): _dataset_1_to_2,
+    ("ExecutionPlan", 1): _plan_1_to_2,
+}
+"""(type name, from version) → transform to from version + 1."""
 
 
 def current_version(type_name: str) -> int:

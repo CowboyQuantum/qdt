@@ -61,10 +61,10 @@ for _ in recorder.wrap(Executor(plan, {DEVICE_ID: device}).run()).frames():
     pass
 record, path = recorder.finish(a.root / "outbox")
 registry.ingest(record, path)
-result = method(record, registry.payload(record.record_id))
-registry.add_result(result)
+result = registry.add_result(*method(record, registry.payload(record.record_id)))
 print(f"record {record.record_id}: {result.status}, {len(result.annotations)} overlays")
 for e in result.estimates:
     print(f"  {e.name:16} {e.value:10.4f} {e.unit}")
 print(f"\nview: uv run python -m qdt_registry --root {a.root} serve {record.record_id}")
+print(f"  or the detection map: uv run python -m qdt_registry --root {a.root} serve --output {result.result_id}")
 print("then: cd apps/flightdeck; corepack pnpm dev   (open the URL it prints)")

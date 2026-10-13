@@ -157,7 +157,7 @@ export interface Dataset {
    */
   name: string;
   /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: `source.kind` admits 'analysis' (ADR 0031).
    */
   schema_version: number;
   source: SourceDescriptor;
@@ -296,9 +296,9 @@ export interface Dimension {
  */
 export interface SourceDescriptor {
   /**
-   * Source category. Consumers may branch on this; they may not learn the producing instrument.
+   * Source category. Consumers may branch on this; they may not learn the producing instrument. analysis: produced by an analysis method from other data (ADR 0031).
    */
-  kind: "live" | "replay" | "synthetic" | "simulation" | "registry";
+  kind: "live" | "replay" | "synthetic" | "simulation" | "registry" | "analysis";
   /**
    * Human-readable label for display, e.g. 'synthetic stability map'.
    */

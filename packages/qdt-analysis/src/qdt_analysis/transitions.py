@@ -17,24 +17,77 @@ Detection and estimation are separate stages, with separate jobs:
    bias. Per-segment slope fits do, on short jagged segments. Reported per dot, labelled by its dominant
    gate: `a` is dominated by the row gate, `b` by the column gate.
 
-Pure: schema objects and arrays in, `AnalysisResult` out (rule 5).
+Pure: schema objects and arrays in, `Analysis` (the `AnalysisResult` plus the detection map as an
+in-memory output `Payload`, ADR 0031) out (rule 5). `Registry.add_result(*analysis)` stores both.
 """
 
 import math
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 import numpy as np
 from scipy.ndimage import gaussian_filter, gaussian_filter1d, label, maximum_filter
 
-from qdt_schemas.data import Annotation, LinearCoordinate
+from qdt_schemas.data import (
+    Annotation,
+    Dataset,
+    DataVariable,
+    Dimension,
+    LinearCoordinate,
+    SourceDescriptor,
+)
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel
 from qdt_schemas.payload_hdf5 import Payload
 
 NAME = "qdt_analysis.transitions.detect_transitions"
 VERSION = "1"
+
+
+class Analysis(NamedTuple):
+    """What a method returns: the result, and the arrays it produced as an in-memory payload (or None).
+    The registry writes `output` to its store and fills `result.output` (ADR 0031)."""
+
+    result: AnalysisResult
+    output: Payload | None
+
+
+def detection_map(
+    result_id: str,
+    name: str,
+    source: Dataset,
+    row: LinearCoordinate,
+    col: LinearCoordinate,
+    found: "Segments",
+    annotations: list[Annotation],
+    created_at: datetime,
+) -> Payload:
+    """The image a method detected on, as a Dataset over the input's coordinates: the smoothed gradient
+    magnitude and the edge mask, with the segments drawn on it (ADR 0031)."""
+    dataset = Dataset(
+        dataset_id=f"{result_id}-detection",
+        name=name,
+        dims=(
+            Dimension(name=row.dim, size=row.num),
+            Dimension(name=col.dim, size=col.num),
+        ),
+        coords=(row, col),
+        data_vars=(
+            DataVariable(name="gradient", dims=(row.dim, col.dim), unit="", dtype="float32"),
+            DataVariable(name="edges", dims=(row.dim, col.dim), unit="", dtype="uint16"),
+        ),
+        attrs={"of_dataset": source.dataset_id},
+        source=SourceDescriptor(kind="analysis", label=name),
+        created_at=created_at,
+    )
+    arrays = {
+        "gradient": found.magnitude.astype(np.float32),
+        "edges": found.edges.astype(np.uint16),
+    }
+    drawn = tuple(a.model_copy(update={"dataset_id": dataset.dataset_id}) for a in annotations)
+    return Payload(dataset, arrays, drawn, None, None)
 
 
 @dataclass(frozen=True)
@@ -127,12 +180,13 @@ def detect_transitions(
     max_segments: int = 200,
     min_periods: float = 5.0,
     zero_pad: int = 4,
-) -> AnalysisResult:
+) -> Analysis:
     """Detect transition segments and estimate the charge lattice of a 2-D map.
 
     `variable` defaults to the first data variable whose last two dims carry linear coordinates. Leading
     dims (repeat, shot) are averaged over, ignoring NaN. Raises ValueError when no such variable exists
-    or `record` is not the payload's record.
+    or `record` is not the payload's record. The output is the detection map (gradient magnitude and
+    edge mask over the input's coordinates); None when the method failed before detecting.
     """
     method = FitModel(
         name=NAME,
@@ -165,9 +219,11 @@ def detect_transitions(
     dx = (x[-1] - x[0]) / (len(x) - 1) if len(x) > 1 else 0.0
     dy = (y[-1] - y[0]) / (len(y) - 1) if len(y) > 1 else 0.0
     result_id = uuid.uuid4().hex
+    now = datetime.now(UTC)
+    found = None
 
     def done(status, message="", estimates=(), annotations=(), **attrs):
-        return AnalysisResult(
+        result = AnalysisResult(
             result_id=result_id,
             record_id=record.record_id,
             dataset_id=dataset.dataset_id,
@@ -177,9 +233,17 @@ def detect_transitions(
             message=message,
             estimates=tuple(estimates),
             annotations=tuple(annotations),
-            created_at=datetime.now(UTC),
+            created_at=now,
             attrs={"variable": var.name, **attrs},
         )
+        output = (
+            detection_map(
+                result_id, "transition detection map", dataset, row, col, found, list(annotations), now
+            )
+            if found is not None
+            else None
+        )
+        return Analysis(result, output)
 
     if min(image.shape) < 16 or dx == 0 or dy == 0:
         return done("failed", "map smaller than 16 × 16 points")

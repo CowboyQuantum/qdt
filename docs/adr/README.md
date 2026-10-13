@@ -34,3 +34,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0028 | Identity, envelope and `qdt-hdf5-v1` frozen at schema_version 1 | Accepted (freezes 0025 objects + 0023 layout) |
 | 0029 | `AnalysisResult` provenance is record + method; transitions detected locally, estimated as a lattice | Accepted |
 | 0030 | The charge sensor is a biased SET: source–drain bias in `qdt-sim`, Coulomb diamonds as a sweep and a method | Accepted (regenerates the sim fixture) |
+| 0031 | Analysis outputs are Datasets in payloads; methods are curated; one record per result for now | Accepted (Dataset v2, ExecutionPlan v2) |
