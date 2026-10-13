@@ -29,7 +29,7 @@ Fits and feature detection run from registry queries, emit `AnalysisResult` with
 - none
 
 ## Status
-IN PROGRESS (opened 2026-10-13). Built: `modeling.py` (ADR 0029, not frozen); charge transitions with
-lattice estimation; sensor source–drain bias and the Coulomb diamond pipeline (ADR 0030); results in
-the registry; overlays on replay; Tutorial 03. Remaining: overlays seen in Flight Deck by a human, then
-the freeze ADR.
+DONE (2026-10-13). Exit criteria met: query → method → `AnalysisResult` → overlays on the originating
+dataset, seen in Flight Deck; injection–recovery in CI for transitions (synthetic lattices, noisy
+simulated sweeps) and diamonds (synthetic train, simulated cold sensor); `modeling.py` frozen (ADR 0033).
+ADRs 0029–0031, 0033. The Coulomb diamond deliverable needed a source–drain bias in the model (ADR 0030).

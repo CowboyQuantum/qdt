@@ -36,3 +36,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0030 | The charge sensor is a biased SET: source–drain bias in `qdt-sim`, Coulomb diamonds as a sweep and a method | Accepted (regenerates the sim fixture) |
 | 0031 | Analysis outputs are Datasets in payloads; methods are curated; one record per result for now | Accepted (Dataset v2, ExecutionPlan v2) |
 | 0032 | The control path (server + UI) comes before instrument drivers, as Step 4b | Accepted (amends the ADR 0007 order) |
+| 0033 | Modeling slice frozen at schema_version 1: `FitModel`, `Estimate`, `AnalysisResult` | Accepted (freezes 0029 objects; closes Step 4) |
