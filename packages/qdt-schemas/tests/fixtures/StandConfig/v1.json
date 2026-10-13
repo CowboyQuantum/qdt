@@ -1,0 +1,74 @@
+{
+  "attrs": {},
+  "channels": [
+    {
+      "channel": "P1",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "P1",
+      "quantity": "voltage",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "P2",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "P2",
+      "quantity": "voltage",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "SG",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "SG",
+      "quantity": "voltage",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "P1_pulse",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "P1_pulse",
+      "quantity": "voltage",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "P2_pulse",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "P2_pulse",
+      "quantity": "voltage",
+      "schema_version": 1,
+      "settle_s": 0.0
+    },
+    {
+      "channel": "sensor",
+      "instrument": "dot",
+      "integration_s": null,
+      "logical": "sensor",
+      "quantity": "current",
+      "schema_version": 1,
+      "settle_s": 0.0
+    }
+  ],
+  "instruments": [
+    {
+      "backend": "simulated",
+      "capabilities": [
+        "level_source",
+        "level_sense",
+        "sequencer"
+      ],
+      "id": "dot",
+      "schema_version": 1,
+      "settings": {}
+    }
+  ],
+  "schema_version": 1,
+  "stand_id": "simulated-double-dot"
+}

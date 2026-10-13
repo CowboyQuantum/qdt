@@ -6,7 +6,7 @@
 Records land in a remote-capable database with full provenance, and the registry becomes a first-class Flight Deck source. First DDL.
 
 ## Schema slice
-`identity.py`, `envelope.py`: `MeasurementRecord`, `DeviceRecord`, `AssetRecord`, `CIRecord`, `BaselineRecord`; `payload_hdf5.py` v1; `migrations.py`. JSON Schema + DDL exports begin.
+`identity.py`, `envelope.py`: `MeasurementRecord`, `DeviceRecord` (the other three deferred, ADR 0025); `payload_hdf5.py` v1 (ADR 0023); `migrations.py`. JSON Schema + DDL exports begin.
 
 ## Deliverables
 - `qdt-registry`: Postgres via `QDT_REGISTRY_DSN`, localhost compose on personal hardware, client with offline cache + sync
@@ -30,8 +30,8 @@ Records land in a remote-capable database with full provenance, and the registry
 - envelope + identity slices frozen with ADR
 
 ## Open decisions
-- #2 `payload_hdf5` location
-- #4 offline cache + sync confirmed
+- #2 `payload_hdf5` location — CLOSED by ADR 0023: `qdt-schemas[hdf5]` extra
+- #4 offline cache + sync — CLOSED by ADR 0024: cache first, idempotent sync, client-minted UUIDs
 
 ## Status
 IN PROGRESS (opened 2026-10-12; no code yet)

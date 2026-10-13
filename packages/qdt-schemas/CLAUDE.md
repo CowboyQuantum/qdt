@@ -6,7 +6,7 @@ This package is the root of the dependency tree and the product itself. It impor
 1. Check which roadmap step first consumes the family (plan §4.1). Do not add a family ahead of its step.
 2. Every model inherits `QdtModel` (`_base.py`): frozen, `extra="forbid"`, carries `schema_version`.
 3. Every field has `description=`. `scripts/check_descriptions.py` fails CI otherwise — descriptions generate the schema docs.
-4. Breaking change → bump that object's `schema_version` and add a pure-dict transform in `migrations.py`; add a fixture at the old version under `tests/fixtures/` so the migration test covers it.
+4. Breaking change → bump that object's `schema_version` and add a pure-dict transform in `migrations.py`; then `uv run python scripts/make_schema_fixtures.py` writes the new-version fixture under `tests/fixtures/<Type>/v<n>.json` (old ones are history, never rewritten). A type the registry or a payload stores must be in `migrations.PERSISTED` (ADR 0025).
 5. Same commit: schema + every consumer + migration + tests. Then `uv run pytest` must pass workspace-wide.
 6. From Step 4: regenerate JSON Schema and DDL exports; CI checks for no diff.
 

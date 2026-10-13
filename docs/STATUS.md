@@ -4,54 +4,62 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 3 — Measurement registry → `docs/steps/03-registry.md`
-**Branch:** `step-2/freeze` (PR against `main` open; the human merges). Next session: `step-3/<short-name>` from `main`.
-**Last session:** 2026-10-12, session (12). Closed Step 2: the human confirmed the live honeycomb in Flight
-Deck; a pre-freeze review fixed how backends learn channel declarations (ADR 0021); froze the protocols
-(ADR 0021) and the stand + activity + pulse slices (ADR 0022); Flight Deck averages repeated scans on display.
+**Branch:** `step-3/registry` (PR against `main` open; the human merges).
+**Last session:** 2026-10-13, session (12, continued after the PR #6 merge). Closed open decisions #2 and #4
+(ADR 0023, 0024); built the identity + envelope slice, the `qdt-hdf5-v1` payload, migrations, the
+registry client with cache-first sync, the run recorder, and replay to Flight Deck (ADR 0025, 0026).
 
 ## Step 3 exit criteria
 | Criterion | State |
 |---|---|
-| any simulated measurement answerable by query (device, stand, definition) | ✘ not started |
-| envelope + identity slices frozen with ADR | ✘ not started |
-| L0: ephemeral Postgres round trip; migration fixtures; JSON Schema + DDL no-diff; sweep → record → Flight Deck replay | ✘ not started |
+| any simulated measurement answerable by query (device, stand, definition) | ✔ `Registry.find`, offline and on the server; Tutorial 02 |
+| envelope + identity slices frozen with ADR | ✘ objects complete; freeze ADR at exit, after the human runs it on local Postgres |
+| L0: ephemeral Postgres round trip | ✔ in CI (`postgres:17.6` service, `QDT_TEST_PG_DSN`); not yet run locally (no Docker) |
+| L0: migration fixtures at every `schema_version` | ✔ `tests/fixtures/<Type>/v1.json` for all 7 persisted types |
+| L0: JSON Schema + DDL export no-diff | ✔ `records.schema.json`, `exports/ddl/*.sql`, both in `check_all` |
+| L0: Step 2 sweep → record → replay from registry | ✔ through the reference stream client (Tutorial 02, registry tests); Flight Deck itself only by hand |
 
 ## Done
-- Steps 0–2 DONE. ADR 0001–0022. Two deliberate freezes made: the `Dataset` contract (ADR 0015) and the
-  capability protocols (ADR 0021). Stand/activity/pulse frozen at `schema_version` 1 (ADR 0022).
-- **Backend construction (ADR 0021):** every backend is built by a `BackendFactory`
-  `(InstrumentConfig, tuple[ChannelMap, ...])` (usually `from_config`); `build_backends(stand, factories)`
-  wires a stand; `StandConfig.instrument_channels`. Conformance test `sense_honours_declared_integration_time`.
-  `SimulatedDevice.from_config` checks quantity against role and takes the sensor aperture from the map.
-- **Flight Deck:** a 3-D variable with two bounded trailing dims renders as the NaN-aware mean over the
-  leading dim (`view.ts` `meanAlongLeading`), so `python -m qdt_sim --repeats N` / `--repeats 0` is viewable.
-- `qdt-sim` (ADR 0020), experiments as data (ADR 0018/0019), protocols + twins + conformance (ADR 0016/0017),
-  stream + Flight Deck (ADR 0010–0014). 171 Python tests, 25 Flight Deck unit + 2 e2e.
+- Steps 0–2 DONE. ADR 0001–0026. Frozen: `Dataset` contract (0015), protocols (0021), stand/activity/pulse (0022).
+- **Schemas (ADR 0023, 0025):** `identity.DeviceRecord`; `envelope.MeasurementRecord` + `PayloadRef`
+  (client UUID hex ids, stand/definition by `content_sha256`, aware timestamps); `QdtModel.canonical_json`
+  / `content_sha256`; `payload_hdf5` write/read (lazy h5py, never overwrites); `migrations.PERSISTED`,
+  `upgrade`, `load`; `scripts/make_schema_fixtures.py` (writes missing versions only).
+- **Registry (ADR 0024, 0026):** `qdt_registry.Registry`: SQLite cache + payload store, validated `ingest`,
+  `find/get/object/device/payload`, append-only idempotent `sync` to Postgres + a payload directory;
+  `python -m qdt_registry find|sync|serve` (`serve` needs the `[serve]` extra). `deploy/registry.compose.yml`.
+- **qdt-lab:** `RunRecorder` (frames → payload + `MeasurementRecord`, no DB); `stream.PayloadSource`
+  (a payload as a `registry`-kind stream). Depends on `qdt-schemas[hdf5]`.
+- `CIRecord`, `AssetRecord`, `BaselineRecord` deferred until a step consumes them (human, ADR 0025).
 
 ## In flight
-- Nothing uncommitted. PR `step-2/freeze` → `main` open; human merges.
+- Nothing uncommitted. PR `step-3/registry` → `main` open.
 
 ## Known broken / not yet real
-- Model has no tunnel coupling, spin, valley or Pauli blockade; pulses are quasi-static; `Drive` only
-  advances the clock. Each is an ADR when a sweep needs it. Per-shot Python loop: fine to ~10⁵ pixels.
-- Flight Deck: first Dataset only; no axes/colorbar/cursors/zoom. Repeat averaging recomputes dirty rows over
-  every pass (cost grows with passes; fine at demo sizes). Client store and server history unbounded (Step 6).
-- `test_wire_path_keeps_design_target_line_rate` is wall-clock bound off hardware (fails ~2/3 on a 4-vCPU
-  container). Decide advisory treatment (cf. ADR 0014).
-- Waveform protocols are frozen without a real call site (ADR 0021 accepts the risk). QUA emitter (Step 5).
-  Scope captures per stepped point deferred (ADR 0019). Probe 01 scope half unrun. `FINISH_LINE.md` TODO
-  (human). `BENCH.md` skeleton; DUT #10.
-- Windows dev box: `pnpm` is not on PATH; use `corepack pnpm ...` in `apps/flightdeck` (or `corepack enable`
-  from an admin shell).
+- **No Docker on the Windows dev box** (human installing Docker Desktop). Until then the Postgres tests
+  run only in CI.
+- Flight Deck cannot show which record it replays: a rule-8 test forbids reading `dataset.source` in
+  Flight Deck. `serve` prints the record id. Whether `registry_ref` may be displayed is a decision for
+  the human, and an ADR if yes.
+- The server payload store is a directory (ADR 0026); a second machine needs object storage or an
+  upload endpoint (Step 7).
+- `RunRecorder` keeps every frame in memory until `finish`, and hashes the payload by reading it whole.
+  Fine at demo sizes.
+- Two wall-clock-bound CI gates flake on shared runners: the Flight Deck renderer bench's rendered rate
+  (failed on `main` at cc2aec1: 890k vs 950k points/s), and `test_wire_path_keeps_design_target_line_rate`.
+  Decide advisory treatment (cf. ADR 0014).
+- Carried over: model physics gaps (ADR 0020); waveform protocols frozen without a call site (ADR 0021);
+  QUA emitter and real drivers (Step 5); `FINISH_LINE.md` TODO (human); `BENCH.md` skeleton; DUT #10.
+- Windows: `pnpm` is not on PATH; use `corepack pnpm ...` in `apps/flightdeck`.
 
 ## Next action
-**Human:** merge the `step-2/freeze` PR, check CI.
-**Then** a session on `step-3/<short-name>` starts Step 3: settle open decisions #2 (`payload_hdf5` location)
-and #4 (offline cache + sync) with the human first. Then add the `identity.py` + `envelope.py` slice
-(`MeasurementRecord` first, `migrations.py` begins), stand up `qdt-registry` against a localhost Postgres
-(compose; check Docker availability on the dev box) and an ephemeral Postgres in CI, and have the executor
-write one `MeasurementRecord` per run of a Step 2 sweep.
+**Human:** install Docker Desktop. Merge the `step-3/registry` PR. Then try it:
+`docker compose -f deploy/registry.compose.yml up -d`, set
+`QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@localhost:5432/qdt_test`, and run `uv run pytest packages/qdt-registry`.
+**Then** a session closes Step 3: review the envelope and identity objects against what the registry and
+recorder actually used, write the freeze ADR, decide the `registry_ref` display question, mark Step 3 DONE,
+and open Step 4 (analysis overlays).
 
-## Decisions pending (see plan §12)
-- #2 `payload_hdf5` location, #4 offline cache + sync — Step 3, before code. #10 surrogate DUT — by Step 5 entry.
-- Whether the stream line-rate test becomes advisory off hardware (see Known broken).
+## Decisions pending
+- Flight Deck showing `registry_ref` (rule-8 test vs "datasets addressable by record ref"). #10 surrogate DUT,
+  by Step 5 entry. Advisory treatment of the two wall-clock CI gates.

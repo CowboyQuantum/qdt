@@ -3,6 +3,18 @@ on: [push, pull_request]
 jobs:
   l0:
     runs-on: ubuntu-latest
+    services:
+      postgres:  # ephemeral registry server for the Postgres half of the qdt-registry suite (Step 3)
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: qdt
+          POSTGRES_PASSWORD: qdt
+          POSTGRES_DB: qdt_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qdt -d qdt_test" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      QDT_TEST_PG_DSN: postgresql+psycopg://qdt:qdt@localhost:5432/qdt_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
