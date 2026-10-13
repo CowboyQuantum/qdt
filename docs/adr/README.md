@@ -30,3 +30,5 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0024 | Registry clients write to a local cache first and sync to Postgres | Accepted (closes plan #4) |
 | 0025 | `MeasurementRecord` is a reference-and-hash envelope; Step 3 builds only device identity | Accepted |
 | 0026 | Registry storage: one table set for cache and server, append-only, payloads in a file store | Accepted |
+| 0027 | Flight Deck may read `source.registry_ref`, for display only | Accepted (narrows the rule-8 test) |
+| 0028 | Identity, envelope and `qdt-hdf5-v1` frozen at schema_version 1 | Accepted (freezes 0025 objects + 0023 layout) |

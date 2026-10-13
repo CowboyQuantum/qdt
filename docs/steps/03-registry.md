@@ -34,4 +34,4 @@ Records land in a remote-capable database with full provenance, and the registry
 - #4 offline cache + sync — CLOSED by ADR 0024: cache first, idempotent sync, client-minted UUIDs
 
 ## Status
-IN PROGRESS (opened 2026-10-12; no code yet)
+DONE (2026-10-13; identity + envelope + qdt-hdf5-v1 frozen by ADR 0028; Postgres L0 green in CI and on the local compose server)

@@ -43,8 +43,20 @@ def test_naive_timestamps_are_refused():
         record(started_at="2026-10-13T12:00:00", finished_at="2026-10-13T12:00:00")
 
 
-@pytest.mark.parametrize("path", ["/abs/x.h5", r"\\server\x.h5", r"a\b.h5"])
-def test_payload_path_is_relative_and_slash_separated(path):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/abs/x.h5",
+        r"\\server\x.h5",
+        r"a\b.h5",
+        "../x.h5",
+        "a/../../x.h5",
+        "C:/x.h5",
+        "a//b.h5",
+        ".h5",
+    ],
+)
+def test_payload_path_cannot_leave_the_store(path):
     data = record().model_dump(mode="json")
     data["payload"]["path"] = path
     with pytest.raises(ValidationError):

@@ -1,7 +1,8 @@
 # Local registry server for development and the Postgres half of the L0 suite (Step 3, ADR 0026).
 #   docker compose -f deploy/registry.compose.yml up -d
-#   QDT_REGISTRY_DSN=postgresql+psycopg://qdt:qdt@localhost:5432/qdt          # the registry
-#   QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@localhost:5432/qdt_test      # tests (dropped per test)
+#   QDT_REGISTRY_DSN=postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt          # the registry
+#   QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt_test      # tests (dropped per test)
+# Use 127.0.0.1, not localhost: on Windows localhost tries IPv6 first and each connect stalls ~5 s.
 # Localhost-bound; development credentials only. Lab deployment lives in the internal extension (plan §5).
 services:
   registry-db:

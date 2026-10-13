@@ -1,4 +1,4 @@
-"""Step 3 schema slice: the `MeasurementRecord` envelope (ADR 0001, ADR 0025).
+"""Step 3 schema slice: the `MeasurementRecord` envelope (ADR 0001, ADR 0025). Frozen by ADR 0028.
 
 A record is a small provenance envelope: which device, on which stand, from which definition, when, and
 where the payload is. It holds references and content hashes, never arrays or whole configurations. The
@@ -16,6 +16,8 @@ from .data import AttrValue, SourceDescriptor
 
 PayloadType = Literal["qdt-hdf5-v1"]
 SHA256 = r"^[0-9a-f]{64}$"
+_SEGMENT = r"[A-Za-z0-9_-][A-Za-z0-9._-]*"
+PAYLOAD_PATH = rf"^{_SEGMENT}(/{_SEGMENT})*$"
 
 
 class PayloadRef(QdtModel):
@@ -24,10 +26,11 @@ class PayloadRef(QdtModel):
     type: PayloadType = Field(description="Payload spec the file follows; selects the validator.")
     path: str = Field(
         min_length=1,
-        pattern=r"^[^/\\][^\\]*$",
+        pattern=PAYLOAD_PATH,
         description=(
             "Path relative to the payload store root, '/'-separated, e.g. '2026/10/<record_id>.h5'. "
-            "Never absolute: the store root differs per client and server."
+            "Segments use [A-Za-z0-9._-] and never start with '.', so a path cannot be absolute, "
+            "carry a drive letter, or climb out of the store with '..' (ADR 0028)."
         ),
     )
     sha256: str = Field(pattern=SHA256, description="Hex SHA-256 of the payload file's bytes.")

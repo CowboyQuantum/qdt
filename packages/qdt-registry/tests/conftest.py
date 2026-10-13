@@ -1,6 +1,6 @@
 """Registry fixtures: a recorded Step 2 run, and the server backends the suite runs against.
 
-The server is SQLite by default. Set QDT_TEST_PG_DSN (e.g. postgresql+psycopg://qdt:qdt@localhost:5432/qdt_test,
+The server is SQLite by default. Set QDT_TEST_PG_DSN (e.g. postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt_test,
 which `docker compose -f deploy/registry.compose.yml up -d` provides) to run every server test against
 Postgres too; CI sets it with an ephemeral Postgres service. Each test gets a fresh schema-less database
 state: tables are dropped after the test (test databases only).

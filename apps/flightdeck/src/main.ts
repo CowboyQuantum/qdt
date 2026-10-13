@@ -67,6 +67,9 @@ function makeRenderer(): MapRenderer {
 }
 
 function show(store: DatasetStore, signal: AbortSignal): void {
+  // display only: a registry replay names its record (ADR 0027); nothing branches on where data came from
+  const ref = store.dataset.source.registry_ref;
+  if (ref) title.textContent = `${title.textContent} · record ${ref}`;
   const view = chooseView(store.dataset);
   if (!view) {
     status.textContent = `${store.dataset.name}: no v0 view for this shape`;

@@ -1,4 +1,4 @@
-"""Step 3 schema slice: identity — what a measurement is *of* (ADR 0025).
+"""Step 3 schema slice: identity — what a measurement is *of* (ADR 0025). Frozen by ADR 0028.
 
 Only `DeviceRecord` for now: Step 3's exit query is by device, stand and definition, and the stand and
 definition already exist as Step 2 objects. Further identity families (assets, baselines, ...) enter in
