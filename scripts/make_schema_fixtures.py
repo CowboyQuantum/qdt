@@ -14,6 +14,7 @@ from qdt_schemas.data import Annotation
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import PERSISTED, current_version
+from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel
 from qdt_sim.scenarios import DEVICE_ID, default_stand, stability
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-schemas/tests/fixtures"
@@ -26,19 +27,36 @@ def examples() -> dict[str, object]:
     plan = compile_sweep(
         definition, stand, {"simulated": SimulatedEmitter()}, plan_id="0" * 31 + "1", created_at=T0
     )
+    method = FitModel(
+        name="qdt_analysis.transitions.detect_transitions",
+        version="1",
+        parameters={"smooth_px": 1.0},
+    )
+    annotation = Annotation(
+        annotation_id="a1",
+        dataset_id=plan.dataset.dataset_id,
+        kind="line",
+        coords=("P1", "P2"),
+        points=((0.0, 0.0), (0.05, 0.05)),
+        label="transition",
+    )
     return {
+        "AnalysisResult": AnalysisResult(
+            result_id="0" * 31 + "2",
+            record_id="0" * 31 + "1",
+            dataset_id=plan.dataset.dataset_id,
+            method=method,
+            method_sha256=method.content_sha256(),
+            status="ok",
+            estimates=(Estimate(name="cross_ratio_a", value=0.21, unit=""),),
+            annotations=(annotation,),
+            created_at=T0,
+        ),
         "StandConfig": stand,
         "SweepDefinition": definition,
         "ExecutionPlan": plan,
         "Dataset": plan.dataset,
-        "Annotation": Annotation(
-            annotation_id="a1",
-            dataset_id=plan.dataset.dataset_id,
-            kind="line",
-            coords=("P1", "P2"),
-            points=((0.0, 0.0), (0.05, 0.05)),
-            label="transition",
-        ),
+        "Annotation": annotation,
         "DeviceRecord": DeviceRecord(
             device_id=DEVICE_ID, kind="double_dot", simulated=True, registered_at=T0
         ),

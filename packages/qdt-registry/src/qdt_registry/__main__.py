@@ -2,7 +2,7 @@
 
     python -m qdt_registry find [--device D] [--stand S] [--definition NAME] [--remote]
     python -m qdt_registry sync                      # needs QDT_REGISTRY_DSN and QDT_PAYLOAD_STORE
-    python -m qdt_registry serve RECORD_ID           # then Flight Deck at ?ws=ws://127.0.0.1:8765
+    python -m qdt_registry serve RECORD_ID           # with stored analysis overlays; then Flight Deck
 
 The client root defaults to ~/.qdt/registry (`--root`). `serve` needs the `[serve]` extra (qdt-lab's
 stream server); the record's payload must be in this client's store.
@@ -32,7 +32,13 @@ def _find(reg: Registry, a: argparse.Namespace) -> None:
 async def _serve(reg: Registry, a: argparse.Namespace) -> None:
     from qdt_lab.stream import PayloadSource, StreamServer
 
-    source = PayloadSource(reg.payload(a.record_id), registry_ref=a.record_id)
+    overlays = [
+        ann
+        for r in reg.results(record_id=a.record_id, status="ok")
+        if not a.no_analysis
+        for ann in r.annotations
+    ]
+    source = PayloadSource(reg.payload(a.record_id), registry_ref=a.record_id, annotations=overlays)
     async with StreamServer(a.host, a.port) as server:
         print(f"serving record {a.record_id} ({source.dataset.name!r}) on {server.url}", flush=True)
         await server.feed(source)
@@ -60,6 +66,9 @@ def cli() -> None:
     s.add_argument("record_id")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
+    s.add_argument(
+        "--no-analysis", action="store_true", help="omit overlays from stored analysis results"
+    )
     a = p.parse_args()
     reg = Registry.from_env(a.root)
     if a.command == "find":

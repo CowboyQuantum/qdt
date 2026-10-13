@@ -25,10 +25,13 @@ from qdt_schemas import QdtModel
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import load
+from qdt_schemas.modeling import AnalysisResult
 from qdt_schemas.payload_hdf5 import Payload, read_payload
 
 from .tables import (
+    ADDITIVE_UPGRADES,
     DDL_VERSION,
+    analysis_results,
     cache_metadata,
     devices,
     metadata,
@@ -82,6 +85,15 @@ def _prepare(engine: Engine) -> None:
         ).scalar_one_or_none()
         if row is None:
             conn.execute(registry_meta.insert().values(key="ddl_version", value=str(DDL_VERSION)))
+        elif int(row) < DDL_VERSION and all(
+            v in ADDITIVE_UPGRADES for v in range(int(row), DDL_VERSION)
+        ):
+            # only new tables since that version: create_all above already added them
+            conn.execute(
+                registry_meta.update()
+                .where(registry_meta.c.key == "ddl_version")
+                .values(value=str(DDL_VERSION))
+            )
         elif int(row) != DDL_VERSION:
             raise RuntimeError(
                 f"registry at {engine.url!r} has ddl_version {row}; this client expects {DDL_VERSION}"
@@ -106,6 +118,7 @@ class SyncReport:
     objects: int
     records: int
     payload_bytes: int
+    analysis_results: int = 0
 
 
 class Registry:
@@ -182,6 +195,29 @@ class Registry:
             if _insert_absent(conn, records, row):
                 self._mark(conn, "records", record.record_id, False)
 
+    def add_result(self, result: AnalysisResult) -> None:
+        """Store an analysis of a record already in this cache (append-only, idempotent)."""
+        with self._cache.begin() as conn:
+            if (
+                conn.execute(
+                    select(records.c.record_id).where(records.c.record_id == result.record_id)
+                ).first()
+                is None
+            ):
+                raise ValueError(f"record {result.record_id!r} is not in this registry")
+            row = {
+                "result_id": result.result_id,
+                "record_id": result.record_id,
+                "method_name": result.method.name,
+                "method_sha256": result.method_sha256,
+                "status": result.status,
+                "created_at": result.created_at,
+                "schema_version": result.schema_version,
+                "body": _body(result),
+            }
+            if _insert_absent(conn, analysis_results, row):
+                self._mark(conn, "analysis_results", result.result_id, False)
+
     # --- reads (cache or server) -----------------------------------------------------------------
 
     def find(
@@ -243,10 +279,28 @@ class Registry:
         """The payload of a record in this client's store (sync does not download)."""
         return read_payload(self.store / self.get(record_id).payload.path)
 
+    def results(
+        self,
+        *,
+        record_id: str | None = None,
+        method_name: str | None = None,
+        status: str | None = None,
+        remote: bool = False,
+    ) -> list[AnalysisResult]:
+        """Analysis results matching every given filter, oldest first."""
+        q = select(analysis_results.c.body).order_by(
+            analysis_results.c.created_at, analysis_results.c.result_id
+        )
+        for col, v in (("record_id", record_id), ("method_name", method_name), ("status", status)):
+            if v is not None:
+                q = q.where(analysis_results.c[col] == v)
+        with self._engine(remote).connect() as conn:
+            return [load("AnalysisResult", b) for b in conn.execute(q).scalars()]
+
     def unsynced(self) -> dict[str, int]:
         with self._cache.connect() as conn:
             rows = conn.execute(select(sync_state.c.table_name).where(~sync_state.c.synced))
-            out = {"devices": 0, "objects": 0, "records": 0}
+            out = {"devices": 0, "objects": 0, "records": 0, "analysis_results": 0}
             for (t,) in rows:
                 out[t] += 1
             return out
@@ -254,17 +308,19 @@ class Registry:
     # --- sync ------------------------------------------------------------------------------------
 
     def sync(self) -> SyncReport:
-        """Upload everything not yet confirmed: devices, objects, then each record after its payload.
+        """Upload everything not yet confirmed: devices, objects, each record after its payload, then
+        analysis results.
         Safe to repeat and to interrupt; raises RuntimeError without a server configured."""
         if not self.remote_dsn or self.remote_store is None:
             raise RuntimeError(f"sync needs a server: set {DSN_ENV} and {STORE_ENV}")
         remote = self._engine(True)
-        counts = {"devices": 0, "objects": 0, "records": 0}
+        counts = {"devices": 0, "objects": 0, "records": 0, "analysis_results": 0}
         sent_bytes = 0
         for name, table, key in (
             ("devices", devices, "device_id"),
             ("objects", objects, "sha256"),
             ("records", records, "record_id"),
+            ("analysis_results", analysis_results, "result_id"),
         ):
             for row in self._pending(name, table, key):
                 if name == "records":

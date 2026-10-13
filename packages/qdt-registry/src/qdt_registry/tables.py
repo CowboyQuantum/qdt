@@ -23,8 +23,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-DDL_VERSION = 1
+DDL_VERSION = 2
 """Bumps with every table change; a change is an ADR plus an additive migration, never a DROP."""
+
+ADDITIVE_UPGRADES: dict[int, str] = {1: "adds analysis_results (Step 4, ADR 0029)"}
+"""From-version → what the next version adds, for upgrades that only create new tables. A client may
+upgrade a server across these with `create_all`; any other change needs a real migration (ADR 0026)."""
 
 Body = JSON().with_variant(JSONB(), "postgresql")
 Timestamp = DateTime(timezone=True)
@@ -89,6 +93,23 @@ records = Table(
     Index("ix_records_stand_id", "stand_id"),
     Index("ix_records_campaign", "campaign"),
     comment="MeasurementRecord envelopes; the Step 3 exit query runs here.",
+)
+
+analysis_results = Table(
+    "analysis_results",
+    metadata,
+    Column("result_id", String(32), primary_key=True),
+    Column("record_id", String(32), ForeignKey("records.record_id"), nullable=False),
+    Column("method_name", String(255), nullable=False),
+    Column("method_sha256", String(64), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("created_at", Timestamp, nullable=False),
+    Column("schema_version", Integer, nullable=False),
+    Column("body", Body, nullable=False, comment="AnalysisResult, canonical JSON."),
+    CheckConstraint("status in ('ok', 'failed')", name="ck_analysis_results_status"),
+    Index("ix_analysis_results_record", "record_id", "created_at"),
+    Index("ix_analysis_results_method", "method_sha256"),
+    comment="AnalysisResult rows: estimates and overlays with dual provenance (Step 4, ADR 0029).",
 )
 
 cache_metadata = MetaData()

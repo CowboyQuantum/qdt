@@ -1,4 +1,4 @@
--- qdt registry DDL, ddl_version 1, dialect postgresql. Generated; do not edit.
+-- qdt registry DDL, ddl_version 2, dialect postgresql. Generated; do not edit.
 
 CREATE TABLE devices (
 	device_id VARCHAR(255) NOT NULL, 
@@ -61,3 +61,21 @@ CREATE INDEX ix_records_device ON records (device_id, started_at);
 CREATE INDEX ix_records_stand ON records (stand_sha256);
 
 CREATE INDEX ix_records_stand_id ON records (stand_id);
+
+CREATE TABLE analysis_results (
+	result_id VARCHAR(32) NOT NULL, 
+	record_id VARCHAR(32) NOT NULL, 
+	method_name VARCHAR(255) NOT NULL, 
+	method_sha256 VARCHAR(64) NOT NULL, 
+	status VARCHAR(16) NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	schema_version INTEGER NOT NULL, 
+	body JSONB NOT NULL, 
+	PRIMARY KEY (result_id), 
+	CONSTRAINT ck_analysis_results_status CHECK (status in ('ok', 'failed')), 
+	FOREIGN KEY(record_id) REFERENCES records (record_id)
+);
+
+CREATE INDEX ix_analysis_results_method ON analysis_results (method_sha256);
+
+CREATE INDEX ix_analysis_results_record ON analysis_results (record_id, created_at);
