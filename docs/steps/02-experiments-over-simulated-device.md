@@ -34,4 +34,4 @@ Experiments are data. A `SweepDefinition` compiles to an execution plan and runs
 - QUA payload-slot shape — CLOSED by ADR 0017: `SequencerProgram` (typed parameters with unit + integer scale, typed results, opaque body); Probe 01 (ADR 0015) fixed the int-only constraint
 
 ## Status
-IN PROGRESS
+DONE (2026-10-12; protocols frozen by ADR 0021, stand + activity + pulse slices by ADR 0022; live honeycomb confirmed in Flight Deck by the human)
