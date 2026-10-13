@@ -3,9 +3,8 @@
 > Rewritten at the end of every session. Never appended. History: `git log -- docs/STATUS.md`.
 > A fresh session must be able to continue from this file alone.
 
-**Current step:** 4 — Analysis as a consumer → `docs/steps/04-analysis-overlays.md`
-**Branch:** `step-4b/plan` (PR against `main` open; the human merges). PRs #9, #11, #12 merged; stale
-branches deleted; `main` is the only branch.
+**Current step:** 4b — Control path → `docs/steps/04b-control-path.md` (Step 4 DONE, ADR 0033)
+**Branch:** `step-4/close` (PR against `main` open; the human merges), then `step-4b/<short-name>`.
 **Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
 (`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
 session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
@@ -15,21 +14,23 @@ overlays in Flight Deck the human reviewed the analysis objects and decided: cur
 multi-record analyses deferred, and results may carry arrays. Built as ADR 0031: an output is a Dataset
 in a payload referenced from the result.
 
-## Step 4 exit criteria
+## Step 4 exit criteria — all met (DONE, ADR 0033)
 | Criterion | State |
 |---|---|
-| a fit runs from a query, writes an `AnalysisResult`, and its overlay renders on the originating dataset | ✔ query → `detect_transitions` / `detect_diamonds` → `Registry.add_result` → `serve` delivers the overlays (reference client, Tutorial 03; `scripts/demo_analysis.py [--diamonds]`). **Human to eyeball in Flight Deck** |
-| `modeling.py` slice (`FitModel`, `Estimate`, `AnalysisResult`) frozen with ADR | ✘ objects complete; freeze ADR at exit, after the human has seen the overlay |
-| L0: injection–recovery on synthetic and `SimulatedDevice` data | ✔ lattices (±cross terms) to 2 %; noisy sweeps: diagonal 2 %, cross ratios ±0.02; diamonds: period 3 %, E_c 5 %, lever arm and slopes 8 %, edges p > 0.9 / r > 0.85 at 2 px |
-| L0: `AnalysisResult` without measurement ref or method ref fails validation | ✔ `test_modeling.py` |
+| a fit runs from a query, writes an `AnalysisResult`, and its overlay renders on the originating dataset | ✔ seen by the human in Flight Deck (transitions); diamonds and outputs via `scripts/demo_analysis.py --diamonds` and `serve --output` |
+| `modeling.py` slice frozen with ADR | ✔ ADR 0033 |
+| L0: injection–recovery on synthetic and `SimulatedDevice` data; both provenance halves mandatory | ✔ |
 
-Deliverables: `qdt-analysis` pure functions ✔ (charge transitions with lattice estimation; Coulomb
-diamonds with the detection/estimation split); Flight Deck overlay layer ✔ (the Step 1 layer, unchanged,
-draws lines, markers and regions in data coordinates).
+## Step 4b exit criteria
+| Criterion | State |
+|---|---|
+| from a fresh browser with only `qdt-server` running against the simulator: craft a sweep + pulse sequence, run, watch live, find the record, run a curated analysis, see overlays and output — e2e in CI and as a scripted demo | ✘ not started |
+| `control.py` (`Run`, `MethodSpec`) frozen with ADR | ✘ not started |
 
 ## Done
-- Steps 0–3 DONE. ADR 0001–0030. Frozen: `Dataset` contract (0015), protocols (0021), stand/activity/pulse
-  (0022), identity/envelope/`qdt-hdf5-v1` (0028).
+- Steps 0–4 DONE. ADR 0001–0033. Frozen: `Dataset` contract (0015; v2 by 0031), protocols (0021),
+  stand/activity/pulse (0022; `ExecutionPlan` v2 by 0031), identity/envelope/`qdt-hdf5-v1` (0028),
+  modeling (0033).
 - **Step 4 (ADR 0029):** `qdt_schemas.modeling` (`FitModel`, `Estimate`, `AnalysisResult`; persisted,
   v1 fixture). `qdt_analysis.transitions.detect_transitions`: detection (`detect_segments`: threshold +
   NMS + direction families + connected runs → line overlays) separate from estimation (charge lattice
@@ -80,18 +81,15 @@ draws lines, markers and regions in data coordinates).
   Windows: `corepack pnpm ...` in `apps/flightdeck`.
 
 ## Next action
-**Human:** merge the PR; then look at the overlays:
-`uv run python scripts/demo_analysis.py` (transitions) and `uv run python scripts/demo_analysis.py
---diamonds` (each prints a record id), then `uv run python -m qdt_registry serve <record_id>` and
-`corepack pnpm dev` in `apps/flightdeck`. Transition segments should lie on the honeycomb edges; the
-diamond edges, `g<k>` markers and `E_c` regions on the sensor's diamonds. The demo also prints
-`serve --output <result_id>`: the detection map the method worked on, as a Dataset of its own.
-**Then** close Step 4: review `FitModel`/`Estimate`/`AnalysisResult` against what both methods, the
-registry and Tutorial 03 used; write the freeze ADR; mark Step 4 DONE (`docs/steps/04-…`, `README.md`).
-**Then** open Step 4b on `step-4b/<short-name>`: first build session decides the web framework and API
-shape by ADR, scaffolds `packages/qdt-server` (workspace member, `python -m qdt_server`, serves stands/
-devices, validate/compile, start a run against `SimulatedDevice` with the existing `StreamServer`), and
-adds `control.py` (`Run`, `MethodSpec`) with fixtures and exports. Step 5 (drivers) follows 4b.
+**Human:** merge the Step 4 close PR.
+**Then** Step 4b, first build session, on `step-4b/<short-name>`: ADR for the web framework and API
+shape (proposal: FastAPI + uvicorn, REST for commands and queries, the existing WebSocket stream for
+data, TS client generated from the OpenAPI document as the stream types are from JSON Schema); scaffold
+`packages/qdt-server` as a workspace member (`python -m qdt_server --root <registry>`): stands/devices,
+validate + compile a `SweepDefinition`, start a run against `SimulatedDevice` that streams through the
+`StreamServer` and records into the registry, list runs/records, list methods, run a method, fetch
+results; `control.py` (`Run`, `MethodSpec`) with fixtures and exports; API contract tests against the
+simulator. Flight Deck editors and browser come in the following sessions.
 
 ## Direction recorded (human, 2026-10-13)
 - The end state is a web app: users run **curated** analyses from Flight Deck; no method authoring in
@@ -99,8 +97,7 @@ adds `control.py` (`Run`, `MethodSpec`) with fixtures and exports. Step 5 (drive
 - **The control path comes before the drivers** (ADR 0032): Step 4b, `docs/steps/04b-control-path.md`.
   `packages/qdt-server` (HTTP API beside the stream; simulated backend only), Flight Deck sweep and
   pulse-sequence editors, run panel, records browser, analysis panel; `control.py` (`Run`,
-  `MethodSpec`). Exit: a fresh browser + the server does the whole loop on the simulator. Web
-  framework and API shape by ADR in the first build session. Estimated six to eight sessions.
+  `MethodSpec`). Exit: a fresh browser + the server does the whole loop on the simulator.
 
 ## Decisions pending
 - #10 surrogate DUT design (by Step 5 entry). Advisory treatment of the two wall-clock CI gates. Whether to

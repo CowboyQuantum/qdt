@@ -1,5 +1,9 @@
 """Step 4 schema slice: modeling — how data was analysed and what came out (ADR 0029).
 
+FROZEN (ADR 0033): `FitModel`, `Estimate`, `AnalysisResult` at `schema_version` 1. Any change bumps the
+version, adds a migration and keeps the old fixture, and carries an ADR (`packages/qdt-schemas/CLAUDE.md`).
+Step 6 adds `SimScenario`, `SimResult`, `CalibrationNode` beside them.
+
 An `AnalysisResult` has dual provenance, and both halves are mandatory: *what data* (the
 `MeasurementRecord` it read, plus the Dataset it decorates) and *how* (the `FitModel`: method name,
 version and parameters, content-addressed). The same record analysed by the same method with the same
