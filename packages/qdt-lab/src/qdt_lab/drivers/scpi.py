@@ -99,13 +99,34 @@ def open_visa(
         rm = pyvisa.ResourceManager()
     except (OSError, ValueError):
         rm = pyvisa.ResourceManager("@py")
-    resource = rm.open_resource(address)
+    resource = _open_with_retry(rm, address)
     if baud_rate is not None and hasattr(resource, "baud_rate"):
         resource.baud_rate = int(baud_rate)
     resource.timeout = int(timeout_s * 1000)
     resource.read_termination = termination
     resource.write_termination = termination
     return _VisaTransport(resource)
+
+
+CONNECT_ATTEMPTS, CONNECT_PAUSE_S = 3, 2.0
+
+
+def _open_with_retry(rm, address: str):
+    """`open_resource`, retried on a connect that fails or times out: an instrument's socket server
+    can refuse the first connection right after a previous session closed (an HD3 scope did, bench
+    2026-10-14). Anything that is not a connection failure is raised at once."""
+    import time
+
+    for attempt in range(CONNECT_ATTEMPTS):
+        try:
+            return rm.open_resource(address)
+        except Exception as e:  # pyvisa wraps connect failures in several types
+            text = str(e).lower()
+            connect_failure = "connect" in text or "timeout" in text or "-1073807339" in text
+            if not connect_failure or attempt == CONNECT_ATTEMPTS - 1:
+                raise
+            time.sleep(CONNECT_PAUSE_S)
+    raise AssertionError("unreachable")
 
 
 def channel_number(channel: str, lo: int, hi: int) -> int:

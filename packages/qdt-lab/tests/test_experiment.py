@@ -339,3 +339,26 @@ def test_build_backends_hands_each_factory_its_instrument_and_channels():
     assert [c.logical for c in seen["dmm"]] == ["i"] and seen["dmm"][0].integration_s == 0.1
     with pytest.raises(ValueError, match="no backend factory"):
         build_backends(stand, {})
+
+
+def test_build_backends_closes_what_it_built_when_a_later_factory_fails():
+    stand = StandConfig(
+        stand_id="s",
+        instruments=(
+            InstrumentConfig(id="dac", backend="good", capabilities=("level_source",)),
+            InstrumentConfig(id="scope", backend="bad", capabilities=("waveform_sense",)),
+        ),
+        channels=(ChannelMap(logical="g", instrument="dac", channel="ch00", quantity="voltage"),),
+    )
+    closed = []
+
+    class Backend:
+        def close(self):
+            closed.append("dac")
+
+    def bad(instrument, channels):
+        raise OSError("could not connect")
+
+    with pytest.raises(RuntimeError, match="instrument 'scope' \\(bad\\) could not be built"):
+        build_backends(stand, {"good": lambda i, c: Backend(), "bad": bad})
+    assert closed == ["dac"], "the backend built before the failure is closed"
