@@ -27,9 +27,14 @@ def _address(var: str) -> str:
     return value
 
 
-def _instrument(id: str, backend: str, capabilities: tuple[str, ...], var: str) -> InstrumentConfig:
+def _instrument(
+    id: str, backend: str, capabilities: tuple[str, ...], var: str, **settings
+) -> InstrumentConfig:
     return InstrumentConfig(
-        id=id, backend=backend, capabilities=capabilities, settings={"address": _address(var)}
+        id=id,
+        backend=backend,
+        capabilities=capabilities,
+        settings={"address": _address(var), **settings},
     )
 
 
@@ -54,6 +59,33 @@ def qdac(closing):
 
 
 @pytest.fixture
+def smu(closing):
+    """The Keithley 2400-series as `LevelSource` + `LevelSense` on its one terminal, from
+    `QDT_SMU_ADDRESS`; channel `out` sources voltage with 1 mA compliance. The 2450 is routed to its
+    front terminals first, over a socket that is closed again before the driver opens its own: the
+    instrument accepts one raw-socket connection at a time."""
+    import socket
+
+    from qdt_lab.drivers.keithley.k2400 import Keithley2400
+
+    inst = _instrument(
+        "smu",
+        "keithley2400",
+        ("level_source", "level_sense"),
+        "QDT_SMU_ADDRESS",
+        current_limit_a=1e-3,
+    )
+    address = str(inst.settings["address"])
+    host, port = address.split("::")[1], int(address.split("::")[2])
+    with socket.create_connection((host, port), timeout=5) as c:
+        c.sendall(b":ROUTe:TERMinals FRONt\n")
+    channels = (ChannelMap(logical="out", instrument="smu", channel="out", quantity="voltage"),)
+    backend = Keithley2400.from_config(inst, channels)
+    closing.append(backend)
+    return backend
+
+
+@pytest.fixture
 def scope(closing):
     """The InfiniiVision as a `WaveformSense` on inputs 1..4, from `QDT_SCOPE_ADDRESS`."""
     from qdt_lab.drivers.keysight.infiniivision import InfiniiVisionX
@@ -63,9 +95,24 @@ def scope(closing):
         ChannelMap(logical=f"ch{n}", instrument="scope0", channel=str(n), quantity="voltage")
         for n in (1, 2, 3, 4)
     )
-    backend = InfiniiVisionX.from_config(inst, channels)
+    backend = _retry(lambda: InfiniiVisionX.from_config(inst, channels))
     closing.append(backend)
     return backend
+
+
+def _retry(open_backend, attempts: int = 3, pause_s: float = 2.0):
+    """Open a backend, retrying a connect that times out: the HD3's socket server sometimes refuses
+    the first connection right after a previous session closed."""
+    import time
+
+    for attempt in range(attempts):
+        try:
+            return open_backend()
+        except Exception:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(pause_s)
+    raise AssertionError("unreachable")
 
 
 @pytest.fixture
