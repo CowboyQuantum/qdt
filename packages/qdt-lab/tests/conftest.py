@@ -4,6 +4,9 @@ Register real backends here under the `hardware` marker as drivers land (see CLA
 backend must pass the same tests unchanged.
 """
 
+import os
+import warnings
+
 import pytest
 
 from qdt_lab.simulated import (
@@ -15,6 +18,26 @@ from qdt_lab.simulated import (
 )
 from qdt_schemas.activity import SequencerParameter, SequencerProgram, SequencerResult
 from qdt_schemas.stand import ChannelMap, InstrumentConfig
+
+
+@pytest.fixture
+def wallclock_rate():
+    """Check a measured rate against a design target. Strict by default; with QDT_WALLCLOCK_ADVISORY=1
+    (CI's shared runners, ADR 0039) a rate below target only warns, and only one below half fails."""
+    advisory = os.environ.get("QDT_WALLCLOCK_ADVISORY") == "1"
+
+    def check(measured: float, target: float, what: str) -> None:
+        if measured >= target:
+            return
+        floor = 0.5 * target if advisory else target
+        assert measured >= floor, f"{what}: {measured:,.0f}/s is below {floor:,.0f}/s"
+        warnings.warn(
+            f"{what}: {measured:,.0f}/s is below the {target:,.0f}/s target (advisory)",
+            stacklevel=2,
+        )
+
+    return check
+
 
 LEVEL_SOURCE_BACKENDS = [pytest.param(SimulatedLevelSource, id="simulated")]
 

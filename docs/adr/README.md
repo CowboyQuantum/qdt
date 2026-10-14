@@ -17,7 +17,7 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0011 | Flight Deck may start against the drafted contract; the freeze gates Step 1 exit only | Accepted |
 | 0012 | Flight Deck v0 architecture: one decoder, raw WebGL2, cross-language oracles | Accepted (renderer library provisional until #9) |
 | 0013 | Flight Deck 2D renderer: raw WebGL2, no library (closes #9) | Accepted (analysis: `docs/analysis/0002-renderer-benchmark.md`) |
-| 0014 | CI gates the renderer bench on rendered rate; latency advisory there | Accepted |
+| 0014 | CI gates the renderer bench on rendered rate; latency advisory there | Superseded by 0039 |
 | 0015 | Dataset stream contract frozen against Probe 01; time alignment is the producer's job | Accepted (freezes 0009 + 0010) |
 | 0016 | Capability protocol naming: Level/Waveform × Source/Sense, plus Sequencer; quantity lives on the channel | Accepted (frozen by 0021) |
 | 0017 | Protocol signatures: producers are handed the Dataset and return a stream; `SequencerProgram` typed envelope | Accepted (frozen by 0021) |
@@ -42,3 +42,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0036 | Control slice frozen at schema_version 1: `Run`, `MethodSpec`, `ParameterSpec`, `EstimateSpec` | Accepted (closes Step 4b) |
 | 0037 | Chopped readout: `Affine` values and a `difference` primitive in `PulseSequence`, additive without a version bump | Accepted (amends the 0022 pulse slice) |
 | 0038 | A sweep carries its operating point: `SweepDefinition.levels`, fixed DC levels held for the whole scan | Accepted |
+| 0039 | Wall-clock rate targets are advisory on shared CI runners; a floor at half the target still gates | Accepted (supersedes 0014) |
