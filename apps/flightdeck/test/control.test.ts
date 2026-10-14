@@ -125,6 +125,14 @@ describe("api client", () => {
     expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({ definition: {}, options: { seed: 1 } });
   });
 
+  it("aborts a run by id", async () => {
+    calls.length = 0;
+    const run = await new ApiClient("http://x", fake({ run_id: "r 1", state: "aborted" })).abort("r 1");
+    expect(run.state).toBe("aborted");
+    expect(calls[0]!.url).toBe("http://x/runs/r%201/abort");
+    expect(calls[0]!.init?.method).toBe("POST");
+  });
+
   it("encodes record filters as a query string and skips empty ones", async () => {
     calls.length = 0;
     await new ApiClient("http://x", fake([])).records({ campaign: "demo", device_id: "" });

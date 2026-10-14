@@ -411,9 +411,24 @@ export class ControlPanel {
   private renderRuns(): void {
     this.els.runsList.replaceChildren(
       ...[...this.runs.values()].reverse().map((r) =>
-        h("li", { text: `${short(r.run_id)} ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${short(r.record_id)}` : ""}` }),
+        h(
+          "li",
+          {},
+          `${short(r.run_id)} ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${short(r.record_id)}` : ""}`,
+          ...(TERMINAL.has(r.state) ? [] : [h("button", { type: "button", text: "abort", onclick: () => void this.abort(r.run_id) })]),
+        ),
       ),
     );
+  }
+
+  private async abort(runId: string): Promise<void> {
+    try {
+      this.runs.set(runId, await this.api.abort(runId));
+      this.renderRuns();
+      this.host.say(`run ${short(runId)} aborting`);
+    } catch (e) {
+      this.host.say(describe(e), true);
+    }
   }
 
   // --- records and analysis ------------------------------------------------------------------------
