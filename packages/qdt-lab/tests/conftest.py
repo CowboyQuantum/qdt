@@ -123,9 +123,28 @@ LEVEL_SOURCE_BACKENDS = [
 ]
 
 
+@pytest.fixture
+def closing():
+    """Backends built during a test; each is closed at teardown, last first. Real instruments need
+    it: a Keithley 2450 accepts one raw-socket connection at a time and resets any second one, so a
+    backend left open by one test breaks the next."""
+    made: list[object] = []
+    yield made
+    seen: set[int] = set()
+    for backend in reversed(made):
+        if id(backend) in seen:
+            continue
+        seen.add(id(backend))
+        close = getattr(backend, "close", None)
+        if close is not None:
+            close()
+
+
 @pytest.fixture(params=LEVEL_SOURCE_BACKENDS)
-def level_source(request):
-    return request.param()
+def level_source(request, closing):
+    backend = request.param()
+    closing.append(backend)
+    return backend
 
 
 def _simulated_loopback(sense_channels: tuple[ChannelMap, ...] = ()):
@@ -152,8 +171,13 @@ LEVEL_LOOPBACK_BACKENDS = [
 
 
 @pytest.fixture(params=LEVEL_LOOPBACK_BACKENDS)
-def level_loopback_factory(request):
-    return request.param
+def level_loopback_factory(request, closing):
+    def factory(*args, **kwargs):
+        pair = request.param(*args, **kwargs)
+        closing.extend(pair)
+        return pair
+
+    return factory
 
 
 @pytest.fixture
@@ -177,8 +201,10 @@ WAVEFORM_SENSE_BACKENDS = [
 
 
 @pytest.fixture(params=WAVEFORM_SENSE_BACKENDS)
-def waveform_sense(request):
-    return request.param()
+def waveform_sense(request, closing):
+    backend = request.param()
+    closing.append(backend)
+    return backend
 
 
 # The conformance program: a 2-D loop whose result is the flat loop index, as Probe 01 ran on the OPX
@@ -210,5 +236,7 @@ SEQUENCER_BACKENDS = [
 
 
 @pytest.fixture(params=SEQUENCER_BACKENDS)
-def sequencer_and_program(request):
-    return request.param()
+def sequencer_and_program(request, closing):
+    sequencer, program = request.param()
+    closing.append(sequencer)
+    return sequencer, program
