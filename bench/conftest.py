@@ -86,6 +86,25 @@ def smu(closing):
 
 
 @pytest.fixture
+def opx(closing):
+    """The OPX1000 (LF-FEM in `QDT_OPX_FEM`, default 1, direct output mode) as a `WaveformSource` and
+    `WaveformSense`, from `QDT_OPX_ADDRESS`."""
+    from qdt_lab.drivers.qm.opx1000 import Opx1000
+
+    inst = _instrument(
+        "opx",
+        "qua",
+        ("waveform_source", "waveform_sense", "sequencer"),
+        "QDT_OPX_ADDRESS",
+        fem=int(os.environ.get("QDT_OPX_FEM", "1")),
+        output_mode="direct",
+    )
+    backend = Opx1000.from_config(inst, ())
+    closing.append(backend)
+    return backend
+
+
+@pytest.fixture
 def scope(closing):
     """The InfiniiVision as a `WaveformSense` on inputs 1..4, from `QDT_SCOPE_ADDRESS`."""
     from qdt_lab.drivers.keysight.infiniivision import InfiniiVisionX
@@ -129,7 +148,10 @@ def scope_front_panel():
         offset_v: float = 0.0,
         coupling: str = "DC",
         impedance: str = "ONEMeg",
+        trigger_level_v: float | None = None,
     ) -> None:
+        """Vertical settings for input `number`; with `trigger_level_v`, a rising-edge trigger on that
+        input at that level (sweep stays AUTO so an absent signal cannot hang a capture)."""
         rm = pyvisa.ResourceManager("@py")
         r = rm.open_resource(_address("QDT_SCOPE_ADDRESS"))
         r.timeout = 5000
@@ -141,6 +163,11 @@ def scope_front_panel():
         r.write(f":CHANnel{number}:SCALe {volts_per_div:.6g}")
         r.write(f":CHANnel{number}:OFFSet {offset_v:.6g}")
         r.write(":TRIGger:SWEep AUTO")
+        if trigger_level_v is not None:
+            r.write(":TRIGger:MODE EDGE")
+            r.write(f":TRIGger:EDGE:SOURce CHANnel{number}")
+            r.write(":TRIGger:EDGE:SLOPe POSitive")
+            r.write(f":TRIGger:EDGE:LEVel {trigger_level_v:.6g}")
 
     yield apply
     for r in sessions:
