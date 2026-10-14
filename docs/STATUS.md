@@ -4,13 +4,16 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (NOT STARTED).
-Step 4b DONE (ADR 0036). Two follow-ups from the human's demo are open as stacked PRs:
+Step 4b DONE (ADR 0036). Three follow-ups are open as stacked PRs; merge them in this order:
 - `step-4b/chopped-readout`: PR #21 → `main`.
-- `step-4b/operating-point`: its PR targets #21's branch, and GitHub retargets it to `main` when #21
-  merges.
+- `step-4b/operating-point`: PR #22 → #21's branch.
+- `step-4b/advisory-gates`: → #22's branch (ADR 0039).
+
+GitHub retargets each PR to `main` as the one below it merges.
 
 **Last session:** 2026-10-14. The human agreed ADR 0037 (no version bump; `difference` in the sequence)
-and asked for the operating point before Step 5, which was built as ADR 0038.
+and asked for the operating point before Step 5 (built as ADR 0038). They then chose advisory
+wall-clock CI gates (ADR 0039).
 
 ## Step 4b exit criteria — met (DONE, ADR 0036; unchanged by the follow-ups)
 | Criterion | State |
@@ -19,7 +22,7 @@ and asked for the operating point before Step 5, which was built as ADR 0038.
 | `control.py` frozen with ADR | ✔ ADR 0036 |
 
 ## Done
-- Steps 0–4b DONE. ADR 0001–0038. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+- Steps 0–4b DONE. ADR 0001–0039. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037 and 0038), identity/envelope/`qdt-hdf5-v1`
   (0028), modeling (0033), control (0036).
 - **PR #21 (ADR 0037):**
@@ -33,16 +36,20 @@ and asked for the operating point before Step 5, which was built as ADR 0038.
   - Compile resolves each level as `level_source`, and the executor sets them first.
   - The panel has an "operating point" section, checked live against the swept channels.
   - The simulator test pins "pulse adds to DC".
-- 285 Python tests (+5 Postgres-parametrized), 68 Flight Deck unit tests, 4 e2e.
+- **ADR 0039 (supersedes 0014):** wall-clock rate targets are advisory on shared CI runners, with a
+  floor at half the target.
+  - The bench takes `--rate-advisory`.
+  - The Python rate tests use a `wallclock_rate` fixture: strict locally, advisory with
+    `QDT_WALLCLOCK_ADVISORY=1`, which CI sets.
+- 287 Python tests (+5 Postgres-parametrized), 68 Flight Deck unit tests, 4 e2e.
 
 ## In flight
-- Nothing uncommitted. Two PRs await review (above).
+- Nothing uncommitted. Three stacked PRs await review (above).
 
 ## Known broken / not yet real
-- **CI's renderer rate gate fails on unchanged `main` today:** a re-run of `main` measured 925k pts/s
-  against a 950k target, where it was 986k the day before. Runner speed varies.
-  - PR #21's red `flightdeck` check is this gate, not a regression: locally both builds render ~998k.
-  - Making the gate advisory is the pending decision below. Until then a red rate gate needs a re-run.
+- **PR #21's red `flightdeck` check** comes from the old, strict rate gate (runner speed, not code).
+  #21 runs the workflow from its own branch, which predates ADR 0039, so treat it as advisory and merge.
+  Once the stack is in, `main` runs with the advisory gates.
 - **The form can't hold the inner gate fixed:** a stage sweep always pulses its inner axis. With an
   operating point, sweep its pulse around the held DC level.
 - **Simulator `drive`:** passes time with no effect, and `ramp` jumps to its end level. There is no QUA
@@ -58,10 +65,8 @@ and asked for the operating point before Step 5, which was built as ADR 0038.
 
 ## Next action
 **Human:**
-1. Decide the **wall-clock CI gates** (renderer rate, stream line-rate). Option A: advisory on shared
-   runners, like the latency gate (ADR 0014). Option B: keep them gating and lower the targets.
-2. Merge PR #21, then the operating-point PR.
-3. Settle **#10**, the surrogate DUT design. It gates Step 5.
+1. Merge the stack in order: #21, #22, then the advisory-gates PR.
+2. Settle **#10**, the surrogate DUT design. It gates Step 5.
 
 **Then** the first Step 5 session:
 1. Record #10 by ADR.
@@ -75,10 +80,10 @@ and asked for the operating point before Step 5, which was built as ADR 0038.
 - **2026-10-14:**
   - a chop's difference is recorded (ADR 0037);
   - additive changes without a version bump are accepted (ADR 0037);
-  - the operating point comes before Step 5 (ADR 0038).
+  - the operating point comes before Step 5 (ADR 0038);
+  - wall-clock CI gates are advisory, option A (ADR 0039).
 
 ## Decisions pending
-- Wall-clock CI gates: advisory or lower targets (now blocking: `main` fails).
 - #10 surrogate DUT design (by Step 5 entry).
 - A default operating point per device (not in ADR 0038).
 - Whether to fix the dot model's zero-clipping (ADR 0020 amendment).
