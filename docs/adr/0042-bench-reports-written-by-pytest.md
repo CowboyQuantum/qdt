@@ -29,8 +29,8 @@ A hand-written report also risks rule 7: a pasted pytest log carries VISA resour
 - **Addresses are redacted before writing.** The values of every `QDT_*_ADDRESS` variable, IPv4
   addresses, VISA resource strings and `*.stand.json` names become `<address>` / `<stand file>`. The
   report is meant to be committed without reading it first.
-- The "Case" column is the parametrize id in brackets: the backend in the conformance suite
-  (`[opx1000]`, `[qdac2]`, ...), the case in a bench test (a level, say). Unparametrized tests show `—`.
+- The backend is read from the parametrize id in brackets, which is the conformance suite's
+  convention (`[opx1000]`, `[qdac2]`, ...). Unparametrized tests show `—`.
 
 ## Consequences
 - The Step 5 exit row "bench report committed" has a mechanism. Today's report records the OPX1000
