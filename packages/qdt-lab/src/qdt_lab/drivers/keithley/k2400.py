@@ -19,6 +19,10 @@ Two command dialects, picked from `*IDN?`:
 Commands follow the Keithley reference manuals of both families and must be confirmed on the first
 bench run. Function, compliance, format and NPLC commands are sent only when they change; the output
 is turned on at the first `set` (or at the first `sense`, sourcing 0 V, when nothing was set).
+
+Bench, 2026-10-14 (a 2450, firmware 1.7.16a): the new-dialect commands above pass the conformance suite.
+The 2450 accepts one raw-socket (port 5025) connection at a time and resets any second one, so `close`
+this driver before opening another to the same instrument.
 pyvisa is needed only by `from_config` (through `open_visa`); importing this module needs no extra.
 """
 
