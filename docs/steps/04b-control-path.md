@@ -31,17 +31,15 @@ A user does the whole simulated loop from the browser: picks a stand and device,
 - `control.py` frozen with an ADR.
 
 ## Open decisions
-- Web framework and API style (REST + the existing WebSocket; or one WebSocket protocol) — ADR in the first build session.
-- Where the pulse-sequence editor stops: a form over `PulseSequence` (Step 4b) vs a timeline editor (later).
+- Web framework and API style — resolved by ADR 0034: FastAPI, REST for commands and queries, the existing WebSocket for data.
+- Where the pulse-sequence editor stops — resolved by ADR 0035: a form over `PulseSequence` (rows, number-or-symbol cells, bindings); no timeline, no segment editing in 4b.
 - Authentication: none in 4b (single machine); multi-user and the lab PC are Step 7.
 
 ## Status
-IN PROGRESS (opened 2026-10-13, ADR 0032). Session 1: ADR 0034, `control.py`, `packages/qdt-server`,
-API contract tests. Session 2: OpenAPI export (`scripts/export_openapi.py`, drift-checked) and
-`pnpm gen:api` → `src/schema/api.ts`; `src/api/client.ts`; `src/control/` (sweep builders for stage and
-DC sweeps, method parameter forms, the panel: craft, run, runs list, records list with show/analyse,
-analysis with parameter form, show overlays / show output); every announced Dataset selectable;
-`e2e/control.test.ts` drives the whole loop in Chrome against a spawned server. Session 2b: view options
-(derivative / gradient transforms, swap axes, axis labels). Remaining: the
-pulse-sequence editor beyond the one-step template, trace views for 1-D sweeps in the panel, freeze
-`control.py`, a scripted demo entry (`python -m qdt_server --demo`?), polish.
+DONE (2026-10-13, ADR 0036). Session 1: ADR 0034, `control.py`, `packages/qdt-server`, API contract
+tests. Session 2: OpenAPI export (drift-checked) and `pnpm gen:api` → `src/schema/api.ts`;
+`src/api/client.ts`; `src/control/` (sweep builders, method parameter forms, the panel: craft, run,
+runs, records, analysis, overlays, outputs); every announced Dataset selectable; `e2e/control.test.ts`.
+Session 2b: view options (derivative / gradient transforms, swap axes, axis labels). Session 3: the
+pulse-sequence editor (`src/control/sequence.ts`, ADR 0035), 1-D sweeps, `POST /runs/{id}/abort` and
+an abort button, `qdt-server --ui` and `scripts/demo_control_path.py`, the `control.py` freeze (ADR 0036).

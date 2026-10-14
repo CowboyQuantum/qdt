@@ -6,7 +6,8 @@ it produced), aborted or failed. The server keeps runs in memory; the durable th
 version (the `FitModel` a result will carry), the parameters a form offers, the Dataset shapes it applies
 to and the estimates it promises. Users run methods; they do not author them (ADR 0031).
 
-Both are rendered by the UI and never stored in it (`docs/FINISH_LINE.md`). Frozen at Step 4b exit.
+Both are rendered by the UI and never stored in it (`docs/FINISH_LINE.md`). Frozen at schema_version 1
+by ADR 0036.
 """
 
 from typing import Literal
