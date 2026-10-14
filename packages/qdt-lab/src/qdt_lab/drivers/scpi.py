@@ -81,9 +81,16 @@ class _VisaTransport:
             self._r = None
 
 
-def open_visa(address: str, *, timeout_s: float = 10.0, termination: str = "\n") -> ScpiTransport:
-    """Open `address` (a VISA resource string, e.g. 'TCPIP::<host>::5025::SOCKET') with pyvisa,
-    using the pure-Python backend when no vendor VISA library is installed."""
+def open_visa(
+    address: str,
+    *,
+    timeout_s: float = 10.0,
+    termination: str = "\n",
+    baud_rate: int | None = None,
+) -> ScpiTransport:
+    """Open `address` (a VISA resource string, e.g. 'TCPIP::<host>::5025::SOCKET' or
+    'ASRL/dev/cu.usbserial-NNNN::INSTR') with pyvisa, using the pure-Python backend when no vendor
+    VISA library is installed. `baud_rate` applies to serial resources only (pyserial needed)."""
     try:
         import pyvisa
     except ImportError as e:  # pragma: no cover - exercised only without the extra
@@ -93,6 +100,8 @@ def open_visa(address: str, *, timeout_s: float = 10.0, termination: str = "\n")
     except (OSError, ValueError):
         rm = pyvisa.ResourceManager("@py")
     resource = rm.open_resource(address)
+    if baud_rate is not None and hasattr(resource, "baud_rate"):
+        resource.baud_rate = int(baud_rate)
     resource.timeout = int(timeout_s * 1000)
     resource.read_termination = termination
     resource.write_termination = termination

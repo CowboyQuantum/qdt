@@ -13,7 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 opx = ["qm-qua>=1.2"]                            # OPX1000: QUA programs + config (ADR 0006)
-qdac = ["pyvisa>=1.13", "pyvisa-py>=0.7"]        # QDAC-II: SCPI over TCP
+qdac = ["pyvisa>=1.13", "pyvisa-py>=0.7", "pyserial>=3.5"]  # QDAC-II: SCPI over TCP, or the USB serial port
 keysight = ["pyvisa>=1.13", "pyvisa-py>=0.7"]    # InfiniiVision X: SCPI
 smu = ["pyvisa>=1.13", "pyvisa-py>=0.7"]         # Keithley 2400-series: SCPI
 
