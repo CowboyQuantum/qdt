@@ -42,3 +42,6 @@ QUA programs and config are validated offline by qm-qua. `qdt-server --stand` ru
 CI test runs a sweep through the server on the real drivers over emulators. Remaining: the first
 `-m hardware` run and its fixes, the OPX calibration constants, L1/L2 bench suites and the report, and
 linear and exponential fits (asked for by the human; plane and single exponential).
+Session 2 (2026-10-14, bench): first hardware contact. The OPX1000 passed all seven sequencer conformance
+tests unchanged (`bench/reports/2026-10-14-step5.md`). `scripts/bench_report.py` now writes that report
+from any `-m hardware` run (ADR 0042). The QDAC-II, SMU and scope await their addresses in the stand file.
