@@ -5,4 +5,4 @@ Excluded from CI by the `hardware` marker. Run from the bench described in `docs
     uv run pytest bench/ -m hardware | tee bench/reports/$(date +%F)-stepN.md
 
 and commit the report. These suites reuse the conformance tests from `packages/qdt-lab/tests`; the only
-bench-specific code is backend construction (addresses from `docs/BENCH.md`) and L2 golden-fixture comparisons.
+bench-specific code is backend construction (addresses from `docs/BENCH.md`) and the L2 instrument-on-instrument oracles (ADR 0040).

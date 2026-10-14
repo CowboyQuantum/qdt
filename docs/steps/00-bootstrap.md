@@ -20,7 +20,7 @@ None. `QdtModel` base only.
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria
@@ -29,7 +29,7 @@ None. `QdtModel` base only.
 - ADR 0007 merged
 
 ## Open decisions
-- #10 surrogate DUT design — may be deferred to Step 5 entry
+- #10 surrogate DUT design — closed by ADR 0040 (no board; L2 is instrument-on-instrument)
 
 ## Status
 DONE (2026-10-11)

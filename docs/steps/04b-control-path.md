@@ -23,7 +23,7 @@ A user does the whole simulated loop from the browser: picks a stand and device,
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

@@ -38,7 +38,7 @@ qdt/
 ├── docs/
 │   ├── DEVELOPMENT_PLAN.md   # this document
 │   ├── FINISH_LINE.md        # Flight Deck finish-line sketch (§8) — written before UI code
-│   ├── BENCH.md              # bench fixture: instruments, surrogate DUT wiring, loopback map
+│   ├── BENCH.md              # bench fixture: instruments, loopback map, L2 instrument-on-instrument wiring
 │   ├── module-registry.html
 │   └── adr/
 ├── packages/
@@ -116,7 +116,7 @@ Prototype on lab PC via Docker Compose (`qdt-diraq/deploy/`); localhost-bound du
 |---|---|---|---|
 | L0 | Simulated | Software doubles implementing the same interfaces as real backends | CI, every commit |
 | L1 | Bench loopback | Real instrument, room temperature, numeric oracle (set 1.000 V, read 1.000 ± tol) | Bench, `@hardware` |
-| L2 | Surrogate DUT | Passive bench board (resistor divider, RC leg, diode) between sources and acquisition; analytically known nonlinear response → golden curves for sweeps, fits, and renders | Bench, `@hardware` |
+| L2 | Instrument-on-instrument | The bench's instruments reading each other through off-the-shelf parts (a bias tee; the scope's 1 MΩ input): a DC + pulse map with a plane oracle, current readout into a known load, a real exponential (ADR 0040; no custom board) | Bench, `@hardware` |
 | L3 | Fridge | Real device; confirms what L0–L2 already proved | Fridge, rare |
 
 **Step exit rule:** L0 in CI and green; L1 and L2 pass as a scripted demo; the step's schema slice frozen; an ADR for any decision made. L3 is never a step exit criterion.
@@ -131,7 +131,7 @@ Prototype on lab PC via Docker Compose (`qdt-diraq/deploy/`); localhost-bound du
 | 3 | Registry | Records land with provenance; first DDL; registry is a Flight Deck source | `steps/03-registry.md` |
 | 4 | Analysis overlays | Fits/detections as `Annotation`s with dual provenance; injection–recovery in CI | `steps/04-analysis-overlays.md` |
 | 4b | Control path (ADR 0032) | A user crafts a sweep + pulse sequence, runs it on the simulator, finds the record, runs a curated analysis — all from Flight Deck via `qdt-server` | `steps/04b-control-path.md` |
-| 5 | Instrument drivers — last mile | Real OPX/QDAC/scope/SMU behind the protocols; L1 loopback; L2 surrogate DUT; first bench reports | `steps/05-instrument-drivers-last-mile.md` |
+| 5 | Instrument drivers — last mile | Real OPX/QDAC/scope/SMU behind the protocols; L1 loopback; L2 instrument-on-instrument; first bench reports | `steps/05-instrument-drivers-last-mile.md` |
 | 6 | Closed-loop tuning | DAG runs unattended against sim; first fridge contact as confirmation | `steps/06-closed-loop-tuning.md` |
 | 7 | Other sources | Telemetry, internal extension, lab PC, IT, substrate pilot demo | `steps/07-other-sources.md` |
 | 8 | Frameworks | Governance as data; HTML demoted to renderers | `steps/08-frameworks.md` |
@@ -180,7 +180,7 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | 7 | Bluefors log access mode | Resolve via IT ask at Step 7 |
 | 8 | Stream transport for `Dataset` | RESOLVED (ADR 0008): WebSocket + Arrow IPC; see `docs/analysis/0001-stream-budget.md` |
 | 9 | Flight Deck stack | RESOLVED (ADR 0013): TypeScript; raw WebGL2 2D renderer, no library; see `docs/analysis/0002-renderer-benchmark.md` |
-| 10 | Surrogate DUT design | Resistor divider + RC leg + diode (proposed); finalize in `BENCH.md` by Step 5 entry |
+| 10 | Surrogate DUT design | **Closed by ADR 0040:** no board; L2 is instrument-on-instrument (bias tee, the scope's 1 MΩ input) |
 
 ## 13. Success criteria
 

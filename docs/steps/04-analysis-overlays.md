@@ -19,7 +19,7 @@ Fits and feature detection run from registry queries, emit `AnalysisResult` with
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

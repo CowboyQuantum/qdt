@@ -19,11 +19,62 @@ Keep it generic: roles and models, not site names (rule 7).
 | SMU → scope ch 2 | set V, read V | TODO |
 | OPX analog out → scope ch 3 | known pulse amplitude/width | TODO |
 
-## Surrogate DUT (L2) — plan Open Decision #10
-Proposed: resistor divider + RC leg + diode on one board. Record here: schematic, part values, expected
-analytic response (IV for the diode leg, divider ratio, RC time constant), and the first hand-measured
-golden fixture (`bench/fixtures/dut_golden_v1.*`).
+## L2: instrument-on-instrument (ADR 0040; closes Open Decision #10)
+There is no surrogate DUT board. The L2 tests use the bench's instruments reading each other, plus two
+off-the-shelf parts: a **bias tee** and the **scope's DC-coupled 1 MΩ input**. Specifications below are
+taken from the instruments' and the bias tee's datasheets. The test code computes pass thresholds from
+them. No site tolerance is written here (rule 7).
 
+### L2-1: DC + pulse through the bias tee (Step 5 exit run)
+```
+QDAC ch ── DC port ─┐
+                    ├─ bias tee ── out ──► OPX analog in   (stage `measure`)
+OPX AO ─── RF port ─┘
+```
+- **Sweep:** a stage sweep of the same shape as the simulator's stability diagram (`qdt_sim.scenarios`).
+  - Outer axis: the QDAC DC level, stepped. Its operating point is set with `SweepDefinition.levels`
+    (ADR 0038).
+  - Inner axis: the OPX pulse amplitude, swept in the stage.
+  - Per pixel: step to the amplitude, wait, `measure` on the OPX input.
+- **Oracle:** a plane, V = c_DC·V_DC + c_P·V_pulse + offset.
+  - c_P ≈ 1 minus the bias tee's insertion loss (matched 50 Ω RF path).
+  - c_DC = R_in / (R_in + R_DC), where R_DC is the bias tee's DC-port series resistance and R_in is the
+    sink's input impedance.
+- **Fit:** a plane (a curated `qdt-analysis` method, new in Step 5). The overlays are iso-voltage lines,
+  slope −c_DC/c_P, the analogue of a charge transition.
+- **Pass:** c_DC and c_P within the combined specification. The record is listed in the registry, and
+  the overlay is drawn live in Flight Deck.
+- **Pulse length:** ≤ 1 % of the bias tee's low-frequency time constant, so the droop stays below 1 %.
+
+### L2-2: current readout into a known load
+```
+QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 MΩ)
+```
+- **Sweep:** a 1-D level sweep, for example −2 … +2 V. The instrument reads its own current (`LevelSense`
+  in current), and the scope confirms the voltage.
+- **Oracle:** I = V / R_scope, with R_scope = 1 MΩ to the scope's input-impedance specification (1 µA per
+  volt). This is also ADR 0016's load-dependent `LevelSense` oracle.
+- **Fit:** a line through the origin. Slope 1/R_scope, within the specs of the instrument's current
+  range and the scope's input impedance.
+
+### L2-3: the bias tee's droop, a real exponential
+- **Setup:** an OPX step (a long pulse) into the RF port, with the bias tee output on the scope (DC, high
+  Z, or terminated per the bias tee's datasheet).
+- **Oracle:** V(t) = A·e^(−t/τ) after the edge. τ is the bias tee's low-frequency time constant,
+  1/(2π f_low) from its datasheet.
+- **Fit:** a single exponential (a curated method, new in Step 5) → τ, A.
+- **Pass:** τ within the bias tee's specification. This also exercises `WaveformSense` on a real
+  waveform.
+
+### To fill in before Step 5 builds the L2 suite (human)
+- **Bias tee model:** low-frequency cutoff, DC-port resistance, insertion loss, and maximum DC
+  current/voltage. Record the model, not a serial number.
+- **The sink for L2-1:** check that V_DC / (R_DC + 50 Ω) stays within the QDAC channel's output-current
+  specification and the OPX input range at the planned DC span. If it doesn't, narrow the span or add a
+  high-impedance buffer before the OPX input.
+- **QDAC current-readout range and resolution at 1 µA/V (L2-2).** If it is too coarse, use a larger span
+  or rely on the SMU's current readout for the oracle.
+- **Scope input impedance specification** (1 MΩ ± its tolerance), used as the reference in L2-2.
 ## Reports
 Every `-m hardware` run writes `bench/reports/YYYY-MM-DD-<step>.md` and is committed. The repo must always
 show when hardware was last proven.

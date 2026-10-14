@@ -73,7 +73,7 @@ uv run python -m qdt_server               # control path: API on :8700 (/docs), 
 | The current step's spec | `docs/steps/<NN-name>.md` (index: `docs/steps/README.md`) |
 | The roadmap narrative and test ladder | `docs/DEVELOPMENT_PLAN.md` (§7.1 ladder, §7.2 index) |
 | Flight Deck end-state constraints | `docs/FINISH_LINE.md` |
-| Bench wiring, surrogate DUT, loopback map | `docs/BENCH.md` |
+| Bench wiring, loopback map, L2 instrument-on-instrument | `docs/BENCH.md` |
 | How to add an instrument driver | `packages/qdt-lab/CLAUDE.md` |
 | How the UI talks to the backend | `packages/qdt-server/CLAUDE.md` (ADR 0032, 0034) |
 | How to add/change a schema | `packages/qdt-schemas/CLAUDE.md` |
