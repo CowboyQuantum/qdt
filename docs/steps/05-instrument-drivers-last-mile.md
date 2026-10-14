@@ -61,3 +61,5 @@ Session 6 (2026-10-14, bench): the QDAC-II is on Ethernet at its fixed address a
 Session 7 (2026-10-14, bench): first L1 loopback, QDAC ch01 → scope ch1, passes at five levels within the
 HD3 datasheet's DC measurement accuracy (`bench/test_l1_loopback.py`). Two hours of it were the QDAC-II's
 outputs stuck at 0 V after its boot history, fixed by `*RST` (BENCH.md quirks).
+Session 8 (2026-10-14, bench): L1 row 2, SMU (2450, front terminals) → scope, passes at five levels. The
+SMU was found by mDNS on a new self-assigned address. L1 row 3 (OPX AO → scope) is left.

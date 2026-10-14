@@ -30,10 +30,13 @@ conformance suite the emulators pass in CI. Then confirm the OPX calibration con
 (`INTEGRATION_TO_VOLTS`, `RAW_ADC_TO_VOLTS` in `opx1000.py`) with an OPX AO → AI loopback at a known level.
 
 ## Loopback map (L1)
+One BNC is moved between the DC sources and one scope input; `QDT_L1_DC_SOURCES` (default `qdac,smu`) names
+the sources cabled right now, the rest skip. `bench/test_l1_loopback.py`.
+
 | Source → Sink | Oracle | Tolerance |
 |---|---|---|
-| QDAC ch01 (`QDT_L1_QDAC_CHANNEL`) → scope ch 1, DC 1 MΩ, 0.5 V/div | set V (0, ±0.5, ±1.5), read the mean of one record through `WaveformSense` | scope single-cursor DC accuracy: ±[1.5 % FS + 0.1 div + 1 mV + 1.5 % of offset + 0.08 % FS] = ±114 mV at 0.5 V/div (FS = 8 div, HD3 datasheet); QDAC output error not budgeted (20-bit, calibrated) |
-| SMU → scope ch 2 | set V, read V | TODO |
+| QDAC ch01 (`QDT_L1_QDAC_CHANNEL`) → scope ch 1 (`QDT_L1_SCOPE_CHANNEL`), DC 1 MΩ, 0.5 V/div | set V (0, ±0.5, ±1.5), read the mean of one record through `WaveformSense` | scope single-cursor DC accuracy: ±[1.5 % FS + 0.1 div + 1 mV + 1.5 % of offset + 0.08 % FS] = ±114 mV at 0.5 V/div (FS = 8 div, HD3 datasheet); QDAC output error not budgeted (20-bit, calibrated) |
+| SMU force terminals (front, banana → BNC) → the same scope input, DC 1 MΩ, 0.5 V/div | set V (0, ±0.5, ±1.5) through `LevelSource`, read the mean of one record through `WaveformSense` | the same scope formula, ±114 mV at 0.5 V/div; 2450 source accuracy ±(0.015 % + 300 µV) on 2 V, ±(0.015 % + 2.4 mV) on 20 V, not budgeted |
 | OPX analog out → scope ch 3 | known pulse amplitude/width | TODO |
 
 ## L2: instrument-on-instrument (ADR 0040; closes Open Decision #10)
