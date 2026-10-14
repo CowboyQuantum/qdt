@@ -13,8 +13,17 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
 |---|---|---|---|---|
 | `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet or its rear USB port | `qdac2` | `QDT_QDAC2_ADDRESS` | `TCPIP::<host>::5025::SOCKET`, or `ASRL/dev/cu.usbserial-NNNN::INSTR` (921600 baud, set by the driver; ADR 0043). The LAN address is set over USB: `syst:comm:lan:dhcp 0`, `:ipad "<ip>"`, `:smask`, `:gat`, `:upd`, then a power cycle with the cable in. Channels used: TODO |
 | `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings |
-| `WaveformSense` | Keysight InfiniiVision (X or HD3 series; an HD304MSO on the bench) | `infiniivision` | `QDT_SCOPE_ADDRESS` | `TCPIP::<host>::INSTR`; it self-assigns a 169.254 address without DHCP. Trigger sweep must be AUTO, vertical scale set on the front panel. `:TIMebase:REFerence LEFT` is one division in from the left edge; the driver accounts for it |
+| `WaveformSense` | Keysight InfiniiVision (X or HD3 series; an HD304MSO on the bench) | `infiniivision` | `QDT_SCOPE_ADDRESS` | `TCPIP::<host>::5025::SOCKET` (the VXI-11 `::INSTR` form refuses connections intermittently on the HD3; the socket form never did); it self-assigns a 169.254 address without DHCP. Trigger sweep must be AUTO, vertical scale set on the front panel. `:TIMebase:REFerence LEFT` is one division in from the left edge; the driver accounts for it |
 | `LevelSource` + `LevelSense` on one terminal | Keithley 2400-series | `keithley2400` | `QDT_SMU_ADDRESS` | legacy or 2450-style SCPI picked from `*IDN?` |
+
+**QDAC-II quirks seen on the bench (firmware 14-1.70):**
+- After a power cycle or a LAN change the analog outputs can stay at 0 V while the firmware reports every
+  setpoint applied (DAC code programmed, `LAST?` equal to `VOLT?`, no error). A `*RST` brought them back.
+  Verify one channel with a meter or the scope at the start of a bench session; the driver never resets
+  on its own, because a reset zeroes every channel.
+- The current readout in the default (HIGH) sense range carries a common-mode error of the order of
+  0.1–0.3 mA per volt of output (manual § accuracy), so a 1 MΩ load is invisible there. To use the
+  current as a load check, switch `SENS<n>:RANG LOW` (nA) with the channel at 0 V.
 
 First bench run: `uv run pytest packages/qdt-lab -m hardware` with the variables exported. It runs the same
 conformance suite the emulators pass in CI. Then confirm the OPX calibration constants
@@ -23,7 +32,7 @@ conformance suite the emulators pass in CI. Then confirm the OPX calibration con
 ## Loopback map (L1)
 | Source → Sink | Oracle | Tolerance |
 |---|---|---|
-| QDAC ch N → scope ch 1 | set V, read V | TODO |
+| QDAC ch01 (`QDT_L1_QDAC_CHANNEL`) → scope ch 1, DC 1 MΩ, 0.5 V/div | set V (0, ±0.5, ±1.5), read the mean of one record through `WaveformSense` | scope single-cursor DC accuracy: ±[1.5 % FS + 0.1 div + 1 mV + 1.5 % of offset + 0.08 % FS] = ±114 mV at 0.5 V/div (FS = 8 div, HD3 datasheet); QDAC output error not budgeted (20-bit, calibrated) |
 | SMU → scope ch 2 | set V, read V | TODO |
 | OPX analog out → scope ch 3 | known pulse amplitude/width | TODO |
 
