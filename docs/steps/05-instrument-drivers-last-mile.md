@@ -68,3 +68,8 @@ through `WaveformSource.play`, amplitude and width within the oracle. **All thre
 calibration constants (AO → AI loopback), L2, the fits.
 Session 10 (2026-10-14, bench): Probe 02 measured the OPX input constants on an ao1 → ai1 loopback (ADR 0044):
 the input reads inverted at 1.155 × the assumed scale on both paths, and the time of flight is 180 ns, not 28.
+Session 11 (2026-10-14, bench): **first sweeps on real hardware through the server**, OPX ao1 → ai1 as the
+device (an OPX-only stand): a 64-point line and a 16 × 32 plane, both recorded in the registry and shown in
+Flight Deck; V_in = 1.013–1.016 × v_p2, residual < 1 mV. Three bugs found and fixed on the way: the OPX
+driver did not resolve the stand's logical channel names; a failed backend build leaked the sockets of the
+drivers already built; a server restart with the same device id failed on the registration time.

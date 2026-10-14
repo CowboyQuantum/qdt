@@ -91,11 +91,13 @@ class Opx1000:
         if self._mode not in OUTPUT_RANGE_V:
             raise ValueError(f"output_mode must be one of {sorted(OUTPUT_RANGE_V)}")
         self._ports: dict[str, _Port] = {}
+        self._logical: dict[str, str] = {}  # a channel's logical name -> its vendor id
         for c in channels:
             p = self._port(c.channel)
             if c.quantity != "voltage":
                 raise ValueError(f"OPX channel {c.channel!r} carries volts, not {c.quantity}")
             self._ports[c.channel] = p
+            self._logical[c.logical] = c.channel
         self._readout_lengths: set[int] = set()
         self._arbitrary: dict[str, list[float]] = {}
         self._qm = None
@@ -132,7 +134,13 @@ class Opx1000:
             raise ValueError(f"OPX channel {channel!r}: LF-FEM has ao1..8 and ai1..2")
         return p
 
+    def _vendor(self, channel: str) -> str:
+        """The vendor id for `channel`, which may be a declared logical name (the compiler hands the
+        driver sequences in the stand's logical names) or already a vendor id."""
+        return self._logical.get(channel, channel)
+
     def _known(self, channel: str, kind: str) -> _Port:
+        channel = self._vendor(channel)
         p = self._ports.get(channel) or self._port(channel)
         if p.kind != kind:
             raise ValueError(f"OPX channel {channel!r} is an {p.kind}, not an {kind}")
@@ -258,6 +266,7 @@ class Opx1000:
         limit = OUTPUT_RANGE_V[self._mode]
         if np.max(np.abs(a)) > limit:
             raise ValueError(f"waveform exceeds the ±{limit} V output range ({self._mode} mode)")
+        channel = self._vendor(channel)
         self._known(channel, "ao")
         n = max(MIN_PULSE_NS, math.ceil(a.size * SAMPLE_RATE / sample_rate / CLOCK_NS) * CLOCK_NS)
         t_out = np.arange(n) / SAMPLE_RATE
@@ -273,7 +282,7 @@ class Opx1000:
         self._jobs[channel] = qm.execute(prog)
 
     def stop(self, channel: str) -> None:
-        job = self._jobs.pop(channel, None)
+        job = self._jobs.pop(self._vendor(channel), None)
         if job is not None:
             _halt(job)
 
@@ -302,6 +311,7 @@ class Opx1000:
         n_records = next(d.size for d in dataset.dims if d.name == record_dim) or int(
             self._settings.get("max_records", 8)
         )
+        channel = self._vendor(channel)
         self._known(channel, "ai")
         window = max(MIN_PULSE_NS, math.ceil((times[-1] * SAMPLE_RATE + 1) / CLOCK_NS) * CLOCK_NS)
         return _RecordSource(
@@ -318,7 +328,9 @@ class Opx1000:
             qm = self._ensure()
             prog, plan = flat_index_program(program)
         elif "sequence" in body:
-            sequence = PulseSequence.model_validate(body["sequence"])
+            sequence = PulseSequence.model_validate(
+                _vendor_channels(body["sequence"], self._logical)
+            )
             for ch in sequence.channels():
                 self._known(
                     ch,
@@ -426,6 +438,23 @@ def flat_index_program(program: SequencerProgram):
         with qua.stream_processing():
             st.save_all("data")
     return prog, {"kind": "flat_index", "streams": {"data": "data"}}
+
+
+def _vendor_channels(sequence: object, logical: Mapping[str, str]) -> object:
+    """The sequence JSON with every `channel` that is a declared logical name replaced by its vendor
+    id, so elements and levels are keyed the way `config()` keys them."""
+    if isinstance(sequence, dict):
+        return {
+            k: (
+                logical.get(v, v)
+                if k == "channel" and isinstance(v, str)
+                else _vendor_channels(v, logical)
+            )
+            for k, v in sequence.items()
+        }
+    if isinstance(sequence, list):
+        return [_vendor_channels(v, logical) for v in sequence]
+    return sequence
 
 
 def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: dict, a_ref: float):

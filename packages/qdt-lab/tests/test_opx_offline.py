@@ -42,16 +42,19 @@ class _FakeQMM:
         return _FakeQM(config)
 
 
-def chopped_program() -> SequencerProgram:
+def chopped_program(logical: bool = False) -> SequencerProgram:
+    """The emitted stage; with `logical`, written in the stand's logical names and keyed by them, as
+    `compile_sweep` hands it to the driver (the driver maps them to its ports)."""
+    ao, ai = ("P2_pulse", "sensor") if logical else ("ao1", "ai1")
     v, t = Symbol(name="v_P2", unit="V"), Symbol(name="t_hold", unit="ns")
     seq = PulseSequence(
         name="chop",
         body=(
-            Step(channel="ao1", level=v, duration=t),
-            Measure(channel="ai1", duration=1000, result="I_on"),
-            Step(channel="ao1", level=Affine(symbol=v, offset=0.002), duration=200),
+            Step(channel=ao, level=v, duration=t),
+            Measure(channel=ai, duration=1000, result="I_on"),
+            Step(channel=ao, level=Affine(symbol=v, offset=0.002), duration=200),
             Wait(duration=100),
-            Measure(channel="ai1", duration=1000, result="I_off"),
+            Measure(channel=ai, duration=1000, result="I_off"),
             Difference(result="dI", a="I_on", b="I_off"),
         ),
     )
@@ -66,8 +69,9 @@ def chopped_program() -> SequencerProgram:
         shots=3,
         reduce={"I_on": "mean", "I_off": "mean", "dI": "mean"},
     )
-    axes = {"P2": SweepAxis(name="P2", channel="ao1", start=0.0, stop=0.1, num=11)}
-    program, _ = QuaEmitter().emit(stage, axes, {c.channel: c for c in CHANNELS})
+    axes = {"P2": SweepAxis(name="P2", channel=ao, start=0.0, stop=0.1, num=11)}
+    keyed = {(c.logical if logical else c.channel): c for c in CHANNELS}
+    program, _ = QuaEmitter().emit(stage, axes, keyed)
     return program
 
 
@@ -140,3 +144,13 @@ def test_refuses_what_the_lf_fem_cannot_run():
         )
     with pytest.raises(ValueError, match="multiple of 4"):
         opx1000._cycles_ns(1001, "measure")
+
+
+def test_a_stage_in_logical_channel_names_compiles_onto_the_declared_ports():
+    """Bench, 2026-10-14: the compiler names channels as the stand does ('P2_pulse'), the driver knows
+    ports ('ao1'); a real run failed with "OPX channel 'P2_pulse' is not 'ao<p>'" until this mapping."""
+    opx = Opx1000(_FakeQMM(), CHANNELS)
+    compiled = opx.compile(chopped_program(logical=True))
+    assert sorted(opx._qm.config["elements"]) == ["el_ai1", "el_ao1"]
+    script = qm.generate_qua_script(compiled.plan["qua"], opx._qm.config)
+    assert "el_ao1" in script and "P2_pulse" not in script

@@ -6,6 +6,7 @@ line per frame; stage frames are re-keyed into the full index space. The executo
 never averages (ADR 0018).
 """
 
+import contextlib
 import itertools
 import math
 import time
@@ -58,16 +59,34 @@ def build_backends(
     stand: StandConfig, factories: Mapping[str, BackendFactory]
 ) -> dict[str, object]:
     """Instrument id → backend, each built by the factory for its `backend` key from its config and
-    its channels (ADR 0021). Raises ValueError when no factory serves an instrument's backend."""
+    its channels (ADR 0021). Raises ValueError when no factory serves an instrument's backend. When a
+    factory fails, the backends already built are closed first (a real instrument may allow one
+    connection) and the error names the instrument."""
     out: dict[str, object] = {}
     for instrument in stand.instruments:
         factory = factories.get(instrument.backend)
         if factory is None:
+            close_backends(out)
             raise ValueError(
                 f"no backend factory for {instrument.backend!r} (instrument {instrument.id!r})"
             )
-        out[instrument.id] = factory(instrument, stand.instrument_channels(instrument.id))
+        try:
+            out[instrument.id] = factory(instrument, stand.instrument_channels(instrument.id))
+        except Exception as e:
+            close_backends(out)
+            raise RuntimeError(
+                f"instrument {instrument.id!r} ({instrument.backend}) could not be built: {e}"
+            ) from e
     return out
+
+
+def close_backends(backends: Mapping[str, object]) -> None:
+    """Close every backend that has a `close`, ignoring failures; the order is reverse of building."""
+    for backend in reversed(list(backends.values())):
+        close = getattr(backend, "close", None)
+        if close is not None:
+            with contextlib.suppress(Exception):  # best effort on the way out
+                close()
 
 
 def expected_points(plan: ExecutionPlan) -> int | None:
