@@ -2,9 +2,10 @@
 through the real drivers and the protocols, and the sink reads it back within the tolerance the
 datasheets allow. Numbers come from the datasheets; no site tolerance is written here (rule 7).
 
-DC rows: QDAC ch N → scope, SMU → scope. One cable is moved between sources, so `QDT_L1_DC_SOURCES`
-(comma list, default `qdac,smu`) says which are cabled; the others skip. The scope input is
-`QDT_L1_SCOPE_CHANNEL` (default 1); the QDAC channel is `QDT_L1_QDAC_CHANNEL` (default `ch01`).
+Rows: QDAC ch N → scope and SMU → scope (DC levels), OPX analog out → scope (a pulse). One cable is
+moved between sources, so `QDT_L1_SOURCES` (comma list, default `qdac,smu,opx`) says which are cabled;
+the others skip before any instrument opens. The scope input is `QDT_L1_SCOPE_CHANNEL` (default 1); the
+QDAC channel is `QDT_L1_QDAC_CHANNEL` (default `ch01`); the OPX output is `QDT_L1_OPX_CHANNEL` (`ao1`).
 
 The scope reads a DC level as the mean of one captured record. Its datasheet (InfiniiVision HD3,
 "Performance characteristics") gives the single-cursor DC voltage measurement accuracy as
@@ -17,6 +18,12 @@ The scope reads a DC level as the mean of one captured record. Its datasheet (In
 Source errors are not budgeted against that: the QDAC-II's 20-bit calibrated DC output is microvolts;
 the 2450's voltage source accuracy is ±(0.015 % + 300 µV) on its 2 V range and ±(0.015 % + 2.4 mV) on
 20 V (Keithley 2450 datasheet), also well inside.
+
+The OPX row plays a repeating pulse (`WaveformSource.play` loops until `stop`) into the scope's 50 Ω
+input, which the LF-FEM's direct mode is specified into (±0.5 V into 50 Ω; QM OPX1000 hardware
+specifications). Amplitude is the plateau mean against the same scope formula plus the 50 Ω input's
+±1.5 % (HD3 datasheet); no DAC accuracy figure is published for the LF-FEM, so none is budgeted. Width is
+the time between the half-amplitude crossings, within the OPX's 4 ns clock plus two grid steps.
 """
 
 import os
@@ -115,14 +122,14 @@ DC_SOURCES = {
 
 
 def _cabled() -> set[str]:
-    return {s.strip() for s in os.environ.get("QDT_L1_DC_SOURCES", "qdac,smu").split(",") if s}
+    return {s.strip() for s in os.environ.get("QDT_L1_SOURCES", "qdac,smu,opx").split(",") if s}
 
 
 @pytest.mark.parametrize("source", sorted(DC_SOURCES))
 @pytest.mark.parametrize("level", LEVELS_V)
 def test_dc_level_is_read_back_by_the_scope_within_datasheet_accuracy(request, source, level):
     if source not in _cabled():
-        pytest.skip(f"{source} not cabled to the scope (QDT_L1_DC_SOURCES)")
+        pytest.skip(f"{source} not cabled to the scope (QDT_L1_SOURCES)")
     # fixtures are taken only once the case is known to be cabled, so a skip opens no instrument
     scope = request.getfixturevalue("scope")
     scope_front_panel = request.getfixturevalue("scope_front_panel")
@@ -140,4 +147,102 @@ def test_dc_level_is_read_back_by_the_scope_within_datasheet_accuracy(request, s
     assert abs(read - level) <= tol, (
         f"{source} {channel} set {level:+.3f} V, scope ch{ch.number} mean {read:+.4f} V, "
         f"tolerance ±{tol:.4f} V at {ch.volts_per_div} V/div"
+    )
+
+
+# --- OPX analog out → scope: a pulse of known amplitude and width ------------------------------
+
+PULSE_AMPLITUDE_V, PULSE_WIDTH_S, PULSE_PERIOD_S = 0.25, 1e-6, 4e-6
+PULSE_SAMPLE_RATE = 1e9
+SCOPE_INPUT_50_OHM_TOLERANCE = 0.015
+OPX_CLOCK_S = 4e-9
+PULSE_GRID = (-1e-6, 3e-6, 4000)
+"""Declared record: 1 µs before the trigger edge to 3 µs after, 1 ns steps."""
+
+
+def pulse_train() -> np.ndarray:
+    n_high = round(PULSE_WIDTH_S * PULSE_SAMPLE_RATE)
+    n = round(PULSE_PERIOD_S * PULSE_SAMPLE_RATE)
+    w = np.zeros(n)
+    w[:n_high] = PULSE_AMPLITUDE_V
+    return w
+
+
+def pulse_amplitude_tolerance(ch: ScopeChannel) -> float:
+    return dc_measurement_tolerance(ch) + SCOPE_INPUT_50_OHM_TOLERANCE * PULSE_AMPLITUDE_V
+
+
+def width_tolerance() -> float:
+    start, stop, num = PULSE_GRID
+    return OPX_CLOCK_S + 2 * (stop - start) / (num - 1)
+
+
+def half_crossings(t: np.ndarray, v: np.ndarray, level: float) -> tuple[float, float]:
+    """Times of the first rising and the following falling crossing of `level`, by linear
+    interpolation between samples."""
+    above = v >= level
+    rises = np.flatnonzero(~above[:-1] & above[1:])
+    if rises.size == 0:
+        raise AssertionError("no rising edge through the half-amplitude level in the record")
+    i = rises[0]
+    t_rise = t[i] + (level - v[i]) / (v[i + 1] - v[i]) * (t[i + 1] - t[i])
+    falls = np.flatnonzero(above[:-1] & ~above[1:])
+    falls = falls[falls > i]
+    if falls.size == 0:
+        raise AssertionError("no falling edge after the rising edge in the record")
+    j = falls[0]
+    t_fall = t[j] + (level - v[j]) / (v[j + 1] - v[j]) * (t[j + 1] - t[j])
+    return float(t_rise), float(t_fall)
+
+
+def pulse_record() -> Dataset:
+    start, stop, num = PULSE_GRID
+    return Dataset(
+        dataset_id="l1-pulse",
+        name="l1-pulse",
+        dims=(Dimension(name="record", size=1), Dimension(name="t", size=num)),
+        coords=(LinearCoordinate(name="time", dim="t", unit="s", start=start, stop=stop, num=num),),
+        data_vars=(DataVariable(name="voltage", dims=("record", "t"), unit="V", dtype="float64"),),
+        source=SourceDescriptor(kind="live"),
+        created_at=datetime.now(UTC),
+    )
+
+
+def test_opx_pulse_amplitude_and_width_are_read_back_by_the_scope(request):
+    if "opx" not in _cabled():
+        pytest.skip("opx not cabled to the scope (QDT_L1_SOURCES)")
+    scope = request.getfixturevalue("scope")
+    scope_front_panel = request.getfixturevalue("scope_front_panel")
+    opx = request.getfixturevalue("opx")
+    channel = os.environ.get("QDT_L1_OPX_CHANNEL", "ao1")
+    ch = ScopeChannel(number=SCOPE_CHANNEL.number, volts_per_div=0.1, impedance="FIFTy")
+    scope_front_panel(
+        ch.number,
+        ch.volts_per_div,
+        ch.offset_v,
+        ch.coupling,
+        ch.impedance,
+        trigger_level_v=PULSE_AMPLITUDE_V / 2,
+    )
+    try:
+        opx.play(channel, pulse_train(), PULSE_SAMPLE_RATE)
+        time.sleep(0.5)
+        ds = pulse_record()
+        out = assemble(ds, scope.arm(f"ch{ch.number}", ds, "voltage").frames())
+    finally:
+        opx.stop(channel)
+    t = out["time"].values
+    v = out["voltage"].values[0]
+    baseline = float(np.mean(v[(t > -0.8e-6) & (t < -0.2e-6)]))
+    plateau = float(np.mean(v[(t > 0.2e-6) & (t < 0.8e-6)]))
+    amplitude = plateau - baseline
+    t_rise, t_fall = half_crossings(t, v, baseline + amplitude / 2)
+    width = t_fall - t_rise
+    a_tol, w_tol = pulse_amplitude_tolerance(ch), width_tolerance()
+    assert abs(baseline) <= dc_measurement_tolerance(ch), f"baseline {baseline:+.4f} V is not 0"
+    assert abs(amplitude - PULSE_AMPLITUDE_V) <= a_tol, (
+        f"amplitude {amplitude:.4f} V vs {PULSE_AMPLITUDE_V} V, tolerance ±{a_tol:.4f} V"
+    )
+    assert abs(width - PULSE_WIDTH_S) <= w_tol, (
+        f"width {width * 1e9:.1f} ns vs {PULSE_WIDTH_S * 1e9:.0f} ns, tolerance ±{w_tol * 1e9:.1f} ns"
     )
