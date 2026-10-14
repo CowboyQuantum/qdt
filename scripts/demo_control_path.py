@@ -36,6 +36,7 @@ Stability diagram (stage sweep; the inner axis pulsed by the sequencer):
 Coulomb diamonds (DC sweep): kind "DC", outer SG -0.2..0.2, inner bias -0.0015..0.0015 (inner axis
   name V_sd), options {{"seed": 1, "noise": false, "sensor_width_v": 0.01}}, method "Coulomb diamonds".
 1-D: outer axis "- none (1-D)"; the view draws a trace.
+Abort: a queued or running run has an "abort" button; a running one is recorded as aborted.
 View options (transform, swap axes) are client-side; any Dataset on the stream is under the selector.
 
 API docs at http://127.0.0.1:{port}/docs. Ctrl+C stops.
