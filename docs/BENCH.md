@@ -26,8 +26,9 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
   current as a load check, switch `SENS<n>:RANG LOW` (nA) with the channel at 0 V.
 
 First bench run: `uv run pytest packages/qdt-lab -m hardware` with the variables exported. It runs the same
-conformance suite the emulators pass in CI. Then confirm the OPX calibration constants
-(`INTEGRATION_TO_VOLTS`, `RAW_ADC_TO_VOLTS` in `opx1000.py`) with an OPX AO → AI loopback at a known level.
+conformance suite the emulators pass in CI. The OPX calibration constants
+(`INTEGRATION_TO_VOLTS`, `RAW_ADC_TO_VOLTS`, `TIME_OF_FLIGHT_NS` in `opx1000.py`) were measured by Probe 02
+(`docs/probes/02-opx-input-calibration.md`, ao1 → ai1 loopback; ADR 0044).
 
 ## Loopback map (L1)
 One BNC is moved between the sources and one scope input; `QDT_L1_SOURCES` (default `qdac,smu,opx`) names
