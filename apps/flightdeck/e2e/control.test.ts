@@ -5,12 +5,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium, type Browser } from "playwright-core";
 import { preview, type PreviewServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
 const ROOT = new URL("../", import.meta.url);
-const REPO = new URL("../../../", import.meta.url).pathname;
+const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const API_PORT = 18700 + Math.floor(Math.random() * 500);
 const WS_PORT = API_PORT + 1000;
 
@@ -103,5 +104,50 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.selectOption("#transform", "grad");
   await page.check("#swap");
   await page.waitForFunction(() => /\|gradient\|.*axes swapped/.test(document.querySelector("#status")?.textContent ?? ""));
+  await page.close();
+});
+
+it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep draws a trace", async () => {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page.on("pageerror", (e) => console.error("page error:", e));
+  await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
+  await page.waitForFunction(() => document.querySelectorAll("#ops .op-row").length === 2);
+  const row = (i: number) => page.locator("#ops .op-row").nth(i);
+  const errors = () => page.textContent("#sequence-errors");
+
+  // the template: step(P2_pulse, v_P2) ; measure(sensor), its symbol bound to the inner axis
+  expect(await row(0).locator("input[name=level]").inputValue()).toBe("v_P2");
+  expect(await page.inputValue("#symbols input[name=bind_v_P2]")).toBe("P2");
+
+  await page.fill("#sweep input[name=name]", "e2e pulsed");
+  for (const [k, v] of [["outer_num", "8"], ["inner_num", "8"]]) await page.fill(`#sweep input[name=${k}]`, v!);
+  // add a wait and move it between the step and the measure; add a second measure
+  await page.selectOption("#add-op", "wait");
+  await page.getByRole("button", { name: "add op" }).click();
+  await row(2).getByRole("button", { name: "↑" }).click();
+  expect(await row(1).locator("select.op").inputValue()).toBe("wait");
+  await page.selectOption("#add-op", "measure");
+  await page.getByRole("button", { name: "add op" }).click();
+  expect(await errors()).toMatch(/result "I_sensor" is already measured/);
+  await row(3).locator("input[name=result]").fill("I_ref");
+  // a symbol duration needs a binding before the sweep can run
+  await row(0).locator("input[name=duration]").fill("t_hold");
+  expect(await errors()).toMatch(/symbol "t_hold" needs an axis/);
+  await page.click("#sweep button[type=submit]");
+  expect(await page.textContent("#message")).toMatch(/t_hold/);
+  await page.fill("#symbols input[name=bind_t_hold]", "300");
+  expect(await errors()).toBe("");
+
+  await page.click("#sweep button[type=submit]");
+  await page.waitForFunction(() => /e2e pulsed · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+
+  // 1-D: no outer axis, back to the template
+  await page.selectOption("#sweep select[name=outer_channel]", "");
+  await page.getByRole("button", { name: "reset to template" }).click();
+  expect(await page.locator("#ops .op-row").count()).toBe(2);
+  await page.fill("#sweep input[name=name]", "e2e trace");
+  await page.click("#sweep button[type=submit]");
+  await page.waitForFunction(() => /e2e trace · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.waitForFunction(() => /· trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
   await page.close();
 });
