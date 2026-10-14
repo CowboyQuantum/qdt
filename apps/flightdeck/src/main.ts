@@ -20,8 +20,10 @@ import {
   annotationPath,
   axis,
   chooseView,
+  difference,
   DEFAULT_OPTIONS,
   meanAlongLeading,
+  partners,
   transformMap,
   transpose,
   type Transform,
@@ -37,6 +39,8 @@ const title = $<HTMLDivElement>("title");
 const message = $<HTMLDivElement>("message");
 const datasets = $<HTMLSelectElement>("datasets");
 const transformSelect = $<HTMLSelectElement>("transform");
+const variableSelect = $<HTMLSelectElement>("variable");
+const minusSelect = $<HTMLSelectElement>("minus");
 const swapBox = $<HTMLInputElement>("swap");
 const options = (): ViewOptions => ({ swap: swapBox.checked, transform: transformSelect.value as Transform });
 const params = new URLSearchParams(location.search);
@@ -71,7 +75,27 @@ function select(store: DatasetStore): void {
   // display only: a registry replay names its record (ADR 0027); nothing branches on where data came from
   const ref = store.dataset.source.registry_ref;
   title.textContent = ref ? `${sourceLabel.text} · record ${ref}` : sourceLabel.text;
+  fillVariables(store);
   show(store, viewAbort.signal);
+}
+
+/** The variable picker keeps its choice across Datasets that have it; "minus" offers same-shape partners. */
+function fillVariables(store: DatasetStore): void {
+  const names = store.dataset.data_vars.map((v) => v.name);
+  const had = variableSelect.value;
+  variableSelect.replaceChildren(...names.map((n) => new Option(n, n)));
+  variableSelect.value = names.includes(had) ? had : (names[0] ?? "");
+  const minusHad = minusSelect.value;
+  const others = partners(store.dataset, variableSelect.value);
+  minusSelect.replaceChildren(new Option("—", ""), ...others.map((n) => new Option(n, n)));
+  minusSelect.value = others.includes(minusHad) ? minusHad : "";
+}
+for (const el of [variableSelect, minusSelect]) {
+  el.addEventListener("change", () => {
+    if (el === variableSelect) minusSelect.value = ""; // a new variable starts without a subtraction
+    const store = stores.get(datasets.value);
+    if (store) select(store); // a different display map: restart the view, keep the stream
+  });
 }
 
 function start(source: Source): void {
@@ -108,7 +132,16 @@ function makeRenderer(): MapRenderer {
 let renderer: MapRenderer | null = null;
 
 function show(store: DatasetStore, signal: AbortSignal): void {
-  const view = chooseView(store.dataset);
+  const view = chooseView(store.dataset, variableSelect.value);
+  const minus = view && partners(store.dataset, view.variable).includes(minusSelect.value) ? minusSelect.value : "";
+  let diff: Float64Array | null = null;
+  const displayed = () => {
+    const data = store.get(view!.variable);
+    if (!minus) return data;
+    const d = difference(data, store.get(minus), diff);
+    diff = d.values as Float64Array;
+    return d;
+  };
   if (!view) {
     status.textContent = `${store.dataset.name}: no v0 view for this shape`;
     return;
@@ -162,7 +195,7 @@ function show(store: DatasetStore, signal: AbortSignal): void {
   const frame = () => {
     if (signal.aborted) return;
     if (dirty) {
-      const data = store.get(view.variable);
+      const data = displayed();
       if (view.kind === "heatmap" && renderer) {
         const r2 = renderer;
         let map = data.values;
@@ -224,7 +257,7 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     while (recent.length && recent[0]![0] < now - 1000) recent.shift();
     const rate = recent.reduce((a, [, n]) => a + n, 0);
     status.textContent =
-      `${store.dataset.name} · ${view.kind}${renderer ? ` (${renderer.name})` : ""}` +
+      `${store.dataset.name} · ${view.variable}${minus ? ` − ${minus}` : ""} · ${view.kind}${renderer ? ` (${renderer.name})` : ""}` +
       (view.kind === "heatmap" && view.stackDim
         ? ` · mean over ${store.get(view.variable).shape[0]} ${view.stackDim}`
         : "") +

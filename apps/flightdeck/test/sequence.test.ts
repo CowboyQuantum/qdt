@@ -3,12 +3,15 @@ import {
   buildBindings,
   buildSequence,
   fieldUnit,
+  measuredResults,
   moveRow,
   newRow,
   OP_KINDS,
   parseValue,
+  symbolInText,
   syncBindings,
   templateRows,
+  unusedStageAxes,
   type OpRow,
 } from "../src/control/sequence";
 import { dcSweep, stageSweep } from "../src/control/sweeps";
@@ -56,11 +59,13 @@ describe("sequence rows → PulseSequence", () => {
   });
 
   it("builds every primitive the form offers, prefilled valid", () => {
-    const rows = OP_KINDS.map((k) => newRow(k, channels));
-    rows[4] = { op: "measure", fields: { ...rows[4]!.fields, result: "I_a" } };
+    const rows = OP_KINDS.filter((k) => k !== "difference").map((k) => newRow(k, channels));
+    rows.push({ op: "measure", fields: { channel: "sensor", duration: "1000", result: "I_b" } });
+    rows.push(newRow("difference", channels, measuredResults(rows)));
     const b = buildSequence("all", rows, channels);
     expect(b.errors).toEqual([]);
-    expect(b.sequence!.body.map((op) => op.op)).toEqual(["step", "ramp", "wait", "drive", "measure"]);
+    expect(b.sequence!.body.map((op) => op.op)).toEqual(["step", "ramp", "wait", "drive", "measure", "measure", "difference"]);
+    expect(b.sequence!.body[6]).toEqual({ op: "difference", result: "dI", a: "I_sensor", b: "I_b" });
     expect(b.sequence!.body[3]).toMatchObject({ frequency: 1e9, phase: 0 });
   });
 
@@ -90,10 +95,61 @@ describe("sequence rows → PulseSequence", () => {
     expect(errs([{ op: "wait", fields: { duration: "1.5" } }])).toMatch(/whole number of ns/);
     expect(errs([{ op: "wait", fields: { duration: "" } }])).toMatch(/duration empty/);
     const twice: OpRow = { op: "measure", fields: { channel: "sensor", duration: "1", result: "I" } };
-    expect(errs([twice, twice])).toMatch(/op 2 \(measure\): result "I" is already measured/);
+    expect(errs([twice, twice])).toMatch(/op 2 \(measure\): result "I" is already a result/);
     // the same symbol in a level (V) and a duration (ns)
     expect(errs([{ op: "step", fields: { channel: "P1", level: "x", duration: "x" } }])).toMatch(/symbol "x" is used in V and ns/);
     expect(buildSequence("x", [{ op: "wait", fields: { duration: "1.5" } }], channels).sequence).toBeNull();
+  });
+});
+
+describe("chopped readout (ADR 0037)", () => {
+  it("reads symbol ± offset, a scale, and a negated symbol; a bare name stays a Symbol", () => {
+    expect(parseValue("v_P2", "V")).toEqual({ name: "v_P2", unit: "V" });
+    expect(parseValue("v_P2 + 0.002", "V")).toEqual({ symbol: { name: "v_P2", unit: "V" }, offset: 0.002 });
+    expect(parseValue("v_P2-2e-3", "V")).toEqual({ symbol: { name: "v_P2", unit: "V" }, offset: -0.002 });
+    expect(parseValue("-v_P2", "V")).toEqual({ symbol: { name: "v_P2", unit: "V" }, scale: -1 });
+    expect(parseValue("0.5 * v_P2 - 0.01", "V")).toEqual({ symbol: { name: "v_P2", unit: "V" }, scale: 0.5, offset: -0.01 });
+    expect(parseValue("1*v_P2+0", "V")).toEqual({ name: "v_P2", unit: "V" });
+    expect(() => parseValue("v_P2 + v_P1", "V")).toThrow(/symbol \+ offset/);
+    expect(symbolInText("v_P2 + 0.002")).toBe("v_P2");
+    expect(symbolInText("0.1")).toBeNull();
+  });
+
+  it("builds a chop: swept level, offset level, two measures, their difference", () => {
+    const rows: OpRow[] = [
+      { op: "step", fields: { channel: "P2_pulse", level: "v_P2", duration: "500" } },
+      { op: "measure", fields: { channel: "sensor", duration: "1000", result: "I_on" } },
+      { op: "step", fields: { channel: "P2_pulse", level: "v_P2 + 0.002", duration: "500" } },
+      { op: "measure", fields: { channel: "sensor", duration: "1000", result: "I_off" } },
+      { op: "difference", fields: { result: "dI", a: "I_on", b: "I_off" } },
+    ];
+    const b = buildSequence("chop", rows, channels);
+    expect(b.errors).toEqual([]);
+    expect([...b.symbols]).toEqual([["v_P2", "V"]]); // the offset level uses the same symbol: one binding
+    expect(b.sequence!.body[2]).toMatchObject({ level: { symbol: { name: "v_P2" }, offset: 0.002 } });
+    const d = stageSweep({
+      name: "chop",
+      outer: { channel: "P1", start: 0, stop: 0.1, num: 4 },
+      inner: { channel: "P2_pulse", start: 0, stop: 0.1, num: 8 },
+      sensor: "sensor",
+      instrument: "dot",
+      shots: 3,
+      stepNs: 500,
+      measureNs: 1000,
+      result: "I_sensor",
+      sequence: { rows, bindings: [{ symbol: "v_P2", target: "P2" }], channels },
+    });
+    expect(d.stage!.reduce).toEqual({ I_on: "mean", I_off: "mean", dI: "mean" });
+  });
+
+  it("refuses a difference of results not measured earlier, of itself, or an offset duration", () => {
+    const m = (r: string): OpRow => ({ op: "measure", fields: { channel: "sensor", duration: "1", result: r } });
+    const errs = (rows: OpRow[]) => buildSequence("x", rows, channels).errors.join(" | ");
+    expect(errs([m("a"), { op: "difference", fields: { result: "d", a: "a", b: "c" } }, m("c")])).toMatch(/b must name a measure earlier in the shot \(a\)/);
+    expect(errs([m("a"), { op: "difference", fields: { result: "d", a: "a", b: "a" } }])).toMatch(/subtracts "a" from itself/);
+    expect(errs([m("a"), m("b"), { op: "difference", fields: { result: "a", a: "a", b: "b" } }])).toMatch(/"a" is already a result/);
+    expect(errs([{ op: "wait", fields: { duration: "t + 10" } }])).toMatch(/a duration takes a number or a bare symbol/);
+    expect(newRow("difference", channels, ["I_on", "I_off"]).fields).toEqual({ result: "dI", a: "I_on", b: "I_off" });
   });
 });
 
@@ -178,6 +234,16 @@ describe("stage sweeps with an edited sequence; 1-D sweeps", () => {
       /symbol "v_P2" needs an axis.*result "P1" has an axis's name/,
     );
     expect(() => stageSweep({ ...base, sequence: { rows: [{ op: "wait", fields: { duration: "10" } }], bindings: [], channels } })).toThrow(/measures nothing/);
+  });
+
+  it("refuses a number typed over the swept symbol: the inner axis would be unused (the demo's 422)", () => {
+    const fixed: OpRow[] = [
+      { op: "step", fields: { channel: "P2_pulse", level: "0.1", duration: "500" } },
+      { op: "measure", fields: { channel: "sensor", duration: "1000", result: "I" } },
+    ];
+    expect(() => stageSweep({ ...base, sequence: { rows: fixed, bindings: [], channels } })).toThrow(/inner axis P2 is not used: put v_P2/);
+    expect(unusedStageAxes([{ symbol: "v_P2", axis: "P2" }], ["P2"])).toEqual([]);
+    expect(unusedStageAxes([{ symbol: "v_kick", axis: "P1" }], ["P2"])).toHaveLength(1);
   });
 
   it("drops the outer axis for a 1-D stage sweep", () => {

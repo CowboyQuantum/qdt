@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Dataset } from "../src/schema/data";
-import { annotationPath, chooseView, meanAlongLeading, transformMap, transpose } from "../src/view";
+import { annotationPath, chooseView, difference, meanAlongLeading, partners, transformMap, transpose } from "../src/view";
 import { DatasetStore } from "../src/stream/store";
 
 const dataset = (dims: [string, number | null][], varDims: string[]): Dataset =>
@@ -94,5 +94,45 @@ describe("view options", () => {
     const [plain] = annotationPath(store, view, ann)!;
     const [swapped] = annotationPath(store, view, ann, true)!;
     expect(plain).toEqual([swapped![1], swapped![0]]);
+  });
+});
+
+describe("variables and the difference view (ADR 0037)", () => {
+  const ds = {
+    dataset_id: "d",
+    name: "d",
+    dims: [{ name: "y", size: 2 }, { name: "x", size: 3 }],
+    coords: [],
+    data_vars: [
+      { name: "I_on", dims: ["y", "x"], unit: "A", dtype: "float64" },
+      { name: "I_off", dims: ["y", "x"], unit: "A", dtype: "float64" },
+      { name: "dI", dims: ["y", "x"], unit: "A", dtype: "float64" },
+      { name: "V", dims: ["y", "x"], unit: "V", dtype: "float64" },
+      { name: "line", dims: ["x"], unit: "A", dtype: "float64" },
+    ],
+  } as unknown as Dataset;
+
+  it("views the chosen variable, the first one by default or for an unknown name", () => {
+    expect(chooseView(ds)).toMatchObject({ kind: "heatmap", variable: "I_on" });
+    expect(chooseView(ds, "dI")).toMatchObject({ kind: "heatmap", variable: "dI" });
+    expect(chooseView(ds, "line")).toMatchObject({ kind: "trace", variable: "line" });
+    expect(chooseView(ds, "nope")).toMatchObject({ variable: "I_on" });
+  });
+
+  it("offers partners with the same dims and unit only", () => {
+    expect(partners(ds, "I_on")).toEqual(["I_off", "dI"]);
+    expect(partners(ds, "line")).toEqual([]);
+    expect(partners(ds, "nope")).toEqual([]);
+  });
+
+  it("subtracts cell by cell, keeps unwritten cells NaN, and reuses its buffer", () => {
+    const a = { values: Float64Array.from([1, 2, NaN, 4]), shape: [2, 2], dims: ["y", "x"] };
+    const b = { values: Float64Array.from([0.5, 3, 1, NaN]), shape: [2, 2], dims: ["y", "x"] };
+    const out = new Float64Array(4);
+    const d = difference(a, b, out);
+    expect(d.values).toBe(out);
+    expect([...d.values]).toEqual([0.5, -1, NaN, NaN]);
+    expect(d.shape).toEqual([2, 2]);
+    expect(difference(a, b, null).values).not.toBe(out);
   });
 });

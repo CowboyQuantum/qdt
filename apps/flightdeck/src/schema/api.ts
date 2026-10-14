@@ -2,6 +2,7 @@
 // Do not edit. Regenerate after any change to qdt-server's routes or the schema objects they carry.
 
 export interface QdtControlApi {
+  Affine?: Affine;
   AnalysisResult?: AnalysisResult;
   Annotation?: Annotation;
   Call?: Call;
@@ -9,6 +10,7 @@ export interface QdtControlApi {
   DataVariable?: DataVariable;
   Dataset?: Dataset;
   DeviceRecord?: DeviceRecord;
+  Difference?: Difference;
   Dimension?: Dimension;
   Drive?: Drive;
   Estimate?: Estimate;
@@ -49,6 +51,49 @@ export interface QdtControlApi {
   SymbolBinding?: SymbolBinding;
   ValidationError?: ValidationError;
   Wait?: Wait;
+}
+/**
+ * `scale · symbol + offset`: a value that follows a bound symbol, e.g. a chop point `v_P2 + 2 mV`.
+ *
+ * `offset` is in the symbol's unit; `scale` is dimensionless. A bare symbol stays a `Symbol`.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Affine".
+ */
+export interface Affine {
+  /**
+   * Added after scaling, in the symbol's unit.
+   */
+  offset?: number;
+  /**
+   * Dimensionless factor on the symbol's value.
+   */
+  scale?: number;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  symbol: Symbol;
+}
+/**
+ * A named placeholder for a value the sweep supplies (bound to an axis or a constant).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Symbol".
+ */
+export interface Symbol {
+  /**
+   * Symbol name; the same name means the same value everywhere.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Physical unit of the value, e.g. 'V', 'ns', 'Hz'; empty for dimensionless.
+   */
+  unit: string;
 }
 /**
  * The output of one method on one measurement: estimates plus overlays, with dual provenance.
@@ -559,6 +604,37 @@ export interface DeviceRecord {
   simulated: boolean;
 }
 /**
+ * `result = a − b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).
+ *
+ * Computed by the sequencer before any reduction, so a mean of differences is what is recorded; the
+ * measured results are kept as well. Takes no time.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Difference".
+ */
+export interface Difference {
+  /**
+   * Measure result the difference starts from.
+   */
+  a: string;
+  /**
+   * Measure result subtracted from `a`; same channel unit.
+   */
+  b: string;
+  /**
+   * Discriminator.
+   */
+  op?: "difference";
+  /**
+   * Result stream name; unique within the sequence; becomes a data variable.
+   */
+  result: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
  * Drive `channel` with a tone (ESR / EDSR) for `duration`.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -568,7 +644,7 @@ export interface Drive {
   /**
    * Amplitude in the channel's quantity unit, or a Symbol.
    */
-  amplitude: number | Symbol;
+  amplitude: number | Symbol | Affine;
   /**
    * Logical channel (ChannelMap.logical).
    */
@@ -580,7 +656,7 @@ export interface Drive {
   /**
    * Tone frequency in Hz, or a Symbol.
    */
-  frequency: number | Symbol;
+  frequency: number | Symbol | Affine;
   /**
    * Discriminator.
    */
@@ -588,31 +664,11 @@ export interface Drive {
   /**
    * Phase in radians, or a Symbol.
    */
-  phase?: number | Symbol;
+  phase?: number | Symbol | Affine;
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
   schema_version?: number;
-}
-/**
- * A named placeholder for a value the sweep supplies (bound to an axis or a constant).
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "Symbol".
- */
-export interface Symbol {
-  /**
-   * Symbol name; the same name means the same value everywhere.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Physical unit of the value, e.g. 'V', 'ns', 'Hz'; empty for dimensionless.
-   */
-  unit: string;
 }
 /**
  * An estimate a method promises in its results.
@@ -1020,8 +1076,8 @@ export interface PulseSequence {
    * @minItems 1
    */
   body: [
-    Step | Ramp | Wait | Drive | Measure | Call,
-    ...(Step | Ramp | Wait | Drive | Measure | Call)[]
+    Step | Ramp | Wait | Drive | Measure | Difference | Call,
+    ...(Step | Ramp | Wait | Drive | Measure | Difference | Call)[]
   ];
   /**
    * Human-readable name.
@@ -1054,7 +1110,7 @@ export interface Step {
   /**
    * Level in the channel's quantity unit, or a Symbol.
    */
-  level: number | Symbol;
+  level: number | Symbol | Affine;
   /**
    * Discriminator.
    */
@@ -1090,11 +1146,11 @@ export interface Ramp {
   /**
    * Level at the start, in the channel's quantity unit, or a Symbol.
    */
-  start: number | Symbol;
+  start: number | Symbol | Affine;
   /**
    * Level at the end, in the channel's quantity unit, or a Symbol.
    */
-  stop: number | Symbol;
+  stop: number | Symbol | Affine;
 }
 /**
  * All channels hold their current level for `duration`.
@@ -1161,8 +1217,8 @@ export interface Segment {
    * @minItems 1
    */
   ops: [
-    Step | Ramp | Wait | Drive | Measure | Call,
-    ...(Step | Ramp | Wait | Drive | Measure | Call)[]
+    Step | Ramp | Wait | Drive | Measure | Difference | Call,
+    ...(Step | Ramp | Wait | Drive | Measure | Difference | Call)[]
   ];
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.

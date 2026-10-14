@@ -128,7 +128,7 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   expect(await row(1).locator("select.op").inputValue()).toBe("wait");
   await page.selectOption("#add-op", "measure");
   await page.getByRole("button", { name: "add op" }).click();
-  expect(await errors()).toMatch(/result "I_sensor" is already measured/);
+  expect(await errors()).toMatch(/result "I_sensor" is already a result/);
   await row(3).locator("input[name=result]").fill("I_ref");
   // a symbol duration needs a binding before the sweep can run
   await row(0).locator("input[name=duration]").fill("t_hold");
@@ -137,9 +137,29 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   expect(await page.textContent("#message")).toMatch(/t_hold/);
   await page.fill("#symbols input[name=bind_t_hold]", "300");
   expect(await errors()).toBe("");
+  // chopped readout (ADR 0037): the reference point follows the swept level; the difference is recorded
+  await page.selectOption("#add-op", "step");
+  await page.getByRole("button", { name: "add op" }).click();
+  await row(4).locator("select[name=channel]").selectOption("P2_pulse");
+  await row(4).locator("input[name=level]").fill("v_P2 + 0.002");
+  await row(4).getByRole("button", { name: "↑" }).click(); // before the reference measure
+  expect(await row(3).locator("input[name=level]").inputValue()).toBe("v_P2 + 0.002");
+  expect(await row(3).locator("label").filter({ hasText: "level" }).textContent()).toMatch(/level ← P2 \(swept\)/);
+  await page.selectOption("#add-op", "difference");
+  await page.getByRole("button", { name: "add op" }).click();
+  expect(await row(5).locator("input[name=a]").inputValue()).toBe("I_sensor");
+  expect(await row(5).locator("input[name=b]").inputValue()).toBe("I_ref");
+  expect(await errors()).toBe("");
 
   await page.click("#sweep button[type=submit]");
   await page.waitForFunction(() => /e2e pulsed · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  // the recorded difference is a variable of its own; any two same-shape variables can be subtracted in the view
+  expect((await page.locator("#variable option").allTextContents()).sort()).toEqual(["I_ref", "I_sensor", "dI"]);
+  await page.selectOption("#variable", "I_sensor");
+  await page.selectOption("#minus", "I_ref");
+  await page.waitForFunction(() => /· I_sensor − I_ref · heatmap/.test(document.querySelector("#status")?.textContent ?? ""));
+  await page.selectOption("#variable", "dI");
+  await page.waitForFunction(() => /· dI · heatmap/.test(document.querySelector("#status")?.textContent ?? ""));
 
   // 1-D: no outer axis, back to the template
   await page.selectOption("#sweep select[name=outer_channel]", "");

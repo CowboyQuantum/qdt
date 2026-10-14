@@ -42,13 +42,15 @@
       #control #symbols label { font-size: 12px; }
       #control #sequence-errors { color: #e88; font-size: 12px; }
       #control #estimates { font: 12px ui-monospace, monospace; white-space: pre; margin: 0; }
-      #datasets, #transform { background: #111; color: #ddd; border: 1px solid #444; font: inherit; }
+      #datasets, #transform, #variable, #minus { background: #111; color: #ddd; border: 1px solid #444; font: inherit; }
     </style>
   </head>
   <body>
     <header>
       <span id="title">Flight Deck</span>
       <label>dataset <select id="datasets"></select></label>
+      <label>variable <select id="variable"></select></label>
+      <label>minus <select id="minus"></select></label>
       <label>view <select id="transform">
         <option value="raw">raw</option>
         <option value="d_col">d/d(inner axis)</option>

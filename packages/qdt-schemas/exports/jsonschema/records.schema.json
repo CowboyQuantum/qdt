@@ -1,5 +1,41 @@
 {
   "$defs": {
+    "Affine": {
+      "additionalProperties": false,
+      "description": "`scale \u00b7 symbol + offset`: a value that follows a bound symbol, e.g. a chop point `v_P2 + 2 mV`.\n\n`offset` is in the symbol's unit; `scale` is dimensionless. A bare symbol stays a `Symbol`.",
+      "properties": {
+        "offset": {
+          "default": 0.0,
+          "description": "Added after scaling, in the symbol's unit.",
+          "title": "Offset",
+          "type": "number"
+        },
+        "scale": {
+          "default": 1.0,
+          "description": "Dimensionless factor on the symbol's value.",
+          "title": "Scale",
+          "type": "number"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "symbol": {
+          "$ref": "#/$defs/Symbol",
+          "description": "The symbol the value follows; bound like any other."
+        }
+      },
+      "required": [
+        "schema_version",
+        "symbol",
+        "scale",
+        "offset"
+      ],
+      "title": "Affine",
+      "type": "object"
+    },
     "AnalysisResult": {
       "additionalProperties": false,
       "description": "The output of one method on one measurement: estimates plus overlays, with dual provenance.",
@@ -564,6 +600,52 @@
       "title": "DeviceRecord",
       "type": "object"
     },
+    "Difference": {
+      "additionalProperties": false,
+      "description": "`result = a \u2212 b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).\n\nComputed by the sequencer before any reduction, so a mean of differences is what is recorded; the\nmeasured results are kept as well. Takes no time.",
+      "properties": {
+        "a": {
+          "description": "Measure result the difference starts from.",
+          "minLength": 1,
+          "title": "A",
+          "type": "string"
+        },
+        "b": {
+          "description": "Measure result subtracted from `a`; same channel unit.",
+          "minLength": 1,
+          "title": "B",
+          "type": "string"
+        },
+        "op": {
+          "const": "difference",
+          "default": "difference",
+          "description": "Discriminator.",
+          "title": "Op",
+          "type": "string"
+        },
+        "result": {
+          "description": "Result stream name; unique within the sequence; becomes a data variable.",
+          "minLength": 1,
+          "title": "Result",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "op",
+        "result",
+        "a",
+        "b"
+      ],
+      "title": "Difference",
+      "type": "object"
+    },
     "Dimension": {
       "additionalProperties": false,
       "description": "A named array axis.",
@@ -614,6 +696,9 @@
             },
             {
               "$ref": "#/$defs/Symbol"
+            },
+            {
+              "$ref": "#/$defs/Affine"
             }
           ],
           "description": "Amplitude in the channel's quantity unit, or a Symbol.",
@@ -644,6 +729,9 @@
             },
             {
               "$ref": "#/$defs/Symbol"
+            },
+            {
+              "$ref": "#/$defs/Affine"
             }
           ],
           "description": "Tone frequency in Hz, or a Symbol.",
@@ -663,6 +751,9 @@
             },
             {
               "$ref": "#/$defs/Symbol"
+            },
+            {
+              "$ref": "#/$defs/Affine"
             }
           ],
           "default": 0.0,
@@ -1404,6 +1495,7 @@
             "discriminator": {
               "mapping": {
                 "call": "#/$defs/Call",
+                "difference": "#/$defs/Difference",
                 "drive": "#/$defs/Drive",
                 "measure": "#/$defs/Measure",
                 "ramp": "#/$defs/Ramp",
@@ -1427,6 +1519,9 @@
               },
               {
                 "$ref": "#/$defs/Measure"
+              },
+              {
+                "$ref": "#/$defs/Difference"
               },
               {
                 "$ref": "#/$defs/Call"
@@ -1511,6 +1606,9 @@
             },
             {
               "$ref": "#/$defs/Symbol"
+            },
+            {
+              "$ref": "#/$defs/Affine"
             }
           ],
           "description": "Level at the start, in the channel's quantity unit, or a Symbol.",
@@ -1523,6 +1621,9 @@
             },
             {
               "$ref": "#/$defs/Symbol"
+            },
+            {
+              "$ref": "#/$defs/Affine"
             }
           ],
           "description": "Level at the end, in the channel's quantity unit, or a Symbol.",
@@ -1638,6 +1739,7 @@
             "discriminator": {
               "mapping": {
                 "call": "#/$defs/Call",
+                "difference": "#/$defs/Difference",
                 "drive": "#/$defs/Drive",
                 "measure": "#/$defs/Measure",
                 "ramp": "#/$defs/Ramp",
@@ -1661,6 +1763,9 @@
               },
               {
                 "$ref": "#/$defs/Measure"
+              },
+              {
+                "$ref": "#/$defs/Difference"
               },
               {
                 "$ref": "#/$defs/Call"
@@ -2131,6 +2236,9 @@
             },
             {
               "$ref": "#/$defs/Symbol"
+            },
+            {
+              "$ref": "#/$defs/Affine"
             }
           ],
           "description": "Level in the channel's quantity unit, or a Symbol.",

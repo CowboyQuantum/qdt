@@ -2,10 +2,12 @@
 
 A `PulseSequence` says what happens on logical channels during one shot, in backend-neutral terms:
 hold a level, ramp, wait, drive at a frequency, measure. Timing is integer nanoseconds; any level,
-duration, frequency or amplitude may be a `Symbol` that a sweep binds to an axis or a constant. Named
-`Segment`s are reused by `call`. There is no control flow: loops over axes and shots belong to the
-sweep stage, and a per-backend emitter turns sequence + stage into that backend's `SequencerProgram`.
-The vocabulary grows only by ADR; it is deliberately not a general pulse language.
+duration, frequency or amplitude may be a `Symbol` that a sweep binds to an axis or a constant, and
+any level, frequency, phase or amplitude may be an `Affine` of one (`scale·symbol + offset`, ADR 0037).
+A `difference` subtracts two of the shot's measures into a result of its own, per shot (ADR 0037).
+Named `Segment`s are reused by `call`. There is no control flow: loops over axes and shots belong to
+the sweep stage, and a per-backend emitter turns sequence + stage into that backend's
+`SequencerProgram`. The vocabulary grows only by ADR; it is deliberately not a general pulse language.
 """
 
 from typing import Annotated, Literal
@@ -27,9 +29,34 @@ class Symbol(QdtModel):
     )
 
 
-Value = float | Symbol
-"""A number or a Symbol the sweep binds. (Not `stand.Quantity`, which names a physical quantity.)"""
+class Affine(QdtModel):
+    """`scale · symbol + offset`: a value that follows a bound symbol, e.g. a chop point `v_P2 + 2 mV`.
+
+    `offset` is in the symbol's unit; `scale` is dimensionless. A bare symbol stays a `Symbol`.
+    """
+
+    symbol: Symbol = Field(description="The symbol the value follows; bound like any other.")
+    scale: float = Field(default=1.0, description="Dimensionless factor on the symbol's value.")
+    offset: float = Field(default=0.0, description="Added after scaling, in the symbol's unit.")
+
+    def of(self, value: float) -> float:
+        """The value when the symbol takes `value`."""
+        return self.scale * value + self.offset
+
+
+Value = float | Symbol | Affine
+"""A number, a Symbol the sweep binds, or an Affine of one. (Not `stand.Quantity`, which names a
+physical quantity.)"""
 Duration = int | Symbol
+
+
+def symbol_of(v: object) -> Symbol | None:
+    """The Symbol a value depends on, if any (bare or inside an Affine)."""
+    if isinstance(v, Symbol):
+        return v
+    if isinstance(v, Affine):
+        return v.symbol
+    return None
 
 
 class Step(QdtModel):
@@ -87,6 +114,24 @@ class Measure(QdtModel):
     )
 
 
+class Difference(QdtModel):
+    """`result = a − b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).
+
+    Computed by the sequencer before any reduction, so a mean of differences is what is recorded; the
+    measured results are kept as well. Takes no time.
+    """
+
+    op: Literal["difference"] = Field(default="difference", description="Discriminator.")
+    result: str = Field(
+        min_length=1,
+        description="Result stream name; unique within the sequence; becomes a data variable.",
+    )
+    a: str = Field(min_length=1, description="Measure result the difference starts from.")
+    b: str = Field(
+        min_length=1, description="Measure result subtracted from `a`; same channel unit."
+    )
+
+
 class Call(QdtModel):
     """Insert the named `Segment` here."""
 
@@ -94,7 +139,9 @@ class Call(QdtModel):
     segment: str = Field(min_length=1, description="Name of a Segment of this sequence.")
 
 
-Primitive = Annotated[Step | Ramp | Wait | Drive | Measure | Call, Field(discriminator="op")]
+Primitive = Annotated[
+    Step | Ramp | Wait | Drive | Measure | Difference | Call, Field(discriminator="op")
+]
 
 
 class Segment(QdtModel):
@@ -128,14 +175,26 @@ class PulseSequence(QdtModel):
         for s in self.segments:
             self._expand(s.ops, segments, (s.name,))
         expanded = self._expand(self.body, segments, ())
-        results = [op.result for op in expanded if isinstance(op, Measure)]
+        results = [op.result for op in expanded if isinstance(op, Measure | Difference)]
         if len(set(results)) != len(results):
-            raise ValueError("measure result names must be unique within a shot")
+            raise ValueError("result names must be unique within a shot")
+        measured: dict[str, str] = {}  # result -> channel, in time order
+        for op in expanded:
+            if isinstance(op, Measure):
+                measured[op.result] = op.channel
+            elif isinstance(op, Difference):
+                for x in (op.a, op.b):
+                    if x not in measured:
+                        raise ValueError(
+                            f"difference {op.result!r} needs {x!r} measured earlier in the shot"
+                        )
+                if op.a == op.b:
+                    raise ValueError(f"difference {op.result!r} subtracts {op.a!r} from itself")
         units: dict[str, str] = {}
         for op in expanded:
             for field in ("level", "start", "stop", "frequency", "phase", "amplitude", "duration"):
-                v = getattr(op, field, None)
-                if isinstance(v, Symbol):
+                v = symbol_of(getattr(op, field, None))
+                if v is not None:
                     if units.setdefault(v.name, v.unit) != v.unit:
                         raise ValueError(
                             f"symbol {v.name!r} used with units {units[v.name]!r} and {v.unit!r}"
@@ -160,7 +219,7 @@ class PulseSequence(QdtModel):
                 out.append(op)
         return out
 
-    def expand(self) -> tuple[Step | Ramp | Wait | Drive | Measure, ...]:
+    def expand(self) -> tuple[Step | Ramp | Wait | Drive | Measure | Difference, ...]:
         """The shot with every `call` inlined, in time order."""
         return tuple(self._expand(self.body, {s.name: s for s in self.segments}, ()))
 
@@ -169,14 +228,22 @@ class PulseSequence(QdtModel):
         out: dict[str, str] = {}
         for op in self.expand():
             for field in ("level", "start", "stop", "frequency", "phase", "amplitude", "duration"):
-                v = getattr(op, field, None)
-                if isinstance(v, Symbol):
+                v = symbol_of(getattr(op, field, None))
+                if v is not None:
                     out[v.name] = v.unit
         return out
 
     def results(self) -> tuple[str, ...]:
-        """Result stream names, in time order."""
-        return tuple(op.result for op in self.expand() if isinstance(op, Measure))
+        """Result stream names (measures and differences), in time order."""
+        return tuple(op.result for op in self.expand() if isinstance(op, Measure | Difference))
+
+    def result_channel(self, result: str) -> str:
+        """The sense channel a result comes from (a difference: that of its `a`)."""
+        ops = {op.result: op for op in self.expand() if isinstance(op, Measure | Difference)}
+        op = ops[result]
+        while isinstance(op, Difference):
+            op = ops[op.a]
+        return op.channel
 
     def channels(self) -> tuple[str, ...]:
         """Logical channels touched, in first-use order."""

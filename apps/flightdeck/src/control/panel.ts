@@ -8,12 +8,15 @@ import {
   buildBindings,
   buildSequence,
   fieldUnit,
+  measuredResults,
   moveRow,
   newRow,
   OP_FIELDS,
   OP_KINDS,
+  symbolInText,
   syncBindings,
   templateRows,
+  unusedStageAxes,
   type BindingRow,
   type FieldName,
   type OpKind,
@@ -200,10 +203,12 @@ export class ControlPanel {
         "div",
         { className: "buttons" },
         add,
-        h("button", { type: "button", text: "add op", onclick: () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels)]) }),
+        h("button", { type: "button", text: "add op", onclick: () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels, measuredResults(this.rows))]) }),
         h("button", { type: "button", text: "reset to template", onclick: reset }),
       ),
-      h("div", { className: "hint", text: "values: a number or a symbol name; bind each symbol to an axis or a number" }),
+      h("div", { className: "hint", text: "a value is a number (V, ns, Hz), a symbol name, or symbol ± offset (v_P2 + 0.002); bind each symbol below to an axis (swept) or a number" }),
+      h("div", { className: "hint", text: "difference: result = a − b of two earlier measures, per shot (chopped readout); recorded beside them" }),
+      h("div", { className: "hint", text: "a pulse level adds to the gate's DC level, holds until the next op on that line, and returns to 0 at the start of every shot" }),
       this.els.symbols,
       this.els.sequenceErrors,
     );
@@ -245,7 +250,7 @@ export class ControlPanel {
         opSelect.value = row.op;
         opSelect.addEventListener("change", () => {
           // a new primitive starts prefilled; it keeps the channel when that channel suits it
-          const next = newRow(opSelect.value as OpKind, this.channels);
+          const next = newRow(opSelect.value as OpKind, this.channels, measuredResults(this.rows.slice(0, i)));
           const kept = row.fields.channel && byName.get(row.fields.channel);
           if (kept && "channel" in next.fields && (kept.quantity === "current") === (next.op === "measure")) next.fields.channel = kept.logical;
           this.editRows(this.rows.map((r, j) => (j === i ? next : r)));
@@ -270,7 +275,8 @@ export class ControlPanel {
             if (field === "channel") this.renderOps(); // units in the placeholders follow the channel
             else this.validateSequence();
           });
-          return h("label", { title: field }, h("span", { text: field }), input);
+          input.dataset.field = field;
+          return h("label", { title: field }, h("span", { className: "field", text: field }), input);
         });
         return h(
           "div",
@@ -297,9 +303,24 @@ export class ControlPanel {
     if (this.bindings.map((b) => b.symbol).join(",") !== before || this.els.symbols.dataset.axes !== axes.join(",")) {
       this.renderBindings(built.symbols, axes);
     }
-    const errors = [...built.errors, ...buildBindings(this.bindings, axes).errors];
+    const bound = buildBindings(this.bindings, axes);
+    this.showBindingsOnCells(axes);
+    const errors = [...built.errors, ...bound.errors];
+    if (!bound.errors.length) errors.push(...unusedStageAxes(bound.bindings, axes.slice(-1)));
     this.els.sequenceErrors.replaceChildren(...errors.map((e) => h("li", { text: e })));
     return errors;
+  }
+
+  /** Over each value cell holding a symbol, say what it takes: `level ← P2 (swept)`, `duration ← 300`. */
+  private showBindingsOnCells(axes: string[]): void {
+    const targets = new Map(this.bindings.map((b) => [b.symbol, b.target.trim()]));
+    for (const input of this.els.ops.querySelectorAll<HTMLInputElement>("input[data-field]")) {
+      const span = input.previousElementSibling as HTMLSpanElement | null;
+      if (!span) continue;
+      const field = input.dataset.field!;
+      const t = targets.get(symbolInText(input.value) ?? "");
+      span.textContent = t === undefined ? field : `${field} ← ${t === "" ? "?" : axes.includes(t) ? `${t} (swept)` : t}`;
+    }
   }
 
   private renderBindings(units: Map<string, string>, axes: string[]): void {
