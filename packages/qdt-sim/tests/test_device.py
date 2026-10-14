@@ -174,3 +174,28 @@ def test_difference_is_per_shot_and_recorded_beside_the_measures():
     np.testing.assert_allclose(
         mean["dI"].values, mean["I_on"].values - mean["I_off"].values, rtol=1e-9, atol=1e-18
     )
+
+
+def test_operating_point_level_is_what_pulses_add_to():
+    """ADR 0038: P2 held at 50 mV by the operating point, its pulse swept 50 mV lower, is the same map
+    as no DC and the pulse swept over the absolute range."""
+    from qdt_schemas.activity import FixedLevel
+
+    absolute = stability(6, 8, p1=(0.03, 0.17), p2=(0.03, 0.17))
+    held = stability(6, 8, p1=(0.03, 0.17), p2=(-0.02, 0.12)).model_copy(
+        update={"levels": (FixedLevel(channel="P2", value=0.05),)}
+    )
+    held = type(held).model_validate(held.model_dump())
+    plan, a = run(absolute, quiet())
+    plan_h, b = run(held, quiet())
+    assert "P2" in {c.logical for c in plan_h.channels} and "P2" not in {c.logical for c in plan.channels}
+    np.testing.assert_allclose(b["I_sensor"].values, a["I_sensor"].values, rtol=1e-12)
+
+
+def test_operating_point_needs_a_level_source():
+    from qdt_schemas.activity import FixedLevel
+
+    d = stability(4, 4).model_copy(update={"levels": (FixedLevel(channel="sensor", value=0.0),)})
+    d = type(d).model_validate(d.model_dump())
+    with pytest.raises(ValueError, match="one terminal, one role|lacks capability"):
+        run(d, quiet())

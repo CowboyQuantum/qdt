@@ -149,3 +149,23 @@ def test_parameter_binding_shape():
         ParameterBinding(parameter="p", source="const", axis="g")
     with pytest.raises(ValidationError, match="needs axis"):
         ParameterBinding(parameter="p", source="axis_num", value=3)
+
+
+def test_operating_point_levels_hold_untouched_channels():
+    """ADR 0038: fixed DC levels for the whole sweep; never a swept or sensed channel, one per channel."""
+    from qdt_schemas.activity import FixedLevel
+
+    base = stability()
+    held = base.model_copy(update={"levels": (FixedLevel(channel="gate_R_dc", value=0.05),)})
+    d = SweepDefinition.model_validate(held.model_dump())
+    assert d.levels == (FixedLevel(channel="gate_R_dc", value=0.05),)
+    assert SweepDefinition.model_validate_json(d.model_dump_json()) == d
+    # without levels nothing new is serialized, so existing definitions keep their content hash
+    assert "levels" not in base.model_dump() and "levels" in d.model_dump()
+    axis = base.axes[0].channel
+    for levels, match in [
+        ((FixedLevel(channel=axis, value=0.0),), "swept or sensed"),
+        ((FixedLevel(channel="g", value=0.0), FixedLevel(channel="g", value=0.1)), "one level"),
+    ]:
+        with pytest.raises(ValidationError, match=match):
+            SweepDefinition.model_validate(base.model_dump() | {"levels": [lv.model_dump() for lv in levels]})

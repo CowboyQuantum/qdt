@@ -2,7 +2,7 @@
 // cover the Step 4 demos: a *stage* sweep (outer gate stepped by its DC line, inner gate swept by pulses
 // in the sequencer, the pulse sequence run per pixel) and a *DC* sweep (both axes stepped, a level sensed
 // at every point). Either may drop the outer axis for a 1-D sweep. Pure functions: no DOM, no network.
-import type { ChannelMap, StandConfig, SweepDefinition } from "../schema/api";
+import type { ChannelMap, FixedLevel, StandConfig, SweepDefinition } from "../schema/api";
 import { buildBindings, buildSequence, templateRows, unusedStageAxes, type BindingRow, type OpRow } from "./sequence";
 
 export interface AxisForm {
@@ -15,8 +15,34 @@ export interface AxisForm {
   name?: string;
 }
 
+/** One operating-point row as typed: a DC channel and its level (ADR 0038). */
+export interface LevelRow {
+  channel: string;
+  value: string;
+}
+
+/** Operating-point rows → `FixedLevel`s: DC channels the sweep does not touch, one level each. */
+export function buildLevels(rows: readonly LevelRow[], dc: readonly ChannelMap[], touched: readonly string[]): { levels: FixedLevel[]; errors: string[] } {
+  const errors: string[] = [];
+  const levels: FixedLevel[] = [];
+  const seen = new Set<string>();
+  for (const { channel, value } of rows) {
+    const where = `operating point ${channel || "(no channel)"}`;
+    const v = value.trim();
+    if (!dc.some((c) => c.logical === channel)) errors.push(`${where}: pick a DC channel`);
+    else if (touched.includes(channel)) errors.push(`${where}: the sweep already steps or senses ${channel}`);
+    else if (seen.has(channel)) errors.push(`${where}: given twice`);
+    else if (v === "" || !Number.isFinite(Number(v))) errors.push(`${where}: level must be a number`);
+    else levels.push({ channel, value: Number(v) });
+    seen.add(channel);
+  }
+  return { levels, errors };
+}
+
 export interface StageSweepForm {
   name: string;
+  /** Operating point (ADR 0038): DC levels held for the whole sweep. */
+  levels?: readonly FixedLevel[];
   /** Stepped by its DC line; absent for a 1-D sweep. */
   outer?: AxisForm | null;
   /** Pulsed inside the sequencer stage; its channel must be a pulse line of `instrument`. */
@@ -38,6 +64,8 @@ export interface StageSweepForm {
 
 export interface DcSweepForm {
   name: string;
+  /** Operating point (ADR 0038): DC levels held for the whole sweep. */
+  levels?: readonly FixedLevel[];
   /** Absent for a 1-D sweep. */
   outer?: AxisForm | null;
   inner: AxisForm;
@@ -104,6 +132,7 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
   return {
     name: f.name || "sweep",
     axes,
+    ...(f.levels?.length ? { levels: [...f.levels] } : {}),
     sensed: [],
     stage: {
       instrument: f.instrument,
@@ -128,6 +157,7 @@ export function dcSweep(f: DcSweepForm): SweepDefinition {
   return {
     name: f.name || "sweep",
     axes,
+    ...(f.levels?.length ? { levels: [...f.levels] } : {}),
     sensed: [{ name: f.result, channel: f.sensor }],
     stage: null,
     repeats: 1,

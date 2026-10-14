@@ -38,6 +38,8 @@ Coulomb diamonds (DC sweep): kind "DC", outer SG -0.2..0.2, inner bias -0.0015..
 Chopped readout (ADR 0037): rows step P2_pulse v_P2 / measure I_on / step P2_pulse v_P2 + 0.002 /
   measure I_off / difference dI = I_on - I_off. The record holds I_on, I_off and dI: choose one under
   "variable" in the header, or subtract any two with "minus".
+Operating point (ADR 0038): "add level" holds DC channels for the whole sweep, e.g. P2 = 0.05 with the
+  P2_pulse axis swept around it (-0.02..0.12).
 1-D: outer axis "- none (1-D)"; the view draws a trace.
 Abort: a queued or running run has an "abort" button; a running one is recorded as aborted.
 View options (transform, swap axes) are client-side; any Dataset on the stream is under the selector.

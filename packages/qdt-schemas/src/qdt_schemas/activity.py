@@ -194,6 +194,15 @@ class SensedLevel(QdtModel):
     )
 
 
+class FixedLevel(QdtModel):
+    """A DC level held for the whole sweep: part of the operating point (ADR 0038)."""
+
+    channel: str = Field(
+        min_length=1, description="Logical LevelSource channel (ChannelMap.logical)."
+    )
+    value: float = Field(description="Level in the channel's quantity unit, set before the scan.")
+
+
 class SymbolBinding(QdtModel):
     """What a `PulseSequence` Symbol takes: an axis's current value, or a constant. Exactly one."""
 
@@ -328,6 +337,16 @@ class SweepDefinition(QdtModel):
     sensed: tuple[SensedLevel, ...] = Field(
         default=(), description="Levels sensed at every stepped point."
     )
+    levels: tuple[FixedLevel, ...] = Field(
+        default=(),
+        # not serialized when empty, so definitions without an operating point keep their content
+        # hash (the registry recomputes it from stored payloads; ADR 0037, 0038)
+        exclude_if=lambda v: not v,
+        description=(
+            "Operating point: DC levels set once before the scan and held throughout, on channels the "
+            "sweep does not step. Pulses on a gate's pulse line add to its level here."
+        ),
+    )
     stage: SequencerStage | None = Field(default=None, description="Sequencer-run inner part.")
     repeats: int | None = Field(
         default=1,
@@ -366,6 +385,15 @@ class SweepDefinition(QdtModel):
         axis_channels = {a.channel for a in stepped}
         if axis_channels & {s.channel for s in self.sensed}:
             raise ValueError("a channel is a stepped axis or a sensed level, not both (ADR 0016)")
+        held = [lv.channel for lv in self.levels]
+        if len(set(held)) != len(held):
+            raise ValueError("each operating-point channel is given one level")
+        both = set(held) & ({a.channel for a in self.axes} | {s.channel for s in self.sensed})
+        if both:
+            raise ValueError(
+                f"{sorted(both)} are swept or sensed; an operating-point level holds a channel the "
+                "sweep does not touch"
+            )
         if self.stage:
             for b in self.stage.bindings:
                 if b.axis is not None and b.axis not in names:

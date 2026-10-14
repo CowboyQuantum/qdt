@@ -14,7 +14,7 @@ import {
   unusedStageAxes,
   type OpRow,
 } from "../src/control/sequence";
-import { dcSweep, stageSweep } from "../src/control/sweeps";
+import { buildLevels, dcSweep, stageSweep } from "../src/control/sweeps";
 import type { ChannelMap } from "../src/schema/api";
 
 const channels: ChannelMap[] = [
@@ -266,5 +266,34 @@ describe("new rows", () => {
     expect(newRow("ramp", channels).fields.channel).toBe("P2_pulse");
     expect(newRow("measure", channels).fields.channel).toBe("sensor");
     expect(newRow("step", channels.filter((c) => !c.logical.endsWith("_pulse"))).fields.channel).toBe("P1");
+  });
+});
+
+describe("operating point (ADR 0038)", () => {
+  const dc = channels.filter((c) => c.channel === "P1" || c.channel === "P2");
+  const dcStand: ChannelMap[] = [...dc, { logical: "P2", instrument: "dot", channel: "P2", quantity: "voltage" }];
+
+  it("turns rows into fixed levels on DC channels the sweep does not touch", () => {
+    const { levels, errors } = buildLevels([{ channel: "P2", value: "0.05" }], dcStand, ["P1", "P2_pulse"]);
+    expect(errors).toEqual([]);
+    expect(levels).toEqual([{ channel: "P2", value: 0.05 }]);
+  });
+
+  it("refuses a swept channel, a repeat, a non-number, and an unknown channel", () => {
+    const errs = (rows: { channel: string; value: string }[]) => buildLevels(rows, dcStand, ["P1"]).errors.join(" | ");
+    expect(errs([{ channel: "P1", value: "0" }])).toMatch(/already steps or senses P1/);
+    expect(errs([{ channel: "P2", value: "0" }, { channel: "P2", value: "0.1" }])).toMatch(/given twice/);
+    expect(errs([{ channel: "P2", value: "x" }])).toMatch(/must be a number/);
+    expect(errs([{ channel: "nope", value: "0" }])).toMatch(/pick a DC channel/);
+  });
+
+  it("puts the levels on either sweep kind, and nothing when there are none", () => {
+    const levels = [{ channel: "P2", value: 0.05 }];
+    const inner = { channel: "P2_pulse", start: -0.02, stop: 0.12, num: 8 };
+    const s = stageSweep({ name: "s", levels, inner, sensor: "sensor", instrument: "dot", shots: 1, stepNs: 500, measureNs: 1000, result: "I" });
+    expect(s.levels).toEqual(levels);
+    const d = dcSweep({ name: "d", levels, inner: { channel: "SG", start: 0, stop: 1, num: 4 }, sensor: "sensor", result: "I" });
+    expect(d.levels).toEqual(levels);
+    expect("levels" in dcSweep({ name: "d", inner: { channel: "SG", start: 0, stop: 1, num: 4 }, sensor: "sensor", result: "I" })).toBe(false);
   });
 });

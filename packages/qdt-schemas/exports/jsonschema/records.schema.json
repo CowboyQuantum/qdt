@@ -978,6 +978,36 @@
       "title": "FitModel",
       "type": "object"
     },
+    "FixedLevel": {
+      "additionalProperties": false,
+      "description": "A DC level held for the whole sweep: part of the operating point (ADR 0038).",
+      "properties": {
+        "channel": {
+          "description": "Logical LevelSource channel (ChannelMap.logical).",
+          "minLength": 1,
+          "title": "Channel",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "value": {
+          "description": "Level in the channel's quantity unit, set before the scan.",
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schema_version",
+        "channel",
+        "value"
+      ],
+      "title": "FixedLevel",
+      "type": "object"
+    },
     "IndexedCoordinate": {
       "additionalProperties": false,
       "description": "Implicit coordinate: arbitrary values listed in the definition, one per index of its dimension.",
@@ -2410,6 +2440,15 @@
             "$ref": "#/$defs/SweepAxis"
           },
           "title": "Axes",
+          "type": "array"
+        },
+        "levels": {
+          "default": [],
+          "description": "Operating point: DC levels set once before the scan and held throughout, on channels the sweep does not step. Pulses on a gate's pulse line add to its level here.",
+          "items": {
+            "$ref": "#/$defs/FixedLevel"
+          },
+          "title": "Levels",
           "type": "array"
         },
         "name": {

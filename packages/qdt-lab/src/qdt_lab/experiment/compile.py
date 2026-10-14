@@ -55,6 +55,8 @@ def compile_sweep(
     stepped = definition.stepped_axes()
     for a in stepped:
         resolve(a.channel, "level_source")
+    for lv in definition.levels:  # the operating point (ADR 0038)
+        resolve(lv.channel, "level_source")
     for s in definition.sensed:
         resolve(s.channel, "level_sense")
 

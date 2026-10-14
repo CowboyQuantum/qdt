@@ -17,6 +17,7 @@ export interface QdtControlApi {
   EstimateSpec?: EstimateSpec;
   ExecutionPlan?: ExecutionPlan;
   FitModel?: FitModel;
+  FixedLevel?: FixedLevel;
   HTTPValidationError?: HTTPValidationError;
   IndexedCoordinate?: IndexedCoordinate;
   InstrumentConfig?: InstrumentConfig;
@@ -794,6 +795,10 @@ export interface SweepDefinition {
    */
   axes?: SweepAxis[];
   /**
+   * Operating point: DC levels set once before the scan and held throughout, on channels the sweep does not step. Pulses on a gate's pulse line add to its level here.
+   */
+  levels?: FixedLevel[];
+  /**
    * Human-readable name.
    */
   name: string;
@@ -845,6 +850,26 @@ export interface SweepAxis {
    * Value at the last index (inclusive).
    */
   stop: number;
+}
+/**
+ * A DC level held for the whole sweep: part of the operating point (ADR 0038).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "FixedLevel".
+ */
+export interface FixedLevel {
+  /**
+   * Logical LevelSource channel (ChannelMap.logical).
+   */
+  channel: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Level in the channel's quantity unit, set before the scan.
+   */
+  value: number;
 }
 /**
  * A level read at every stepped point; becomes a data variable over the stepped axes.
