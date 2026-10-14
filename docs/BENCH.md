@@ -7,7 +7,7 @@ Keep it generic: roles and models, not site names (rule 7).
 ## Instruments
 Drivers: `qdt_lab.drivers` (ADR 0041). The address of each instrument is **not** recorded here (rule 7). For
 the conformance suite it goes in the environment variable below; for `qdt-server --stand` it goes in a
-local `*.stand.json` (gitignored; shape in `docs/examples/bench.stand.example.json`).
+local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.stand.example.json`).
 
 | Role (protocol) | Instrument | Backend key | Address variable | Notes |
 |---|---|---|---|---|
@@ -84,5 +84,7 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
   or rely on the SMU's current readout for the oracle.
 - **Scope input impedance specification** (1 MΩ ± its tolerance), used as the reference in L2-2.
 ## Reports
-Every `-m hardware` run writes `bench/reports/YYYY-MM-DD-<step>.md` and is committed. The repo must always
-show when hardware was last proven.
+Every run that executes a `hardware` test appends a section to `bench/reports/YYYY-MM-DD-step<N>.md`
+(`scripts/bench_report.py`, a pytest plugin loaded from `pyproject.toml`; `bench_step` names N). The
+section records the commit, the command, per-backend counts and per-test outcomes, with every address
+redacted (rule 7). Commit the report: the repo must always show when hardware was last proven.
