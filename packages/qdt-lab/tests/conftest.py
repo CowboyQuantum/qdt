@@ -1,14 +1,27 @@
 """Conformance parametrization: one fixture per capability, each listing its backends.
 
-Register real backends here under the `hardware` marker as drivers land (see CLAUDE.md). Every
-backend must pass the same tests unchanged.
+Every backend must pass the same tests unchanged. Each real driver is registered twice: on its SCPI
+emulator (L0, CI) and on the instrument (`hardware` marker; the VISA address comes from an environment
+variable and the test skips without it — addresses are never committed, rule 7):
+
+    QDT_QDAC2_ADDRESS   QDAC-II          e.g. TCPIP::<host>::5025::SOCKET
+    QDT_SMU_ADDRESS     Keithley 2400    e.g. TCPIP::<host>::5025::SOCKET or GPIB0::24::INSTR
+    QDT_SCOPE_ADDRESS   InfiniiVision X  e.g. TCPIP::<host>::INSTR
+    QDT_OPX_ADDRESS     OPX1000          QM host (cluster gateway)
 """
 
 import os
 import warnings
+from typing import ClassVar
 
 import pytest
 
+from qdt_lab.drivers.keithley.k2400 import Keithley2400
+from qdt_lab.drivers.keithley.k2400_emulator import emulated as k2400_emulated
+from qdt_lab.drivers.keysight.infiniivision import InfiniiVisionX
+from qdt_lab.drivers.keysight.infiniivision_emulator import emulated as infiniivision_emulated
+from qdt_lab.drivers.qdevil.qdac2 import QDac2
+from qdt_lab.drivers.qdevil.qdac2_emulator import emulated as qdac2_emulated
 from qdt_lab.simulated import (
     SimulatedLevelSense,
     SimulatedLevelSource,
@@ -39,7 +52,75 @@ def wallclock_rate():
     return check
 
 
-LEVEL_SOURCE_BACKENDS = [pytest.param(SimulatedLevelSource, id="simulated")]
+def _address(var: str) -> str:
+    address = os.environ.get(var)
+    if not address:
+        pytest.skip(f"set {var} to run against the instrument")
+    return address
+
+
+def _instrument(id: str, backend: str, capabilities: tuple[str, ...], var: str) -> InstrumentConfig:
+    return InstrumentConfig(
+        id=id, backend=backend, capabilities=capabilities, settings={"address": _address(var)}
+    )
+
+
+class _Renamed:
+    """The suite's ch00/ch01 onto an instrument that numbers its channels from 1 (QDAC-II)."""
+
+    _MAP: ClassVar[dict[str, str]] = {"ch00": "ch01", "ch01": "ch02"}
+
+    def __init__(self, driver) -> None:
+        self._d = driver
+
+    def set(self, channel: str, value: float) -> None:
+        self._d.set(self._MAP.get(channel, channel), value)
+
+    def get(self, channel: str) -> float:
+        return self._d.get(self._MAP.get(channel, channel))
+
+
+def _qdac2_hardware():
+    return _Renamed(
+        QDac2.from_config(
+            _instrument("dac0", "qdac2", ("level_source", "level_sense"), "QDT_QDAC2_ADDRESS"), ()
+        )
+    )
+
+
+def _k2400_hardware(channels: tuple[ChannelMap, ...] = ()):
+    return Keithley2400.from_config(
+        _instrument("smu", "keithley2400", ("level_source", "level_sense"), "QDT_SMU_ADDRESS"),
+        channels,
+    )
+
+
+# One SMU terminal is both source and sense: ch00 declared 'voltage' so sense reads the sourced level.
+_SMU_LOOPBACK = (ChannelMap(logical="in", instrument="smu", channel="ch00", quantity="voltage"),)
+
+
+def _smu_loopback(make):
+    def factory(sense_channels: tuple[ChannelMap, ...] = ()):
+        smu = make(sense_channels or _SMU_LOOPBACK)
+        return smu, smu
+
+    return factory
+
+
+def _infiniivision_hardware():
+    inst = _instrument("scope0", "infiniivision", ("waveform_sense",), "QDT_SCOPE_ADDRESS")
+    ch = ChannelMap(logical="ch00", instrument="scope0", channel="1", quantity="voltage")
+    return InfiniiVisionX.from_config(inst, (ch,))
+
+
+LEVEL_SOURCE_BACKENDS = [
+    pytest.param(SimulatedLevelSource, id="simulated"),
+    pytest.param(lambda: _Renamed(qdac2_emulated()), id="qdac2-emulated"),
+    pytest.param(lambda: k2400_emulated("2400"), id="k2400-emulated"),
+    pytest.param(lambda: k2400_emulated("2450"), id="k2450-emulated"),
+    pytest.param(_qdac2_hardware, id="qdac2", marks=pytest.mark.hardware),
+    pytest.param(_k2400_hardware, id="k2400", marks=pytest.mark.hardware),
+]
 
 
 @pytest.fixture(params=LEVEL_SOURCE_BACKENDS)
@@ -62,7 +143,12 @@ def _simulated_loopback(sense_channels: tuple[ChannelMap, ...] = ()):
 # A (LevelSource, LevelSense) pair wired so the sense terminal reads what the source applies: the bench
 # loopback of BENCH.md. Each entry builds the pair given the sense instrument's ChannelMaps, through the
 # backends' factories (ADR 0021). Real pairs register here with their loopback tolerance.
-LEVEL_LOOPBACK_BACKENDS = [pytest.param(_simulated_loopback, id="simulated")]
+LEVEL_LOOPBACK_BACKENDS = [
+    pytest.param(_simulated_loopback, id="simulated"),
+    pytest.param(_smu_loopback(lambda ch: k2400_emulated("2400", ch)), id="k2400-emulated"),
+    pytest.param(_smu_loopback(lambda ch: k2400_emulated("2450", ch)), id="k2450-emulated"),
+    pytest.param(_smu_loopback(_k2400_hardware), id="k2400", marks=pytest.mark.hardware),
+]
 
 
 @pytest.fixture(params=LEVEL_LOOPBACK_BACKENDS)
@@ -83,7 +169,11 @@ def waveform_source(request):
     return request.param()
 
 
-WAVEFORM_SENSE_BACKENDS = [pytest.param(lambda: SimulatedWaveformSense(seed=1), id="simulated")]
+WAVEFORM_SENSE_BACKENDS = [
+    pytest.param(lambda: SimulatedWaveformSense(seed=1), id="simulated"),
+    pytest.param(infiniivision_emulated, id="infiniivision-emulated"),
+    pytest.param(_infiniivision_hardware, id="infiniivision", marks=pytest.mark.hardware),
+]
 
 
 @pytest.fixture(params=WAVEFORM_SENSE_BACKENDS)
@@ -104,8 +194,18 @@ FLAT_INDEX_PROGRAM = SequencerProgram(
     results=(SequencerResult(name="data", dims=("n_lines", "n_points"), dtype="int64", unit=""),),
 )
 
+
+def _opx_hardware():
+    from qdt_lab.drivers.qm.opx1000 import Opx1000
+
+    inst = _instrument("opx", "qua", ("sequencer",), "QDT_OPX_ADDRESS")
+    program = FLAT_INDEX_PROGRAM.model_copy(update={"body": '{"kind": "flat_index"}'})
+    return Opx1000.from_config(inst, ()), program
+
+
 SEQUENCER_BACKENDS = [
     pytest.param(lambda: (SimulatedSequencer(), FLAT_INDEX_PROGRAM), id="simulated"),
+    pytest.param(_opx_hardware, id="opx1000", marks=pytest.mark.hardware),
 ]
 
 

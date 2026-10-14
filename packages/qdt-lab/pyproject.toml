@@ -12,10 +12,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-opx = []       # TODO Step 1: qm-qua, pinned after checking its pydantic/numpy constraints (ADR 0006)
-qdac = []      # TODO Step 1: qcodes + QDAC-II driver
-keysight = []  # TODO Step 1: pyvisa (+ backend)
-smu = []       # TODO Step 1: pyvisa or vendor SDK
+opx = ["qm-qua>=1.2"]                            # OPX1000: QUA programs + config (ADR 0006)
+qdac = ["pyvisa>=1.13", "pyvisa-py>=0.7"]        # QDAC-II: SCPI over TCP
+keysight = ["pyvisa>=1.13", "pyvisa-py>=0.7"]    # InfiniiVision X: SCPI
+smu = ["pyvisa>=1.13", "pyvisa-py>=0.7"]         # Keithley 2400-series: SCPI
 
 [build-system]
 requires = ["hatchling"]

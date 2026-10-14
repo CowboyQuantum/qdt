@@ -152,6 +152,14 @@ class SimulatedEmitter:
             body=body,
             parameters=tuple(params),
             results=tuple(results),
-            attrs={"emitter": "SimulatedEmitter", "sequence": seq.name},
+            attrs={"emitter": type(self).__name__, "sequence": seq.name},
         )
         return program, tuple(bindings)
+
+
+class QuaEmitter(SimulatedEmitter):
+    """Backend 'qua' (the OPX, Step 5): the same body and parameter scheme as the simulated emitter. The
+    OPX driver (`qdt_lab.drivers.qm.opx1000`) turns the sequence into a QUA program at compile time,
+    reading every parameter from one int input stream (compile once, run with ints; Probe 01)."""
+
+    backend = "qua"

@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 from qdt_lab.protocols import LevelSense, LevelSource
 from qdt_schemas.stand import ChannelMap
 
@@ -20,6 +22,8 @@ def test_sense_follows_source_within_tolerance(level_loopback):
 
 def test_channels_are_independent(level_loopback):
     source, sense = level_loopback
+    if getattr(sense, "single_terminal", False):
+        pytest.skip("one terminal: no second channel to be independent of")
     source.set("ch00", 0.5)
     source.set("ch01", -0.5)
     assert abs(sense.sense("ch00") - 0.5) < 1e-3
