@@ -9,9 +9,12 @@
 //                                    [--gpu hardware|swiftshader] [--out bench/results/<file>.json]
 //                                    [--assert]   exit 1 unless every renderer meets the targets in steady state
 //                                                 (p95 latency <= 50 ms, rendered rate >= 95% of --rate)
-//                                    [--latency-advisory]  with --assert: gate on rendered rate only and
-//                                                 report latency (shared CI runners make SwiftShader latency
-//                                                 noise; the latency target is evidenced by bench/results/)
+//                                    [--latency-advisory]  with --assert: report latency, do not gate on it
+//                                                 (shared CI runners make SwiftShader latency noise; the latency
+//                                                 target is evidenced by bench/results/, ADR 0014)
+//                                    [--rate-advisory]  with --assert: report a rendered rate below 95% of --rate,
+//                                                 fail only below 50% (a broken renderer, not a slow runner;
+//                                                 ADR 0039)
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -162,23 +165,24 @@ if (out) {
 
 if (process.argv.includes("--assert")) {
   const latencyGates = !process.argv.includes("--latency-advisory");
+  const rateAdvisory = process.argv.includes("--rate-advisory");
   const latencyOk = (r) => r.steady_latency_ms.p95 <= report.targets.latency_ms;
-  const rateOk = (r) => r.rendered_rate_pts_s >= 0.95 * rate;
+  const rateTarget = 0.95 * rate;
+  const rateFloor = rateAdvisory ? 0.5 * rate : rateTarget; // advisory: only a broken renderer fails
+  const rateOk = (r) => r.rendered_rate_pts_s >= rateFloor;
   const failures = results.filter((r) => !rateOk(r) || (latencyGates && !latencyOk(r)));
   for (const f of failures) {
     console.error(
       `FAIL ${f.renderer}: steady p95 ${f.steady_latency_ms.p95} ms (target <= ${report.targets.latency_ms}` +
-        `${latencyGates ? "" : ", advisory"}), rendered ${f.rendered_rate_pts_s} pts/s (target >= ${0.95 * rate})`,
+        `${latencyGates ? "" : ", advisory"}), rendered ${f.rendered_rate_pts_s} pts/s (gate >= ${rateFloor})`,
     );
   }
-  if (!latencyGates) {
-    for (const r of results.filter((r) => !latencyOk(r))) {
-      console.warn(
-        `note ${r.renderer}: steady p95 ${r.steady_latency_ms.p95} ms exceeds ${report.targets.latency_ms} ms ` +
-          "(advisory: not gated on this machine)",
-      );
-    }
-  }
+  const notes = [
+    ...(latencyGates ? [] : results.filter((r) => !latencyOk(r)).map((r) => `steady p95 ${r.steady_latency_ms.p95} ms exceeds ${report.targets.latency_ms} ms`)),
+    ...(rateAdvisory ? results.filter((r) => r.rendered_rate_pts_s < rateTarget).map((r) => `rendered ${r.rendered_rate_pts_s} pts/s is below ${rateTarget}`) : []),
+  ];
+  for (const n of notes) console.warn(`note: ${n} (advisory: not gated on this machine)`);
   if (failures.length) process.exit(1);
-  console.log(latencyGates ? "bench: targets met" : "bench: rendered-rate target met (latency advisory)");
+  const gated = [latencyGates && "latency", !rateAdvisory && "rendered rate"].filter(Boolean);
+  console.log(gated.length ? `bench: ${gated.join(" and ")} targets met` : `bench: renderer alive (>= ${rateFloor} pts/s); targets advisory`);
 }

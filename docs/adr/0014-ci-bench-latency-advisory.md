@@ -1,6 +1,6 @@
 # 0014 — CI gates the renderer bench on rendered rate; latency is advisory there
 
-**Status:** Accepted
+**Status:** Superseded by 0039
 **Date:** 2026-10-11
 **Step:** 1
 

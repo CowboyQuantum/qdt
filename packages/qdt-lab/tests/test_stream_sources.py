@@ -191,7 +191,7 @@ def test_sources_satisfy_protocol():
     assert isinstance(ReplaySource(FIXTURES / "synthetic_map_64.qdtrec"), Source)
 
 
-def test_wire_path_keeps_design_target_line_rate():
+def test_wire_path_keeps_design_target_line_rate(wallclock_rate):
     """A 2048-wide map streamed line-by-line over localhost sustains >= 10^6 pts/s end to end."""
     src = SyntheticMap(n_outer=256, points_per_second=None)  # 524288 points
 
@@ -207,7 +207,7 @@ def test_wire_path_keeps_design_target_line_rate():
     got, elapsed = asyncio.run(run())
     n = sum(f.arrays["signal"].size for f in got[src.dataset.dataset_id].frames)
     assert n == 256 * 2048
-    assert n / elapsed > 1_000_000
+    wallclock_rate(n / elapsed, 1_000_000, "wire path")
     np.testing.assert_array_equal(
         got[src.dataset.dataset_id].frames[3].arrays["signal"][0], src.row(3)
     )
