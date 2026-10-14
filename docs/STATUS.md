@@ -3,92 +3,86 @@
 > Rewritten at the end of every session. Never appended. History: `git log -- docs/STATUS.md`.
 > A fresh session must be able to continue from this file alone.
 
-**Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (NOT STARTED).
-Step 4b DONE (ADR 0036). The demo follow-ups are merged: #21 (ADR 0037), #22 (ADR 0038), #23 (ADR
-0039).
-**Branch:** `step-5/surrogate-dut-draft` (PR #24). It closes #10 with ADR 0040: no surrogate DUT
-board; L2 is instrument-on-instrument.
+**Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (IN PROGRESS).
+**Branch:** `step-5/drivers` (PR against `main`).
+**Last session:** 2026-10-14. The human cut the surrogate DUT (ADR 0040) and asked for the drivers
+directly, kept simple. Linear and exponential fits come later. Bench:
+- QDAC-II over Ethernet;
+- Keithley 2400-series;
+- InfiniiVision X;
+- OPX1000 with LF-FEMs.
 
-**Last session:** 2026-10-14.
-- The human agreed ADR 0037 (no version bump; `difference` in the sequence).
-- They asked for the operating point before Step 5 (built as ADR 0038).
-- They chose advisory wall-clock CI gates (ADR 0039).
-- After a surrogate DUT board was drafted, they asked to skip it. L2 now uses the instruments
-  themselves plus a bias tee (ADR 0040).
-
-## Step 4b exit criteria — met (DONE, ADR 0036; unchanged by the follow-ups)
+## Step 5 exit criteria
 | Criterion | State |
 |---|---|
-| fresh browser + `qdt-server` only: craft, run, watch, record, analyse, overlays — e2e in CI and a scripted demo | ✔ `apps/flightdeck/e2e/control.test.ts` (now also chop, `a − b`, operating point); `scripts/demo_control_path.py` |
-| `control.py` frozen with ADR | ✔ ADR 0036 |
+| conformance suite passes on all four real instruments under `-m hardware` | ◐ passes on each driver's emulator in CI; the OPX's QUA and config are validated offline by qm-qua. **The first bench run is the next action** |
+| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ◐ the path runs in CI through the server on real drivers over emulators (`test_a_sweep_runs_on_the_real_drivers_streams_and_records`); hardware run pending |
+| bench report committed | ✘ |
 
 ## Done
-- Steps 0–4b DONE. ADR 0001–0040. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+- Steps 0–4b DONE. ADR 0001–0041. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037 and 0038), identity/envelope/`qdt-hdf5-v1`
   (0028), modeling (0033), control (0036).
-- **PR #21 (ADR 0037):**
-  - editor fix for a number typed over the swept symbol, and readable 422s;
-  - `Affine` values (`v_P2 + 0.002`);
-  - the `difference` primitive (`dI = I_on − I_off` per shot, recorded);
-  - the `variable` and `minus` view pickers.
-- **This branch (ADR 0038):** `SweepDefinition.levels`, fixed DC levels set once before the scan and
-  held.
-  - The field is excluded from the dump when empty, so existing hashes are unchanged.
-  - Compile resolves each level as `level_source`, and the executor sets them first.
-  - The panel has an "operating point" section, checked live against the swept channels.
-  - The simulator test pins "pulse adds to DC".
-- **ADR 0039 (supersedes 0014):** wall-clock rate targets are advisory on shared CI runners, with a
-  floor at half the target.
-  - The bench takes `--rate-advisory`.
-  - The Python rate tests use a `wallclock_rate` fixture: strict locally, advisory with
-    `QDT_WALLCLOCK_ADVISORY=1`, which CI sets.
-- 287 Python tests (+5 Postgres-parametrized), 68 Flight Deck unit tests, 4 e2e.
+- **Drivers (ADR 0041),** in `qdt_lab.drivers`, each built by `from_config` with `settings["address"]`;
+  `FACTORIES` maps backend keys to them:
+  - `qdevil/qdac2`: LevelSource (V) + LevelSense (I).
+  - `keithley/k2400`: one terminal; legacy or 2450-style dialect from `*IDN?`.
+  - `keysight/infiniivision`: WaveformSense; WORD blocks resampled to the declared grid.
+  - `qm/opx1000`: WaveformSource, WaveformSense, Sequencer.
+    - Compile once, then an int input stream (Probe 01).
+    - Sticky levels; `Affine` and `difference`.
+    - `QuaEmitter` packages stages for it.
+  - Shared plumbing: `drivers/scpi.py` and one emulator per SCPI driver. Each emulator rejects unknown
+    commands.
+- **Extras:** `[qdac]`, `[keysight]` and `[smu]` add pyvisa and pyvisa-py; `[opx]` adds qm-qua 1.4.1. No
+  pin conflicts.
+- **`qdt-server --stand <file>.stand.json --device-id <id>`** runs on real instruments. The stand file
+  is gitignored; `docs/examples/bench.stand.example.json` shows the shape.
+- 311 Python tests (+5 Postgres-parametrized), 4 skipped (single-terminal SMU), 23 hardware-only; Flight
+  Deck 68 unit tests and 4 e2e.
 
 ## In flight
-- **ADR 0040 (closes #10):** L2 = instrument-on-instrument.
-  - L2-1: QDAC DC × OPX pulse through the bias tee, read by the stage `measure`; a plane fit with
-    iso-line overlays. This is the Step 5 exit run.
-  - L2-2: QDAC and SMU current readout into the scope's 1 MΩ input.
-  - L2-3: the bias tee's droop, a single-exponential fit.
-  - Updated to match: `docs/BENCH.md` § L2, plan §7.1 and #10, every step file's L2 heading, Step 5's
-    deliverables, tests and exit, the `CLAUDE.md` pointer and `bench/README.md`.
+- Nothing uncommitted. The PR for `step-5/drivers` awaits review.
 
 ## Known broken / not yet real
-- **The form can't hold the inner gate fixed:** a stage sweep always pulses its inner axis. With an
-  operating point, sweep its pulse around the held DC level.
-- **Simulator `drive`:** passes time with no effect, and `ramp` jumps to its end level. There is no QUA
-  emitter yet; it must implement `Affine` and `difference` (ADR 0037).
-- **Diamond estimator:** needs a cold sensor (ADR 0030). The lattice estimate needs a periodic window.
-  The dot model's zero-clipping is unresolved (ADR 0020).
-- **Overlays:** drawn in one colour. The Postgres suite is not run locally (no docker); CI runs it.
+- **No driver has touched hardware.** Every SCPI command is from the manuals and listed in each driver's
+  docstring. The emulators encode the same reading, so the first `-m hardware` run is the real check.
+- **OPX calibration constants** (`INTEGRATION_TO_VOLTS`, `RAW_ADC_TO_VOLTS`) are assumptions until an
+  OPX AO → AI loopback at a known level.
+- **QDAC-II load:** driving the 50 Ω OPX input from the QDAC (L2-1) needs the load check in BENCH.md § L2.
+- **OPX results:** a stage's results arrive when its job ends (one frame per result). Maps still fill
+  line by line, because the executor runs one stage per stepped point.
+- **OPX `drive`:** not supported on the LF-FEM stage.
 - Carried over:
-  - the server payload store is a directory (ADR 0026);
+  - the diamond estimator needs a cold sensor (ADR 0030);
+  - zero-clipping in the dot model (ADR 0020);
+  - overlays drawn in one colour;
+  - the Postgres suite runs only in CI (no docker here);
   - `FINISH_LINE.md` TODO (human);
-  - `BENCH.md`: instrument models and the L2 specs are still TODO (human);
-  - on Windows, run pnpm as `corepack pnpm` in `apps/flightdeck`.
+  - on Windows, run pnpm as `corepack pnpm`.
 
 ## Next action
-**Human:**
-1. Merge PR #24.
-2. Fill in `docs/BENCH.md`: the instrument models, and § L2 "To fill in" (bias tee specs; the L2-1 load
-   check; QDAC current range; scope input spec). Real addresses go in `CLAUDE.local.md`, not the repo
-   (rule 7).
+**Human, at the bench:**
+1. Export `QDT_QDAC2_ADDRESS`, `QDT_SMU_ADDRESS`, `QDT_SCOPE_ADDRESS` and `QDT_OPX_ADDRESS`, then run
+   `uv run pytest packages/qdt-lab -m hardware -v`. A session can fix the failures, driver and emulator
+   together.
+2. Write a local `bench.stand.json` from the example, and run
+   `uv run python -m qdt_server --stand bench.stand.json --device-id <id> --ui apps/flightdeck/dist`
+   for a first sweep in the browser.
 
-**Then** the first Step 5 session:
-1. Open Step 5. Start with the two curated fits L2 needs (plane with iso-line overlays; single
-   exponential): pure, testable at L0 now, before any hardware.
-2. Fill in `docs/BENCH.md`.
-3. Start the first real driver with `/add-driver` (`packages/qdt-lab/CLAUDE.md`), passing the
-   conformance suite under `-m hardware`.
+**Then:** the OPX calibration constants; the L1 and L2 suites in `bench/` with the dated report; and
+the linear and exponential fits as curated methods.
 
 ## Direction recorded (human)
-- **2026-10-13:** web app end state. Curated analyses only. Multi-record analyses deferred. Results may
-  carry arrays (ADR 0031). The control path came before the drivers (ADR 0032).
+- **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
+  (ADR 0031, 0032).
 - **2026-10-14:**
   - a chop's difference is recorded (ADR 0037);
   - additive changes without a version bump are accepted (ADR 0037);
   - the operating point comes before Step 5 (ADR 0038);
-  - wall-clock CI gates are advisory, option A (ADR 0039).
+  - wall-clock CI gates are advisory (ADR 0039);
+  - no surrogate DUT (ADR 0040);
+  - drivers first, simple; fits later (ADR 0041).
 
 ## Decisions pending
 - A default operating point per device (not in ADR 0038).
