@@ -36,7 +36,8 @@ _SETTINGS = {
 
 class InfiniiVisionEmulator:
     """Tracks the timebase and waveform settings; each `:DIGitize CHANnel<n>` captures record k =
-    `signal(t, k)` on t = position + i*range/points (xreference 0), quantized to int16 codes of
+    `signal(t, k)` on t = position - range/10 + i*range/points (LEFT reference: one division in from the
+    left edge, as the instrument does; xreference 0), quantized to int16 codes of
     `yincrement` volts (yorigin 0, yreference 0). `points` caps the raw points; fewer are captured when
     `:WAVeform:POINts` asks for fewer."""
 
@@ -88,10 +89,11 @@ class InfiniiVisionEmulator:
             raise ValueError("emulator captures only with :TIMebase:REFerence LEFT")
         n = min(self.points, self.requested_points)
         xinc = self.range / n
-        t = self.position + np.arange(n) * xinc
+        left_edge = self.position - self.range * 0.1
+        t = left_edge + np.arange(n) * xinc
         volts = np.asarray(self.signal(t, self.records), dtype=np.float64)
         codes = np.clip(np.round(volts / self.yincrement), -32768, 32767).astype(np.int16)
-        self._capture = (channel, xinc, self.position, codes)
+        self._capture = (channel, xinc, left_edge, codes)
         self.records += 1
 
     def query(self, command: str) -> str:

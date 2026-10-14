@@ -13,7 +13,7 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
 |---|---|---|---|---|
 | `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet or its rear USB port | `qdac2` | `QDT_QDAC2_ADDRESS` | `TCPIP::<host>::5025::SOCKET`, or `ASRL/dev/cu.usbserial-NNNN::INSTR` (921600 baud, set by the driver; ADR 0043). The LAN address is set over USB: `syst:comm:lan:dhcp 0`, `:ipad "<ip>"`, `:smask`, `:gat`, `:upd`, then a power cycle with the cable in. Channels used: TODO |
 | `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings |
-| `WaveformSense` | Keysight InfiniiVision X | `infiniivision` | `QDT_SCOPE_ADDRESS` | trigger and vertical scale set on the front panel |
+| `WaveformSense` | Keysight InfiniiVision (X or HD3 series; an HD304MSO on the bench) | `infiniivision` | `QDT_SCOPE_ADDRESS` | `TCPIP::<host>::INSTR`; it self-assigns a 169.254 address without DHCP. Trigger sweep must be AUTO, vertical scale set on the front panel. `:TIMebase:REFerence LEFT` is one division in from the left edge; the driver accounts for it |
 | `LevelSource` + `LevelSense` on one terminal | Keithley 2400-series | `keithley2400` | `QDT_SMU_ADDRESS` | legacy or 2450-style SCPI picked from `*IDN?` |
 
 First bench run: `uv run pytest packages/qdt-lab -m hardware` with the variables exported. It runs the same

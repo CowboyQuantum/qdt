@@ -1,6 +1,6 @@
-"""Keysight InfiniiVision X-series oscilloscope (DSOX/MSOX 2000-6000 X) as a `WaveformSense`, over SCPI.
+"""Keysight InfiniiVision oscilloscope (DSOX/MSOX 1000-6000 X, HD3 series) as a `WaveformSense`, over SCPI.
 
-The commands follow the InfiniiVision programmer's guide; confirm them on the first bench run.
+The commands follow the InfiniiVision programmer's guide; confirmed on an HD304MSO (bench, 2026-10-14).
 
 `arm` configures only what the declared grid fixes: the timebase (`:TIMebase:REFerence LEFT`,
 `:TIMebase:RANGe`, `:TIMebase:POSition`) so one capture covers the declared time axis, and the waveform
@@ -26,11 +26,13 @@ from ..scpi import ScpiTransport, channel_number, open_visa
 
 TIMEBASE_MARGIN = 0.02
 """Fraction of the declared span added to the timebase range so the last declared point is captured."""
+LEFT_REFERENCE_FRACTION = 0.1
+"""Where `:TIMebase:REFerence LEFT` sits: one graticule division in from the left edge of the screen."""
 
 MIN_POINTS = 1000
 """Fewest raw points requested per record."""
 
-_MODEL = re.compile(r"^(DSOX|MSOX)\d")
+_MODEL = re.compile(r"^(DSOX|MSOX|HD3)\d")
 
 
 class InfiniiVisionX:
@@ -52,9 +54,9 @@ class InfiniiVisionX:
         vendor = fields[0].upper()
         model = fields[1].upper().replace("-", "").replace(" ", "") if len(fields) > 1 else ""
         if not vendor.startswith(("KEYSIGHT", "AGILENT")):
-            raise ValueError(f"not a Keysight/Agilent instrument: *IDN? -> {idn!r}")
+            raise ValueError(f"not a Keysight/Agilent instrument: {vendor!r}, {model!r}")
         if not _MODEL.match(model):
-            raise ValueError(f"not an InfiniiVision X-series scope (DSOX/MSOX): *IDN? -> {idn!r}")
+            raise ValueError(f"not an InfiniiVision scope (DSOX/MSOX/HD3): {vendor!r}, {model!r}")
         if max_records < 1:
             raise ValueError(f"max_records must be >= 1, got {max_records}")
         self._t = transport
@@ -109,9 +111,12 @@ class InfiniiVisionX:
                 f"got start={start}, stop={stop}"
             )
         t = self._t
+        # LEFT puts the reference one division (10 % of the range) in from the screen's left edge, so
+        # the capture starts at position - range/10 (bench, HD304MSO, 2026-10-14). Place it at `start`.
+        rng = span * (1 + TIMEBASE_MARGIN)
         t.write(":TIMebase:REFerence LEFT")
-        t.write(f":TIMebase:RANGe {span * (1 + TIMEBASE_MARGIN):.12g}")
-        t.write(f":TIMebase:POSition {start:.12g}")
+        t.write(f":TIMebase:RANGe {rng:.12g}")
+        t.write(f":TIMebase:POSition {start + rng * LEFT_REFERENCE_FRACTION:.12g}")
         t.write(f":WAVeform:SOURce CHANnel{n}")
         t.write(":WAVeform:FORMat WORD")
         t.write(":WAVeform:BYTeorder LSBFirst")
