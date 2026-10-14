@@ -8,8 +8,9 @@ export type ViewKind =
   | { kind: "heatmap"; variable: string; rowDim: string; colDim: string; stackDim: string | null }
   | { kind: "trace"; variable: string; xDim: string; latestAlong: string | null };
 
-export function chooseView(dataset: Dataset): ViewKind | null {
-  const v = dataset.data_vars[0];
+/** The view for `variable` (default: the first data variable), chosen from its dims and their sizes. */
+export function chooseView(dataset: Dataset, variable?: string): ViewKind | null {
+  const v = dataset.data_vars.find((x) => x.name === variable) ?? dataset.data_vars[0];
   if (!v) return null;
   const size = (d: string) => dataset.dims.find((x) => x.name === d)!.size;
   if (v.dims.length === 1) return { kind: "trace", variable: v.name, xDim: v.dims[0], latestAlong: null };
@@ -25,6 +26,24 @@ export function chooseView(dataset: Dataset): ViewKind | null {
       return { kind: "heatmap", variable: v.name, rowDim: a, colDim: b, stackDim: s };
   }
   return null;
+}
+
+/** Variables that can be subtracted from `name` cell by cell: same dims, same unit. */
+export function partners(dataset: Dataset, name: string): string[] {
+  const v = dataset.data_vars.find((x) => x.name === name);
+  if (!v) return [];
+  return dataset.data_vars
+    .filter((x) => x.name !== name && x.unit === v.unit && x.dims.join() === v.dims.join())
+    .map((x) => x.name);
+}
+
+/** `a − b` cell by cell into `out` (reused when its length fits); an unwritten (NaN) cell stays NaN.
+ * The client-side difference view: any two variables of one Dataset (ADR 0037). */
+export function difference(a: DenseArray, b: DenseArray, out: Float64Array | null): DenseArray {
+  const n = a.values.length;
+  const values = out?.length === n ? out : new Float64Array(n);
+  for (let i = 0; i < n; i++) values[i] = Number(a.values[i]) - Number(b.values[i] ?? NaN);
+  return { values, shape: a.shape, dims: a.dims };
 }
 
 /** Mean over the leading axis of a (stack, rows, cols) array into `out` (rows × cols), for rows

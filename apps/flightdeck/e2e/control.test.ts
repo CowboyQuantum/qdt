@@ -153,6 +153,13 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
 
   await page.click("#sweep button[type=submit]");
   await page.waitForFunction(() => /e2e pulsed · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  // the recorded difference is a variable of its own; any two same-shape variables can be subtracted in the view
+  expect((await page.locator("#variable option").allTextContents()).sort()).toEqual(["I_ref", "I_sensor", "dI"]);
+  await page.selectOption("#variable", "I_sensor");
+  await page.selectOption("#minus", "I_ref");
+  await page.waitForFunction(() => /· I_sensor − I_ref · heatmap/.test(document.querySelector("#status")?.textContent ?? ""));
+  await page.selectOption("#variable", "dI");
+  await page.waitForFunction(() => /· dI · heatmap/.test(document.querySelector("#status")?.textContent ?? ""));
 
   // 1-D: no outer axis, back to the template
   await page.selectOption("#sweep select[name=outer_channel]", "");
