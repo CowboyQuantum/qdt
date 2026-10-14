@@ -156,6 +156,14 @@ export function buildBindings(rows: readonly BindingRow[], axes: readonly string
   return { bindings, errors };
 }
 
+/** Mirrors SweepDefinition's rule: each stage axis is swept inside the sequence, so some symbol bound
+ * to it must appear in a level. Typing a number over the template's `v_<axis>` breaks this. */
+export function unusedStageAxes(bindings: readonly SymbolBinding[], stageAxes: readonly string[]): string[] {
+  return stageAxes
+    .filter((a) => !bindings.some((b) => b.axis === a))
+    .map((a) => `the inner axis ${a} is not used: put v_${a} (or another symbol bound to ${a}) in a level`);
+}
+
 /** The one-step template: hold `channel` at the axis symbol, then measure. Stage sweeps start here. */
 export function templateRows(t: { channel: string; symbol: string; sensor: string; stepNs: number; measureNs: number; result: string }): OpRow[] {
   return [

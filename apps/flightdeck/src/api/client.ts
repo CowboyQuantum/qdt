@@ -50,7 +50,7 @@ export class ApiClient {
       let detail = r.statusText;
       try {
         const j = (await r.json()) as { detail?: unknown };
-        if (j.detail !== undefined) detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        if (j.detail !== undefined) detail = describeDetail(j.detail);
       } catch {
         /* no JSON body */
       }
@@ -108,6 +108,22 @@ export class ApiClient {
   replay(request: ReplayRequest): Promise<StreamInfo> {
     return this.call("POST", "/stream/replay", request);
   }
+}
+
+/** A FastAPI error detail as one readable line: a string as is; a validation error list (422) as its
+ * messages, without pydantic's "Value error, " prefix and the echoed input. */
+export function describeDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((e) => {
+      const { msg, loc } = (e ?? {}) as { msg?: unknown; loc?: unknown };
+      if (typeof msg !== "string") return JSON.stringify(e);
+      const where = Array.isArray(loc) ? loc.filter((p) => p !== "body").join(".") : "";
+      return `${where ? `${where}: ` : ""}${msg.replace(/^Value error, /, "")}`;
+    });
+    return msgs.join("; ");
+  }
+  return JSON.stringify(detail);
 }
 
 /** The API base: `?api=` overrides the default local server. */

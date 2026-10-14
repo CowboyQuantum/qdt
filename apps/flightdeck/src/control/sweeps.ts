@@ -3,7 +3,7 @@
 // in the sequencer, the pulse sequence run per pixel) and a *DC* sweep (both axes stepped, a level sensed
 // at every point). Either may drop the outer axis for a 1-D sweep. Pure functions: no DOM, no network.
 import type { ChannelMap, StandConfig, SweepDefinition } from "../schema/api";
-import { buildBindings, buildSequence, templateRows, type BindingRow, type OpRow } from "./sequence";
+import { buildBindings, buildSequence, templateRows, unusedStageAxes, type BindingRow, type OpRow } from "./sequence";
 
 export interface AxisForm {
   /** Logical channel the axis steps or pulses. */
@@ -95,6 +95,7 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
   errors.push(...built.errors);
   const bound = buildBindings(f.sequence?.bindings ?? [{ symbol, target: inner }], axisNames);
   errors.push(...bound.errors);
+  if (!bound.errors.length) errors.push(...unusedStageAxes(bound.bindings, [inner]));
   const results = built.sequence ? built.sequence.body.flatMap((op) => (op.op === "measure" ? [op.result] : [])) : [];
   if (built.sequence && !results.length) errors.push("the sequence measures nothing");
   errors.push(...checkResults(results, axisNames));

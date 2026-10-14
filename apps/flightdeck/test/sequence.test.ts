@@ -9,6 +9,7 @@ import {
   parseValue,
   syncBindings,
   templateRows,
+  unusedStageAxes,
   type OpRow,
 } from "../src/control/sequence";
 import { dcSweep, stageSweep } from "../src/control/sweeps";
@@ -178,6 +179,16 @@ describe("stage sweeps with an edited sequence; 1-D sweeps", () => {
       /symbol "v_P2" needs an axis.*result "P1" has an axis's name/,
     );
     expect(() => stageSweep({ ...base, sequence: { rows: [{ op: "wait", fields: { duration: "10" } }], bindings: [], channels } })).toThrow(/measures nothing/);
+  });
+
+  it("refuses a number typed over the swept symbol: the inner axis would be unused (the demo's 422)", () => {
+    const fixed: OpRow[] = [
+      { op: "step", fields: { channel: "P2_pulse", level: "0.1", duration: "500" } },
+      { op: "measure", fields: { channel: "sensor", duration: "1000", result: "I" } },
+    ];
+    expect(() => stageSweep({ ...base, sequence: { rows: fixed, bindings: [], channels } })).toThrow(/inner axis P2 is not used: put v_P2/);
+    expect(unusedStageAxes([{ symbol: "v_P2", axis: "P2" }], ["P2"])).toEqual([]);
+    expect(unusedStageAxes([{ symbol: "v_kick", axis: "P1" }], ["P2"])).toHaveLength(1);
   });
 
   it("drops the outer axis for a 1-D stage sweep", () => {

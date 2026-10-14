@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiClient, ApiError, apiBase } from "../src/api/client";
+import { ApiClient, ApiError, apiBase, describeDetail } from "../src/api/client";
 import { check, defaults, overrides, parse } from "../src/control/methods";
 import { dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
 import type { MethodSpec, StandConfig } from "../src/schema/api";
@@ -142,6 +142,13 @@ describe("api client", () => {
   it("turns an error response into an ApiError with the server's detail", async () => {
     const api = new ApiClient("http://x", fake({ detail: "no record 'abc'" }, 404));
     await expect(api.record("abc")).rejects.toMatchObject({ status: 404, detail: "no record 'abc'" } satisfies Partial<ApiError>);
+  });
+
+  it("turns a 422 validation list into its messages, not the echoed request", async () => {
+    const detail = [{ type: "value_error", loc: ["body"], msg: "Value error, stage axis 'P2' is not bound to any symbol or parameter", input: { huge: true } }];
+    const api = new ApiClient("http://x", fake({ detail }, 422));
+    await expect(api.compile({} as never)).rejects.toMatchObject({ status: 422, detail: "stage axis 'P2' is not bound to any symbol or parameter" });
+    expect(describeDetail([{ loc: ["body", "axes", 0, "num"], msg: "Input should be greater than or equal to 1" }])).toBe("axes.0.num: Input should be greater than or equal to 1");
   });
 
   it("takes the base from ?api= or defaults to the local server", () => {
