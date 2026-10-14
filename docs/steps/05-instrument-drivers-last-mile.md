@@ -52,3 +52,8 @@ DHCP and has no address yet; the scope is next.
 Session 4 (2026-10-14, bench): the QDAC-II passes its three LevelSource conformance tests over the rear USB
 port (`ASRL...`; ADR 0043) after the transport learned a baud rate. Its LAN got a fixed address over USB but
 has not been seen on Ethernet yet (the cable was moved). Three of four instruments proven; the scope is left.
+Session 5 (2026-10-14, bench): the scope (an HD304MSO, InfiniiVision HD3 series) passes all six WaveformSense
+conformance tests after two driver fixes made with the emulator: the model check admits HD3, and the LEFT
+timebase reference sits one division in from the screen edge, so the capture starts at position - range/10.
+**All four instruments pass the conformance suite on hardware** (first exit criterion met, for the tests the
+suite has today). Left: QDAC-II on Ethernet (address set, unverified), L2-1, the L1/L2 suites, the fits.
