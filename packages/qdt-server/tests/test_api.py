@@ -350,3 +350,39 @@ def test_a_sweep_runs_on_the_real_drivers_streams_and_records(tmp_path):
         payload.arrays["I"], np.tile(np.linspace(-1, 1, 5) / 1e6, (2, 1)), rtol=1e-9
     )
     assert built["dac0"].get("ch01") == 0.1  # the outer gate was really stepped through the driver
+
+
+def test_a_restarted_server_reuses_its_registered_device(tmp_path):
+    """A second start registers the same device id at a later time; the registry would call a
+    differing body a conflict, so the server keeps the existing registration."""
+    import dataclasses
+    from datetime import UTC, datetime
+
+    from qdt_schemas.identity import DeviceRecord
+
+    root = tmp_path / "registry"
+    first = Settings(root=root, stream_port=0)
+    later = dataclasses.replace(
+        first,
+        device=DeviceRecord(
+            device_id=first.device.device_id,
+            kind=first.device.kind,
+            simulated=first.device.simulated,
+            registered_at=datetime(2030, 1, 1, tzinfo=UTC),
+        ),
+    )
+    with TestClient(create_app(first)) as c:
+        assert c.get("/devices").status_code == 200
+    with TestClient(create_app(later)) as c:
+        assert [d["device_id"] for d in c.get("/devices").json()] == [first.device.device_id]
+    other_kind = dataclasses.replace(
+        first,
+        device=DeviceRecord(
+            device_id=first.device.device_id,
+            kind="device",
+            simulated=False,
+            registered_at=datetime(2030, 1, 1, tzinfo=UTC),
+        ),
+    )
+    with pytest.raises(ValueError, match="registered as"), TestClient(create_app(other_kind)):
+        pass

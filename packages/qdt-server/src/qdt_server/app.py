@@ -126,11 +126,28 @@ class StreamInfo(BaseModel):
     url: str = Field(description="WebSocket URL of the Dataset stream.")
 
 
+def _register_or_reuse(registry: Registry, device: DeviceRecord) -> None:
+    """Register the server's device, or accept the one already registered under that id when it is
+    the same kind of device (a restart registers at a later time; the registry treats a differing
+    body as a conflict)."""
+    try:
+        existing = registry.device(device.device_id)
+    except KeyError:
+        registry.register_device(device)
+        return
+    if (existing.kind, existing.simulated) != (device.kind, device.simulated):
+        raise ValueError(
+            f"device {device.device_id!r} is registered as {existing.kind} "
+            f"(simulated={existing.simulated}); this server was given {device.kind} "
+            f"(simulated={device.simulated})"
+        )
+
+
 def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         registry = Registry.from_env(settings.root)
-        registry.register_device(settings.device)
+        _register_or_reuse(registry, settings.device)
         async with StreamServer(settings.stream_host, settings.stream_port) as stream:
             app.state.registry = registry
             app.state.stream = stream
