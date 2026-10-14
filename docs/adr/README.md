@@ -46,3 +46,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0040 | L2 is instrument-on-instrument with off-the-shelf parts (bias tee, the scope's 1 MΩ input); no surrogate DUT board | Accepted (closes #10; amends 0004's L2) |
 | 0041 | Step 5 drivers: one SCPI transport, an emulator per driver, the OPX building QUA from the emitted stage; `qdt-server --stand` | Accepted |
 | 0042 | Bench reports are written by pytest: one file per day, a section per run, addresses redacted | Accepted |
+| 0043 | The QDAC-II is also reachable over its USB serial port; `open_visa` takes a baud rate; pyserial in `[qdac]` | Accepted |

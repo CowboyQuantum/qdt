@@ -49,3 +49,6 @@ Session 3 (2026-10-14, bench): the Keithley (a 2450) passes the conformance suit
 skips) after one harness fix: the 2450 accepts one raw-socket connection at a time, so the suite's fixtures
 now close every backend at teardown (`closing` in `tests/conftest.py`). The QDAC-II sits on a wire with no
 DHCP and has no address yet; the scope is next.
+Session 4 (2026-10-14, bench): the QDAC-II passes its three LevelSource conformance tests over the rear USB
+port (`ASRL...`; ADR 0043) after the transport learned a baud rate. Its LAN got a fixed address over USB but
+has not been seen on Ethernet yet (the cable was moved). Three of four instruments proven; the scope is left.

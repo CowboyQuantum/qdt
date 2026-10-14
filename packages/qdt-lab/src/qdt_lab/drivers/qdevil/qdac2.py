@@ -24,6 +24,7 @@ from qdt_schemas.stand import ChannelMap, InstrumentConfig
 from ..scpi import ScpiTransport, channel_number, open_visa
 
 CHANNELS = (1, 24)
+USB_BAUD_RATE = 921600  # the rear USB port's virtual serial speed (manual 4.3.2)
 MAX_VOLTS = 10.0
 
 
@@ -42,11 +43,14 @@ class QDac2:
 
     @classmethod
     def from_config(cls, instrument: InstrumentConfig, channels: tuple[ChannelMap, ...]) -> "QDac2":
-        """`BackendFactory` (ADR 0021): opens `settings['address']` (a VISA resource string)."""
+        """`BackendFactory` (ADR 0021): opens `settings['address']` (a VISA resource string). A serial
+        address (`ASRL...`, the rear USB port) runs at the instrument's fixed 921600 baud unless
+        `settings['baud_rate']` says otherwise."""
         address = instrument.settings.get("address")
         if not address:
             raise ValueError(f"instrument {instrument.id!r} has no settings['address']")
-        return cls(open_visa(str(address)), channels)
+        baud = instrument.settings.get("baud_rate", USB_BAUD_RATE)
+        return cls(open_visa(str(address), baud_rate=int(baud)), channels)
 
     def _number(self, channel: str, quantity: str, default: str) -> int:
         declared = self._quantity.get(channel, default)
