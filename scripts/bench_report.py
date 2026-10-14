@@ -54,6 +54,7 @@ class Outcome:
 
     @property
     def backend(self) -> str:
+        """The parametrize id: the backend in the conformance suite, the case in a bench test."""
         m = _PARAM_ID.search(self.nodeid)
         return m.group(1) if m else "—"
 
@@ -183,14 +184,14 @@ def render_run(outcomes: list[Outcome], *, now: datetime, commit: str, command: 
             f"{counts['skipped']} skipped, {counts['error']} errors in {total:.1f} s"
         ),
         "",
-        "| Backend | Passed | Failed | Skipped | Errors |",
+        "| Case | Passed | Failed | Skipped | Errors |",
         "|---|---|---|---|---|",
     ]
     for backend in sorted({o.backend for o in outcomes}):
         group = [o for o in outcomes if o.backend == backend]
         row = [sum(o.outcome == k for o in group) for k in ("passed", "failed", "skipped", "error")]
         lines.append(f"| {backend} | " + " | ".join(str(n) for n in row) + " |")
-    lines += ["", "| Test | Backend | Outcome | Time |", "|---|---|---|---|"]
+    lines += ["", "| Test | Case | Outcome | Time |", "|---|---|---|---|"]
     for o in outcomes:
         lines.append(f"| {o.test} | {o.backend} | {o.outcome} | {o.duration:.2f} s |")
     notes = [o for o in outcomes if o.message and o.outcome != "passed"]
