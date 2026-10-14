@@ -9,9 +9,10 @@ Real drivers behind the protocols. Everything above already works against `Simul
 None new. `InstrumentConfig` gains vendor address fields only if required (minor bump).
 
 ## Deliverables
-- `docs/BENCH.md` complete; surrogate DUT built and hand-characterized (golden fixture)
+- `docs/BENCH.md` complete, including the bias tee's and the scope's specifications for L2 (ADR 0040)
 - `qdt-lab/drivers/`: OPX, QDAC-II, Keysight scope, SMU — each behind an extra (ADR 0006), each registered in the conformance parametrization
-- `bench/` L1 loopback and L2 surrogate-DUT suites; dated reports committed
+- `bench/` L1 loopback and L2 instrument-on-instrument suites; dated reports committed
+- curated `qdt-analysis` methods for L2: plane fit (with iso-line overlays) and single exponential
 
 ## L0 tests (CI)
 - conformance suite unchanged and green on `Simulated*`
@@ -21,16 +22,18 @@ None new. `InstrumentConfig` gains vendor address fields only if required (minor
 - QDAC→scope, SMU→scope, OPX out→scope loopbacks with numeric oracles
 - `StandConfig` validates against the enumerated bench
 
-## L2 tests (surrogate DUT)
-- declared IV sweep reproduces the diode curve; declared 2D sweep reproduces the divider surface, live in Flight Deck, recorded in the registry, fitted by `qdt-analysis`
+## L2 tests (instrument-on-instrument)
+- L2-1: QDAC DC × OPX pulse through the bias tee, read by the stage `measure` on an OPX input; a plane with specified coefficients, live in Flight Deck, recorded in the registry, fitted by `qdt-analysis`, overlays drawn
+- L2-2: QDAC and SMU current readout into the scope's 1 MΩ input (I = V / 1 MΩ)
+- L2-3: the bias tee's droop on an OPX step, captured by the scope; single-exponential fit against its specification
 
 ## Exit criteria
 - conformance suite passes on all four real instruments under `-m hardware`
-- one end-to-end L2 run: definition → hardware → Flight Deck → registry → overlay
+- one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay
 - bench report committed
 
 ## Open decisions
-- #10 surrogate DUT design (if not already resolved)
+- #10 surrogate DUT design — closed by ADR 0040 (no board)
 
 ## Status
 NOT STARTED

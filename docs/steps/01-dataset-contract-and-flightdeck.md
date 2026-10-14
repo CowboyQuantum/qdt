@@ -23,7 +23,7 @@ Draft the `Dataset` stream contract against the finish-line sketch and the Analy
 ## L1 tests (bench loopback)
 - Probe 01 run once; Findings table filled; raw timing CSVs under `bench/fixtures/probe01/`
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

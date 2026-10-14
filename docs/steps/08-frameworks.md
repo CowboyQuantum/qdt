@@ -18,7 +18,7 @@ Governance content becomes schema-validated data rendered by `qdt-frameworks`; H
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

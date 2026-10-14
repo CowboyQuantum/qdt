@@ -22,7 +22,7 @@ Records land in a remote-capable database with full provenance, and the registry
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

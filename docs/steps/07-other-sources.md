@@ -19,7 +19,7 @@ Telemetry, cooldown history, CI register, and the internal extension package rid
 ## L1 tests (bench loopback)
 - live fridge logs ingested; remote query from an office desktop
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

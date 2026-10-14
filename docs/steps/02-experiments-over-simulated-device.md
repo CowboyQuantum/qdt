@@ -23,7 +23,7 @@ Experiments are data. A `SweepDefinition` compiles to an execution plan and runs
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria

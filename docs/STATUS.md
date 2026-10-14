@@ -6,12 +6,15 @@
 **Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (NOT STARTED).
 Step 4b DONE (ADR 0036). The demo follow-ups are merged: #21 (ADR 0037), #22 (ADR 0038), #23 (ADR
 0039).
-**Branch:** `step-5/surrogate-dut-draft` (draft PR). It holds the proposed surrogate DUT for #10 in
-`docs/BENCH.md`, for the human to review.
+**Branch:** `step-5/surrogate-dut-draft` (PR #24). It closes #10 with ADR 0040: no surrogate DUT
+board; L2 is instrument-on-instrument.
 
-**Last session:** 2026-10-14. The human agreed ADR 0037 (no version bump; `difference` in the sequence)
-and asked for the operating point before Step 5 (built as ADR 0038). They then chose advisory
-wall-clock CI gates (ADR 0039).
+**Last session:** 2026-10-14.
+- The human agreed ADR 0037 (no version bump; `difference` in the sequence).
+- They asked for the operating point before Step 5 (built as ADR 0038).
+- They chose advisory wall-clock CI gates (ADR 0039).
+- After a surrogate DUT board was drafted, they asked to skip it. L2 now uses the instruments
+  themselves plus a bias tee (ADR 0040).
 
 ## Step 4b exit criteria — met (DONE, ADR 0036; unchanged by the follow-ups)
 | Criterion | State |
@@ -20,7 +23,7 @@ wall-clock CI gates (ADR 0039).
 | `control.py` frozen with ADR | ✔ ADR 0036 |
 
 ## Done
-- Steps 0–4b DONE. ADR 0001–0039. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+- Steps 0–4b DONE. ADR 0001–0040. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037 and 0038), identity/envelope/`qdt-hdf5-v1`
   (0028), modeling (0033), control (0036).
 - **PR #21 (ADR 0037):**
@@ -42,14 +45,15 @@ wall-clock CI gates (ADR 0039).
 - 287 Python tests (+5 Postgres-parametrized), 68 Flight Deck unit tests, 4 e2e.
 
 ## In flight
-- `docs/BENCH.md` § Surrogate DUT: PROPOSED. It covers three legs (summing divider, diode + series R,
-  RC), part values, analytic responses, the L2 tests and the curated fits Step 5 must add, the golden
-  fixture's fields, and open points.
+- **ADR 0040 (closes #10):** L2 = instrument-on-instrument.
+  - L2-1: QDAC DC × OPX pulse through the bias tee, read by the stage `measure`; a plane fit with
+    iso-line overlays. This is the Step 5 exit run.
+  - L2-2: QDAC and SMU current readout into the scope's 1 MΩ input.
+  - L2-3: the bias tee's droop, a single-exponential fit.
+  - Updated to match: `docs/BENCH.md` § L2, plan §7.1 and #10, every step file's L2 heading, Step 5's
+    deliverables, tests and exit, the `CLAUDE.md` pointer and `bench/README.md`.
 
 ## Known broken / not yet real
-- **PR #21's red `flightdeck` check** comes from the old, strict rate gate (runner speed, not code).
-  #21 runs the workflow from its own branch, which predates ADR 0039, so treat it as advisory and merge.
-  Once the stack is in, `main` runs with the advisory gates.
 - **The form can't hold the inner gate fixed:** a stage sweep always pulses its inner axis. With an
   operating point, sweep its pulse around the held DC level.
 - **Simulator `drive`:** passes time with no effect, and `ramp` jumps to its end level. There is no QUA
@@ -60,16 +64,19 @@ wall-clock CI gates (ADR 0039).
 - Carried over:
   - the server payload store is a directory (ADR 0026);
   - `FINISH_LINE.md` TODO (human);
-  - `BENCH.md` is a skeleton;
+  - `BENCH.md`: instrument models and the L2 specs are still TODO (human);
   - on Windows, run pnpm as `corepack pnpm` in `apps/flightdeck`.
 
 ## Next action
 **Human:**
-1. Review the surrogate DUT draft (`docs/BENCH.md`, draft PR). Agree or change the values and answer its
-   open points: board form, sense path for leg 1, diode part, a fourth leg or not.
+1. Merge PR #24.
+2. Fill in `docs/BENCH.md`: the instrument models, and § L2 "To fill in" (bias tee specs; the L2-1 load
+   check; QDAC current range; scope input spec). Real addresses go in `CLAUDE.local.md`, not the repo
+   (rule 7).
 
 **Then** the first Step 5 session:
-1. Record #10 by ADR, and mark the BENCH section as the spec.
+1. Open Step 5. Start with the two curated fits L2 needs (plane with iso-line overlays; single
+   exponential): pure, testable at L0 now, before any hardware.
 2. Fill in `docs/BENCH.md`.
 3. Start the first real driver with `/add-driver` (`packages/qdt-lab/CLAUDE.md`), passing the
    conformance suite under `-m hardware`.
@@ -84,7 +91,6 @@ wall-clock CI gates (ADR 0039).
   - wall-clock CI gates are advisory, option A (ADR 0039).
 
 ## Decisions pending
-- #10 surrogate DUT design (by Step 5 entry): drafted in `docs/BENCH.md`, awaiting review.
 - A default operating point per device (not in ADR 0038).
 - Whether to fix the dot model's zero-clipping (ADR 0020 amendment).
 - Whether the diamond estimator should survive warm edges.

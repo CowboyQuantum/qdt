@@ -19,7 +19,7 @@ Calibration DAG nodes (experiment + analysis + decision) run unattended against 
 ## L1 tests (bench loopback)
 - none
 
-## L2 tests (surrogate DUT)
+## L2 tests (instrument-on-instrument)
 - none
 
 ## Exit criteria
