@@ -50,6 +50,22 @@ def simulated_backends(options: dict[str, AttrValue]) -> Mapping[str, Any]:
     return {DEVICE_ID: default_device(seed=seed, noise=noise, model=model)}
 
 
+def stand_backends(stand: StandConfig) -> BackendFactory:
+    """The real instruments of `stand`, built once through the drivers' factories (Step 5) and reused
+    for every run; run options do not change them."""
+    from qdt_lab.drivers import FACTORIES
+    from qdt_lab.experiment import build_backends
+
+    built: dict[str, Any] = {}
+
+    def backends(options: dict[str, AttrValue]) -> Mapping[str, Any]:
+        if not built:
+            built.update(build_backends(stand, FACTORIES))
+        return built
+
+    return backends
+
+
 @dataclass
 class Settings:
     """What a server instance is made of; tests pass a temp root and port 0."""

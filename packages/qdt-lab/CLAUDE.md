@@ -7,7 +7,8 @@ Instrument capability protocols, vendor drivers, simulated backends, the `Datase
 qdt_lab/
   protocols/         # LevelSource, LevelSense, WaveformSource, WaveformSense, Sequencer — typing.Protocol classes (ADR 0016)
   simulated/         # one Simulated* per protocol; the L0 backends
-  drivers/<vendor>/  # real drivers; vendor SDK imported lazily inside functions
+  drivers/<vendor>/  # real drivers + their SCPI emulators; vendor SDK imported lazily (ADR 0041)
+  drivers/scpi.py    # the shared SCPI transport; drivers/__init__.FACTORIES maps backend keys to factories
   conformance/       # ONE suite, parametrized over backends; the spec for any driver
   stream/            # Dataset stream server + synthetic/replay sources (Step 1)
   experiment/        # compile_sweep, Executor, Emitter protocol + SimulatedEmitter (ADR 0018/0019)
@@ -20,7 +21,7 @@ qdt_lab/
 - The five protocols are frozen (ADR 0021). A signature change is a superseding ADR, not an edit.
 - Anything that produces arrays (`WaveformSense.arm`, `Sequencer.run`) is handed the `Dataset` to fill and returns a stream `Source` for it (ADR 0017). The backend puts data on the declared grid; the consumer never aligns.
 - Vendor SDK goes in `pyproject.toml` under `[project.optional-dependencies]` as an extra — never core. Check its pins against `qdt-schemas` first; report conflicts rather than downgrading schemas (ADR 0006).
-- Do not write new tests. Register the backend in `tests/conftest.py` parametrization. The suite must pass unchanged on `Simulated*` and, under `-m hardware`, on the real instrument.
+- Do not write new tests. Register the backend in `tests/conftest.py` parametrization twice: on its emulator (CI) and on the instrument under `hardware` (address from a `QDT_*_ADDRESS` variable, skipped when unset). The suite must pass unchanged on `Simulated*`, the emulator and the instrument. A SCPI driver ships an emulator that rejects unknown commands (ADR 0041).
 - Add the loopback row to `docs/BENCH.md` and the bench test in `bench/` with a numeric oracle and tolerance.
 
 ## Conformance suite is the spec

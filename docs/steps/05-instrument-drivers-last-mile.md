@@ -36,4 +36,9 @@ None new. `InstrumentConfig` gains vendor address fields only if required (minor
 - #10 surrogate DUT design — closed by ADR 0040 (no board)
 
 ## Status
-NOT STARTED
+IN PROGRESS (opened 2026-10-14, ADR 0041). Session 1: drivers for the QDAC-II, Keithley 2400-series,
+InfiniiVision X and OPX1000. Each SCPI driver passes the conformance suite on its emulator in CI. The OPX's
+QUA programs and config are validated offline by qm-qua. `qdt-server --stand` runs on a real stand, and a
+CI test runs a sweep through the server on the real drivers over emulators. Remaining: the first
+`-m hardware` run and its fixes, the OPX calibration constants, L1/L2 bench suites and the report, and
+linear and exponential fits (asked for by the human; plane and single exponential).

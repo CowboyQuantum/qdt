@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from qdt_lab.experiment import Executor, RunRecorder, SimulatedEmitter, compile_sweep
+from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitter, compile_sweep
 from qdt_lab.stream import Frame, Source, StreamServer
 from qdt_registry import Registry
 from qdt_schemas.activity import ExecutionPlan, SweepDefinition
@@ -68,7 +68,9 @@ class RunManager:
 
     def compile(self, definition: SweepDefinition) -> ExecutionPlan:
         """Raises ValueError for a definition the stand cannot run."""
-        return compile_sweep(definition, self.stand, {"simulated": SimulatedEmitter()})
+        return compile_sweep(
+            definition, self.stand, {"simulated": SimulatedEmitter(), "qua": QuaEmitter()}
+        )
 
     async def start(
         self, definition: SweepDefinition, options: dict[str, AttrValue] | None = None

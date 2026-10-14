@@ -44,3 +44,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0038 | A sweep carries its operating point: `SweepDefinition.levels`, fixed DC levels held for the whole scan | Accepted |
 | 0039 | Wall-clock rate targets are advisory on shared CI runners; a floor at half the target still gates | Accepted (supersedes 0014) |
 | 0040 | L2 is instrument-on-instrument with off-the-shelf parts (bias tee, the scope's 1 MΩ input); no surrogate DUT board | Accepted (closes #10; amends 0004's L2) |
+| 0041 | Step 5 drivers: one SCPI transport, an emulator per driver, the OPX building QUA from the emitted stage; `qdt-server --stand` | Accepted |

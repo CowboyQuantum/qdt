@@ -5,12 +5,20 @@
 Keep it generic: roles and models, not site names (rule 7).
 
 ## Instruments
-| Role (protocol) | Instrument | Address | Notes |
-|---|---|---|---|
-| `LevelSource` (+ `LevelSense` current readout) | QDAC-II | TODO | channels used: TODO |
-| `Sequencer` (owns `WaveformSource`, `WaveformSense`) | OPX | TODO | |
-| `WaveformSense` | Keysight benchtop scope (model TODO) | TODO | |
-| `LevelSource` + `LevelSense` on one terminal | benchtop SMU (model TODO) | TODO | |
+Drivers: `qdt_lab.drivers` (ADR 0041). The address of each instrument is **not** recorded here (rule 7). For
+the conformance suite it goes in the environment variable below; for `qdt-server --stand` it goes in a
+local `*.stand.json` (gitignored; shape in `docs/examples/bench.stand.example.json`).
+
+| Role (protocol) | Instrument | Backend key | Address variable | Notes |
+|---|---|---|---|---|
+| `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet | `qdac2` | `QDT_QDAC2_ADDRESS` | channels used: TODO |
+| `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings |
+| `WaveformSense` | Keysight InfiniiVision X | `infiniivision` | `QDT_SCOPE_ADDRESS` | trigger and vertical scale set on the front panel |
+| `LevelSource` + `LevelSense` on one terminal | Keithley 2400-series | `keithley2400` | `QDT_SMU_ADDRESS` | legacy or 2450-style SCPI picked from `*IDN?` |
+
+First bench run: `uv run pytest packages/qdt-lab -m hardware` with the variables exported. It runs the same
+conformance suite the emulators pass in CI. Then confirm the OPX calibration constants
+(`INTEGRATION_TO_VOLTS`, `RAW_ADC_TO_VOLTS` in `opx1000.py`) with an OPX AO → AI loopback at a known level.
 
 ## Loopback map (L1)
 | Source → Sink | Oracle | Tolerance |
