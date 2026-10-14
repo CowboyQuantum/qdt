@@ -35,7 +35,7 @@ class QDac2:
         self._t = transport
         idn = transport.query("*IDN?")
         if "QDAC-II" not in idn:
-            raise ValueError(f"not a QDAC-II: {idn!r}")
+            raise ValueError(f"not a QDAC-II: {', '.join(idn.split(',')[:2])!r}")
         self._quantity = {c.channel: c.quantity for c in channels}
         self._integration = {c.channel: c.integration_s for c in channels if c.integration_s}
         self._fixed: set[int] = set()
