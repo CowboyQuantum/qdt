@@ -4,15 +4,16 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (IN PROGRESS).
-**Branch:** `step-5/bench-scope` (PR against `main`; the human merges). PRs #25–#28 merged 2026-10-14.
-**Last session:** 2026-10-14, session 5 of Step 5, at the bench. Fourth instrument proven: the scope,
+**Branch:** `step-5/bench-qdac-ethernet` (PR against `main`; the human merges). PRs #25–#29 merged 2026-10-14.
+**Last session:** 2026-10-14, session 6 of Step 5, at the bench: the QDAC-II came back on Ethernet at the
+fixed address set over USB in session 4, and passes its three tests over TCP (3/3). Session 5 proved the scope,
 an HD304MSO (InfiniiVision HD3 series), passes all six WaveformSense conformance tests. Two driver
 fixes, each mirrored in the emulator: the model check admits `HD3…` beside `DSOX`/`MSOX`, and the LEFT
 timebase reference sits one graticule division (10 % of the range) in from the screen's left edge, so the
 driver places the reference at `start + range/10` and the capture starts at `start`. Driver errors no
 longer echo the full `*IDN?` string (it carries the serial number; rule 7). **All four instruments now
 pass the conformance suite on hardware.** Bench:
-- QDAC-II, over USB (LAN address set, unverified on Ethernet);
+- QDAC-II on a fixed 10.20.x address (set over USB; verified on Ethernet);
 - Keithley 2450 (proven session 3, unplugged since);
 - InfiniiVision HD304MSO on a self-assigned 169.254 address;
 - OPX1000 with LF-FEMs (proven session 2).
@@ -20,7 +21,7 @@ pass the conformance suite on hardware.** Bench:
 ## Step 5 exit criteria
 | Criterion | State |
 |---|---|
-| conformance suite passes on all four real instruments under `-m hardware` | ✔ **OPX1000 7/7, Keithley 2450 5/5 (+2 single-terminal skips), QDAC-II 3/3 (USB), HD304MSO 6/6**, all 2026-10-14. The suite has no QDAC current-sense loopback and no real `WaveformSource` yet |
+| conformance suite passes on all four real instruments under `-m hardware` | ✔ **OPX1000 7/7, Keithley 2450 5/5 (+2 single-terminal skips), QDAC-II 3/3 (USB and Ethernet), HD304MSO 6/6**, all 2026-10-14. The suite has no QDAC current-sense loopback and no real `WaveformSource` yet |
 | one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ◐ the path runs in CI through the server on real drivers over emulators; hardware run pending |
 | bench report committed | ✔ `bench/reports/2026-10-14-step5.md` (all four instruments; written automatically, ADR 0042). L1/L2 reports still to come |
 
@@ -30,8 +31,8 @@ pass the conformance suite on hardware.** Bench:
   (0028), modeling (0033), control (0036).
 - **Drivers (ADR 0041),** in `qdt_lab.drivers`, each built by `from_config` with `settings["address"]`;
   `FACTORIES` maps backend keys to them. All four proven on hardware for what the suite tests:
-  - `qdevil/qdac2`: LevelSource (V) + LevelSense (I). Set, readback, independent channels over USB; a
-    serial address defaults to 921600 baud (ADR 0043). Current sensing untested (no loopback pair).
+  - `qdevil/qdac2`: LevelSource (V) + LevelSense (I). Set, readback, independent channels over USB and
+    Ethernet; a serial address defaults to 921600 baud (ADR 0043). Current sensing untested (no loopback pair).
   - `keithley/k2400`: one terminal; legacy or 2450-style dialect from `*IDN?`. Source, readback, sense
     follows source, NPLC from `integration_s`, on a 2450.
   - `keysight/infiniivision`: WaveformSense on DSOX/MSOX/HD3; records land whole on the declared grid,
@@ -52,12 +53,9 @@ pass the conformance suite on hardware.** Bench:
   Deck 68 unit tests and 4 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-5/bench-scope` awaits the human.
+- Nothing uncommitted. PR for `step-5/bench-qdac-ethernet` awaits the human.
 
 ## Known broken / not yet real
-- **QDAC-II on Ethernet unverified.** Its LAN is set to a fixed address on the OPX's subnet (DHCP off,
-  /24, stored). Never seen on the wire yet. Next: cable in, power cycle, `ping`, then
-  `TCPIP::<ip>::5025::SOCKET` in the stand file. Procedure in `docs/BENCH.md`.
 - **Serial numbers in error text:** driver `ValueError`s now show vendor and model only. The bench
   report plugin does not redact serials; one leaked into an uncommitted report section today and was
   scrubbed by hand before commit. Consider redacting the third `*IDN?` field in `scripts/bench_report.py`.
@@ -86,8 +84,7 @@ pass the conformance suite on hardware.** Bench:
 **Human, at the bench:**
 1. Merge the PR.
 2. Cable the L1 loopbacks from `docs/BENCH.md` (QDAC → scope ch 1, SMU → scope ch 2, OPX AO → scope
-   ch 3) and get the QDAC back on Ethernet (cable in, power cycle; a session pings it and switches the
-   stand file to the TCP address).
+   ch 3). The local stand file has TCP addresses for all four instruments.
 3. The first sweep in the browser on the real stand:
    `uv run python -m qdt_server --stand bench.stand.json --device-id <id> --ui apps/flightdeck/dist`.
 

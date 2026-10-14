@@ -57,3 +57,4 @@ conformance tests after two driver fixes made with the emulator: the model check
 timebase reference sits one division in from the screen edge, so the capture starts at position - range/10.
 **All four instruments pass the conformance suite on hardware** (first exit criterion met, for the tests the
 suite has today). Left: QDAC-II on Ethernet (address set, unverified), L2-1, the L1/L2 suites, the fits.
+Session 6 (2026-10-14, bench): the QDAC-II is on Ethernet at its fixed address and passes 3/3 over TCP.
