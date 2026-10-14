@@ -19,9 +19,9 @@ Sequencer programs (backend "qua"):
   semantics). `drive` is not supported on an LF-FEM (ValueError at compile).
 - the conformance program (`{"kind": "flat_index"}`): Probe 01's flat loop index.
 
-Calibration constants that must be confirmed on the first bench run (OPX AO → OPX AI loopback with a
-known level, BENCH.md L1): `INTEGRATION_TO_VOLTS` (integrated value → mean volts per ns of window) and
-`RAW_ADC_TO_VOLTS` (raw ADC sample → volts). They live here, once.
+Calibration constants, measured on the bench (Probe 02, docs/probes/02-opx-input-calibration.md,
+2026-10-14; ADR 0044): `INTEGRATION_TO_VOLTS` (integrated value → mean volts per ns of window),
+`RAW_ADC_TO_VOLTS` (raw ADC sample → volts) and `TIME_OF_FLIGHT_NS`. They live here, once.
 """
 
 import json
@@ -45,11 +45,16 @@ CONTROLLER = "con1"
 CLOCK_NS = 4
 MIN_PULSE_NS = 16
 SAMPLE_RATE = 1e9  # LF-FEM native rate assumed for arbitrary waveforms and raw ADC traces
-TIME_OF_FLIGHT_NS = 24
-INTEGRATION_TO_VOLTS = (
-    2.0**12
-)  # mean volts = integrated value * this / window_ns   (confirm on bench)
-RAW_ADC_TO_VOLTS = 2.0**-12  # volts = raw ADC sample * this                     (confirm on bench)
+TIME_OF_FLIGHT_NS = 180
+"""Readout latency, so a record starts on the edge of a pulse played at the same time (Probe 02: the
+edge lands at 147 ns with 28 configured, at 4 ns with 176; a multiple of 4, and QOP 3.7 rejects < 28)."""
+RAW_ADC_TO_VOLTS = -2.820e-4
+"""volts = raw ADC sample * this. Measured, Probe 02 (ao1 -> ai1 loopback against a scope-verified
+pulse, five amplitudes, fit residual < 0.3 mV): the LF-FEM input reads inverted relative to its output,
+and the scale is 1.155 x 2**-12, not the 2**-12 assumed before the bench."""
+INTEGRATION_TO_VOLTS = -4731.0
+"""mean volts = integrated value * this / window_ns (constant unit weights). Measured, Probe 02, on the
+same shots as RAW_ADC_TO_VOLTS; the two agree to 0.5 %. Input offset at 0 V in: -1.7 mV (not applied)."""
 OUTPUT_RANGE_V = {"direct": 0.5, "amplified": 2.5}
 _PORT = re.compile(r"^(?:fem(\d+)[/_:])?(ao|ai)(\d+)$")
 
