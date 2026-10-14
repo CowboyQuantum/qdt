@@ -4,12 +4,14 @@ import asyncio
 import time
 
 import pytest
+from fastapi.testclient import TestClient
 
 from qdt_lab.stream import collect
 from qdt_schemas.activity import SweepDefinition
 from qdt_schemas.control import Run
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.modeling import AnalysisResult
+from qdt_server import Settings, create_app
 from qdt_sim.scenarios import DEVICE_ID, diamonds, stability
 
 
@@ -207,3 +209,16 @@ def test_the_browser_may_call_from_another_origin(client):
     assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "*"
     r = client.get("/stand", headers={"origin": "http://127.0.0.1:5173"})
     assert r.headers["access-control-allow-origin"] == "*"
+
+
+def test_a_built_ui_is_served_beside_the_api(tmp_path, client):
+    assert client.get("/").status_code == 404  # no UI unless asked for
+    ui = tmp_path / "dist"
+    (ui / "assets").mkdir(parents=True)
+    (ui / "index.html").write_text("<title>Flight Deck</title>")
+    (ui / "assets" / "app.js").write_text("// app")
+    app = create_app(Settings(root=tmp_path / "registry2", stream_port=0, ui=ui))
+    with TestClient(app) as c:
+        assert "Flight Deck" in c.get("/").text
+        assert c.get("/assets/app.js").text == "// app"
+        assert c.get("/stand").json()["stand_id"] == "simulated-double-dot"  # API routes first

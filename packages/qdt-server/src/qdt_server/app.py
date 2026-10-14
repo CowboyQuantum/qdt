@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from qdt_lab.stream import PayloadSource, StreamServer
@@ -66,6 +67,8 @@ class Settings:
         )
     )
     backends: BackendFactory = simulated_backends
+    ui: Path | None = None
+    """A built Flight Deck (`apps/flightdeck/dist`) to serve at `/`, after the API routes; None serves none."""
 
 
 class RunRequest(BaseModel):
@@ -266,5 +269,9 @@ def create_app(settings: Settings) -> FastAPI:
         except ValueError as e:  # already announced on this stream
             raise HTTPException(409, str(e)) from None
         return StreamInfo(url=stream.url)
+
+    # last, so every API route matches first: the UI is static files on the same origin, nothing more
+    if settings.ui is not None:
+        app.mount("/", StaticFiles(directory=settings.ui, html=True), name="ui")
 
     return app
