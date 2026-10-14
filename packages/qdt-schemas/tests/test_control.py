@@ -92,3 +92,55 @@ def test_run_lifecycle_is_consistent():
         run(state="running", started_at=T0, finished_at=T0)
     with pytest.raises(ValidationError, match="no started_at"):
         run(started_at=T0)
+
+
+# Frozen at schema_version 1 by ADR 0036. Neither type is persisted (runs live in the server's memory,
+# specs in its catalogue), so instead of migration fixtures these v1 wire examples pin the shape: a
+# renamed, removed or newly required field fails here, and needs an ADR, a version bump and the UI's
+# regenerated types in the same commit.
+RUN_V1 = {
+    "schema_version": 1,
+    "run_id": "ab" * 16,
+    "plan_id": "plan-1",
+    "definition_name": "stability",
+    "definition_sha256": "0" * 64,
+    "stand_id": "simulated-double-dot",
+    "device_id": "dev-1",
+    "state": "aborted",
+    "created_at": "2026-10-13T00:00:00Z",
+    "started_at": "2026-10-13T00:00:01Z",
+    "finished_at": "2026-10-13T00:00:02Z",
+    "record_id": "cd" * 16,
+    "error": "",
+    "attrs": {"seed": 1, "campaign": "demo"},
+}
+METHOD_SPEC_V1 = {
+    "schema_version": 1,
+    "name": "qdt_analysis.transitions.detect_transitions",
+    "version": "1",
+    "title": "Charge transitions",
+    "description": "",
+    "applies_to": "map_2d",
+    "parameters": [
+        {
+            "schema_version": 1,
+            "name": "smooth_px",
+            "kind": "float",
+            "default": 1.0,
+            "unit": "px",
+            "minimum": 0.0,
+            "maximum": None,
+            "description": "",
+        }
+    ],
+    "estimates": [
+        {"schema_version": 1, "name": "a_per_volt_row", "unit": "1/V", "description": ""}
+    ],
+}
+
+
+@pytest.mark.parametrize(("model", "wire"), [(Run, RUN_V1), (MethodSpec, METHOD_SPEC_V1)])
+def test_v1_wire_shape_is_frozen(model, wire):
+    obj = model.model_validate(wire)
+    assert obj.schema_version == 1
+    assert obj.model_dump(mode="json") == wire

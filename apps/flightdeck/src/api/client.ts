@@ -77,6 +77,10 @@ export class ApiClient {
   startRun(request: RunRequest): Promise<Run> {
     return this.call("POST", "/runs", request);
   }
+  /** Queued: aborted at once. Running: stops between frames and is recorded as aborted; poll `run`. */
+  abort(runId: string): Promise<Run> {
+    return this.call("POST", `/runs/${encodeURIComponent(runId)}/abort`);
+  }
   runs(): Promise<Run[]> {
     return this.call("GET", "/runs");
   }

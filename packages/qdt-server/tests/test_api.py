@@ -4,12 +4,14 @@ import asyncio
 import time
 
 import pytest
+from fastapi.testclient import TestClient
 
 from qdt_lab.stream import collect
 from qdt_schemas.activity import SweepDefinition
 from qdt_schemas.control import Run
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.modeling import AnalysisResult
+from qdt_server import Settings, create_app
 from qdt_sim.scenarios import DEVICE_ID, diamonds, stability
 
 
@@ -137,6 +139,64 @@ def test_diamonds_run_through_the_api_with_a_cold_sensor(client):
     assert result.estimate("charging_energy").value == pytest.approx(1e-3, rel=0.05)
 
 
+def edited(outer: bool = True) -> dict:
+    """What Flight Deck's sequence editor sends beyond the template: a ramp with a symbol duration, a
+    wait, a kick on the bias line bound to a constant or the stepped axis, two measures, shots reduced."""
+    v = lambda name, unit="V": {"name": name, "unit": unit}
+    axes = [{"name": "P2", "channel": "P2_pulse", "start": 0.03, "stop": 0.18, "num": 8}]
+    if outer:
+        axes.insert(0, {"name": "P1", "channel": "P1", "start": 0.03, "stop": 0.18, "num": 6})
+    body = [
+        {
+            "op": "ramp",
+            "channel": "P2_pulse",
+            "start": 0.0,
+            "stop": v("v_P2"),
+            "duration": v("t_ramp", "ns"),
+        },
+        {"op": "wait", "duration": 200},
+        {"op": "measure", "channel": "sensor", "duration": 1000, "result": "I_before"},
+        {"op": "step", "channel": "bias_pulse", "level": v("v_kick"), "duration": 100},
+        {"op": "measure", "channel": "sensor", "duration": 1000, "result": "I_after"},
+    ]
+    kick = {"symbol": "v_kick", "axis": "P1"} if outer else {"symbol": "v_kick", "value": 1e-4}
+    return {
+        "name": "edited sequence",
+        "axes": axes,
+        "stage": {
+            "instrument": "dot",
+            "axes": ["P2"],
+            "sequence": {"name": "pulsed readout", "body": body},
+            "bindings": [{"symbol": "v_P2", "axis": "P2"}, {"symbol": "t_ramp", "value": 40}, kick],
+            "shots": 3,
+            "reduce": {"I_before": "mean", "I_after": "mean"},
+        },
+    }
+
+
+@pytest.mark.parametrize("outer", [True, False], ids=["2-D", "1-D"])
+def test_an_edited_sequence_compiles_and_runs(client, outer):
+    plan = client.post("/sweeps/compile", json=edited(outer))
+    assert plan.status_code == 200, plan.text
+    dataset = plan.json()["dataset"]
+    assert [d["name"] for d in dataset["dims"]] == (["P1", "P2"] if outer else ["P2"])
+    assert sorted(v["name"] for v in dataset["data_vars"]) == ["I_after", "I_before"]
+    run = Run.model_validate(client.post("/runs", json={"definition": edited(outer)}).json())
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed" and run.record_id, run.error
+
+
+def test_a_1d_dc_sweep_runs(client):
+    d = {
+        "name": "SG trace",
+        "axes": [{"name": "SG", "channel": "SG", "start": -0.2, "stop": 0.2, "num": 16}],
+        "sensed": [{"name": "I_sensor", "channel": "sensor"}],
+    }
+    run = Run.model_validate(client.post("/runs", json={"definition": d}).json())
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed" and run.record_id, run.error
+
+
 def test_the_browser_may_call_from_another_origin(client):
     r = client.options(
         "/runs",
@@ -149,3 +209,51 @@ def test_the_browser_may_call_from_another_origin(client):
     assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "*"
     r = client.get("/stand", headers={"origin": "http://127.0.0.1:5173"})
     assert r.headers["access-control-allow-origin"] == "*"
+
+
+def test_a_built_ui_is_served_beside_the_api(tmp_path, client):
+    assert client.get("/").status_code == 404  # no UI unless asked for
+    ui = tmp_path / "dist"
+    (ui / "assets").mkdir(parents=True)
+    (ui / "index.html").write_text("<title>Flight Deck</title>")
+    (ui / "assets" / "app.js").write_text("// app")
+    app = create_app(Settings(root=tmp_path / "registry2", stream_port=0, ui=ui))
+    with TestClient(app) as c:
+        assert "Flight Deck" in c.get("/").text
+        assert c.get("/assets/app.js").text == "// app"
+        assert c.get("/stand").json()["stand_id"] == "simulated-double-dot"  # API routes first
+
+
+def test_a_run_can_be_aborted_queued_or_running(tmp_path):
+    from qdt_server.app import simulated_backends
+
+    def slow(options):  # 1024 pixels at 400 px/s: long enough to catch it running
+        backends = simulated_backends(options)
+        for device in backends.values():
+            device.points_per_second = 400.0
+        return backends
+
+    app = create_app(Settings(root=tmp_path / "registry", stream_port=0, backends=slow))
+    with TestClient(app) as c:
+        first = Run.model_validate(c.post("/runs", json={"definition": definition()}).json())
+        queued = Run.model_validate(c.post("/runs", json={"definition": definition()}).json())
+
+        r = c.post(f"/runs/{queued.run_id}/abort")
+        assert r.status_code == 202 and r.json()["state"] == "aborted"
+
+        t0 = time.monotonic()
+        while c.get(f"/runs/{first.run_id}").json()["state"] == "queued":
+            assert time.monotonic() - t0 < 10
+            time.sleep(0.02)
+        time.sleep(0.3)  # a few lines in
+        assert c.post(f"/runs/{first.run_id}/abort").status_code == 202
+        run = wait_for(c, first.run_id)
+        assert run.state == "aborted" and run.record_id, run.error
+        record = MeasurementRecord.model_validate(c.get(f"/records/{run.record_id}").json())
+        assert record.outcome == "aborted"
+
+        assert c.post(f"/runs/{first.run_id}/abort").status_code == 409
+        assert c.post("/runs/" + "0" * 32 + "/abort").status_code == 404
+        # the queued one never ran and recorded nothing
+        assert Run.model_validate(c.get(f"/runs/{queued.run_id}").json()).record_id is None
+        assert [r["record_id"] for r in c.get("/records").json()] == [record.record_id]

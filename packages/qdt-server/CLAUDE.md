@@ -8,9 +8,9 @@ Flight Deck talks to this API and the stream only (rule 8).
 ```
 qdt_server/
   app.py        # create_app(settings) → FastAPI; lifespan starts the stream server; routes
-  runs.py       # RunManager: queue → compile → execute on a backend → stream → record → ingest; `Run` objects
+  runs.py       # RunManager: queue → compile → execute on a backend → stream → record → ingest; abort; `Run` objects
   catalogue.py  # METHODS: MethodSpec per curated method + the callable; run_method()
-  __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port]
+  __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port --ui <dist>]
 ```
 
 ## Rules
@@ -25,3 +25,5 @@ qdt_server/
 - A method is callable from the API only if it is in `catalogue.METHODS` with a `MethodSpec` whose
   parameters match the function's keyword arguments (the test pins this).
 - No authentication in Step 4b (single machine). Multi-user and deployment are Step 7.
+- `--ui` (Settings.ui) serves a built Flight Deck as static files at `/`, mounted after every API route;
+  the server knows nothing about the UI beyond that. `scripts/demo_control_path.py` builds and serves it.

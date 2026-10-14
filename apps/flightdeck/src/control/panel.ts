@@ -2,9 +2,24 @@
 // curated analysis, put overlays and outputs on the stream. Talks to qdt-server through ApiClient only.
 // The view itself (what is drawn) stays a function of the Dataset stream (rule 8).
 import { ApiClient, ApiError } from "../api/client";
-import type { AnalysisResult, MeasurementRecord, MethodSpec, Run, SweepDefinition } from "../schema/api";
+import type { AnalysisResult, ChannelMap, MeasurementRecord, MethodSpec, Run, SweepDefinition } from "../schema/api";
 import { check, defaults, overrides, parse, type ParamValues } from "./methods";
-import { dcSweep, stageSweep, standChannels, type AxisForm, type StandChannels } from "./sweeps";
+import {
+  buildBindings,
+  buildSequence,
+  fieldUnit,
+  moveRow,
+  newRow,
+  OP_FIELDS,
+  OP_KINDS,
+  syncBindings,
+  templateRows,
+  type BindingRow,
+  type FieldName,
+  type OpKind,
+  type OpRow,
+} from "./sequence";
+import { axisName, dcSweep, stageSweep, standChannels, type AxisForm, type StandChannels } from "./sweeps";
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { text?: string } = {}, ...children: (Node | string)[]) => {
   const el = document.createElement(tag);
@@ -25,6 +40,11 @@ export interface ControlHost {
 
 export class ControlPanel {
   private stand: StandChannels = { dc: [], pulse: [], sensors: [] };
+  private channels: ChannelMap[] = [];
+  /** The stage's pulse sequence as the editor holds it; follows the template until edited. */
+  private rows: OpRow[] = [];
+  private bindings: BindingRow[] = [];
+  private rowsEdited = false;
   private methods: MethodSpec[] = [];
   private records: MeasurementRecord[] = [];
   private selectedRecord: MeasurementRecord | null = null;
@@ -38,6 +58,10 @@ export class ControlPanel {
     params: HTMLDivElement;
     analysisTarget: HTMLSpanElement;
     estimates: HTMLPreElement;
+    sequence: HTMLFieldSetElement;
+    ops: HTMLDivElement;
+    symbols: HTMLDivElement;
+    sequenceErrors: HTMLUListElement;
   };
 
   constructor(
@@ -53,6 +77,10 @@ export class ControlPanel {
       params: h("div", { id: "params" }),
       analysisTarget: h("span", { id: "analysis-target", text: "no record selected" }),
       estimates: h("pre", { id: "estimates" }),
+      sequence: h("fieldset", { id: "sequence" }),
+      ops: h("div", { id: "ops" }),
+      symbols: h("div", { id: "symbols" }),
+      sequenceErrors: h("ul", { id: "sequence-errors" }),
     };
     this.build();
   }
@@ -61,6 +89,7 @@ export class ControlPanel {
     try {
       const [stand, methods] = await Promise.all([this.api.stand(), this.api.methods()]);
       this.stand = standChannels(stand);
+      this.channels = [...stand.channels];
       this.methods = methods;
       this.fillSelects();
       await this.refreshRecords();
@@ -88,12 +117,13 @@ export class ControlPanel {
       h("h3", { text: "Sweep" }),
       field("kind", h("select", { name: "kind" }, h("option", { value: "stage", text: "stage: inner axis pulsed" }), h("option", { value: "dc", text: "DC: both axes stepped, sensed" }))),
       field("name", h("input", { name: "name", value: "stability" })),
-      h("div", { className: "axis head" }, "axis", "channel", "start", "stop", "num"),
+      h("div", { className: "axis head" }, ...["channel", "start", "stop", "num"].map((t) => h("span", { text: t }))),
       h("div", {}, "outer", axisRow("outer", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
       h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
       field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" })),
       field("sensor", h("select", { name: "sensor" })),
       field("shots", num("shots", 1, "1")),
+      this.buildSequenceEditor(),
       field("options", h("input", { name: "options", value: '{"seed": 1, "noise": true}' })),
       h("button", { type: "submit", text: "run" }),
     );
@@ -102,6 +132,10 @@ export class ControlPanel {
       void this.submit();
     });
     (f.elements.namedItem("kind") as HTMLSelectElement).addEventListener("change", () => this.fillSelects());
+    // the template follows the inner axis and the sensor until the sequence is edited; axis names feed the bindings
+    for (const name of ["inner_channel", "inner_name", "sensor", "outer_channel"]) {
+      (f.elements.namedItem(name) as HTMLElement).addEventListener("change", () => this.followTemplate());
+    }
 
     const analysis = h(
       "div",
@@ -134,15 +168,156 @@ export class ControlPanel {
     const kind = (f.elements.namedItem("kind") as HTMLSelectElement).value;
     const fill = (name: string, items: { logical: string }[], preferred: string[]) => {
       const s = f.elements.namedItem(name) as HTMLSelectElement;
-      const had = s.value;
+      // keep the user's choice on a refill (it may be "", e.g. no outer axis); the first fill takes the preferred
+      const had = s.dataset.filled ? s.value : null;
       s.replaceChildren(...items.map((c) => h("option", { value: c.logical, text: c.logical })));
-      s.value = items.some((c) => c.logical === had) ? had : (preferred.find((p) => items.some((c) => c.logical === p)) ?? items[0]?.logical ?? "");
+      s.value = items.some((c) => c.logical === had) ? had! : (preferred.find((p) => items.some((c) => c.logical === p)) ?? items[0]?.logical ?? "");
+      if (items.length) s.dataset.filled = "1";
     };
-    fill("outer_channel", this.stand.dc, ["P1", "SG"]);
+    fill("outer_channel", [...this.stand.dc, { logical: "" }], ["P1", "SG"]);
+    const none = (f.elements.namedItem("outer_channel") as HTMLSelectElement).querySelector('option[value=""]');
+    if (none) none.textContent = "— none (1-D)";
     fill("inner_channel", kind === "stage" ? this.stand.pulse : this.stand.dc, ["P2_pulse", "bias"]);
     fill("sensor", this.stand.sensors, ["sensor"]);
+    this.els.sequence.hidden = kind !== "stage";
+    this.followTemplate();
     this.els.method.replaceChildren(...this.methods.map((m) => h("option", { value: m.name, text: m.title })));
     this.fillParams();
+  }
+
+  // --- pulse-sequence editor (ADR 0035: a form over PulseSequence, one row per primitive) --------------
+
+  private buildSequenceEditor(): HTMLFieldSetElement {
+    const add = h("select", { id: "add-op" }, ...OP_KINDS.map((k) => h("option", { value: k, text: k })));
+    const reset = () => {
+      this.rowsEdited = false;
+      this.followTemplate();
+    };
+    this.els.sequence.append(
+      h("legend", { text: "pulse sequence (per shot)" }),
+      this.els.ops,
+      h(
+        "div",
+        { className: "buttons" },
+        add,
+        h("button", { type: "button", text: "add op", onclick: () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels)]) }),
+        h("button", { type: "button", text: "reset to template", onclick: reset }),
+      ),
+      h("div", { className: "hint", text: "values: a number or a symbol name; bind each symbol to an axis or a number" }),
+      this.els.symbols,
+      this.els.sequenceErrors,
+    );
+    return this.els.sequence;
+  }
+
+  private value(name: string): string {
+    return (this.els.form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  /** Axis names as the sweep will have them, outer to inner: what a symbol may be bound to. */
+  private axisNames(): string[] {
+    const inner = axisName({ channel: this.value("inner_channel"), start: 0, stop: 0, num: 1, name: this.value("inner_name").trim() || undefined });
+    const outer = this.value("outer_channel");
+    return outer ? [axisName({ channel: outer, start: 0, stop: 0, num: 1 }), inner] : [inner];
+  }
+
+  /** Until the user edits the sequence, it is the one-step template for the current inner axis and sensor. */
+  private followTemplate(): void {
+    if (!this.rowsEdited) {
+      const inner = this.axisNames().at(-1)!;
+      this.rows = templateRows({ channel: this.value("inner_channel"), symbol: `v_${inner}`, sensor: this.value("sensor"), stepNs: 500, measureNs: 2000, result: "I_sensor" });
+      this.bindings = [];
+    }
+    this.renderOps();
+  }
+
+  private editRows(rows: OpRow[]): void {
+    this.rows = rows;
+    this.rowsEdited = true;
+    this.renderOps();
+  }
+
+  private renderOps(): void {
+    const byName = new Map(this.channels.map((c) => [c.logical, c]));
+    this.els.ops.replaceChildren(
+      ...this.rows.map((row, i) => {
+        const opSelect = h("select", { className: "op", title: "primitive" }, ...OP_KINDS.map((k) => h("option", { value: k, text: k })));
+        opSelect.value = row.op;
+        opSelect.addEventListener("change", () => {
+          // a new primitive starts prefilled; it keeps the channel when that channel suits it
+          const next = newRow(opSelect.value as OpKind, this.channels);
+          const kept = row.fields.channel && byName.get(row.fields.channel);
+          if (kept && "channel" in next.fields && (kept.quantity === "current") === (next.op === "measure")) next.fields.channel = kept.logical;
+          this.editRows(this.rows.map((r, j) => (j === i ? next : r)));
+        });
+        const cells = (OP_FIELDS[row.op] as readonly FieldName[]).map((field) => {
+          const value = row.fields[field] ?? "";
+          let input: HTMLInputElement | HTMLSelectElement;
+          if (field === "channel") {
+            const wanted = row.op === "measure" ? "current" : "voltage";
+            const options = this.channels.filter((c) => c.quantity === wanted);
+            input = h("select", { name: field }, ...options.map((c) => h("option", { value: c.logical, text: c.logical })));
+            if (value && !options.some((c) => c.logical === value)) input.append(h("option", { value, text: `${value}?` }));
+            input.value = value;
+          } else {
+            const unit = field === "result" ? "" : fieldUnit(field, byName.get(row.fields.channel ?? ""));
+            const label = `${field}${unit ? ` (${unit})` : ""}`;
+            input = h("input", { name: field, value, placeholder: label, title: label });
+          }
+          input.addEventListener(field === "channel" ? "change" : "input", () => {
+            row.fields[field] = input.value;
+            this.rowsEdited = true;
+            if (field === "channel") this.renderOps(); // units in the placeholders follow the channel
+            else this.validateSequence();
+          });
+          return h("label", { title: field }, h("span", { text: field }), input);
+        });
+        return h(
+          "div",
+          { className: "op-row" },
+          h("span", { className: "index", text: String(i + 1) }),
+          opSelect,
+          ...cells,
+          h("button", { type: "button", text: "↑", title: "earlier", onclick: () => this.editRows(moveRow(this.rows, i, -1)) }),
+          h("button", { type: "button", text: "↓", title: "later", onclick: () => this.editRows(moveRow(this.rows, i, 1)) }),
+          h("button", { type: "button", text: "✕", title: "remove", onclick: () => this.editRows(this.rows.filter((_, j) => j !== i)) }),
+        );
+      }),
+    );
+    this.validateSequence();
+  }
+
+  /** Rebuild the sequence, refresh the symbol bindings, and list what the server would refuse. */
+  private validateSequence(): string[] {
+    const built = buildSequence("sequence", this.rows, this.channels);
+    const axes = this.axisNames();
+    const before = this.bindings.map((b) => b.symbol).join(",");
+    this.bindings = syncBindings(built.symbols.keys(), this.bindings, axes);
+    // re-render the bindings only when the set of symbols changed, so typing in one keeps its focus
+    if (this.bindings.map((b) => b.symbol).join(",") !== before || this.els.symbols.dataset.axes !== axes.join(",")) {
+      this.renderBindings(built.symbols, axes);
+    }
+    const errors = [...built.errors, ...buildBindings(this.bindings, axes).errors];
+    this.els.sequenceErrors.replaceChildren(...errors.map((e) => h("li", { text: e })));
+    return errors;
+  }
+
+  private renderBindings(units: Map<string, string>, axes: string[]): void {
+    this.els.symbols.dataset.axes = axes.join(",");
+    this.els.symbols.replaceChildren(
+      h("datalist", { id: "binding-axes" }, ...axes.map((a) => h("option", { value: a }))),
+      ...this.bindings.map((b) => {
+        const input = h("input", { name: `bind_${b.symbol}`, value: b.target, placeholder: "axis or number" });
+        input.setAttribute("list", "binding-axes");
+        input.addEventListener("input", () => {
+          // by symbol: syncBindings hands out fresh rows, so `b` may be stale by now
+          this.bindings = this.bindings.map((x) => (x.symbol === b.symbol ? { ...x, target: input.value } : x));
+          this.validateSequence();
+        });
+        const unit = units.get(b.symbol);
+        return h("label", {}, `${b.symbol}${unit ? ` (${unit})` : ""} ←`, input);
+      }),
+    );
   }
 
   private fillParams(): void {
@@ -173,13 +348,15 @@ export class ControlPanel {
     const options = JSON.parse(v("options") || "{}") as Record<string, string | number | boolean>;
     const sensor = v("sensor");
     const innerName = v("inner_name").trim() || undefined;
+    const outer = v("outer_channel") ? axis("outer") : null;
     if (v("kind") === "stage") {
       const inner = this.stand.pulse.find((c) => c.logical === v("inner_channel"));
       if (!inner) throw new Error("a stage sweep needs a pulse channel for its inner axis");
+      this.validateSequence(); // bring the bindings up to date with the axis names
       return {
         definition: stageSweep({
           name: v("name"),
-          outer: axis("outer"),
+          outer,
           inner: axis("inner", innerName),
           sensor,
           instrument: inner.instrument,
@@ -187,12 +364,13 @@ export class ControlPanel {
           stepNs: 500,
           measureNs: 2000,
           result: "I_sensor",
+          sequence: { rows: this.rows, bindings: this.bindings, channels: this.channels },
         }),
         options,
       };
     }
     return {
-      definition: dcSweep({ name: v("name"), outer: axis("outer"), inner: axis("inner", innerName), sensor, result: "I_sensor" }),
+      definition: dcSweep({ name: v("name"), outer, inner: axis("inner", innerName), sensor, result: "I_sensor" }),
       options,
     };
   }
@@ -233,9 +411,24 @@ export class ControlPanel {
   private renderRuns(): void {
     this.els.runsList.replaceChildren(
       ...[...this.runs.values()].reverse().map((r) =>
-        h("li", { text: `${short(r.run_id)} ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${short(r.record_id)}` : ""}` }),
+        h(
+          "li",
+          {},
+          `${short(r.run_id)} ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${short(r.record_id)}` : ""}`,
+          ...(TERMINAL.has(r.state) ? [] : [h("button", { type: "button", text: "abort", onclick: () => void this.abort(r.run_id) })]),
+        ),
       ),
     );
+  }
+
+  private async abort(runId: string): Promise<void> {
+    try {
+      this.runs.set(runId, await this.api.abort(runId));
+      this.renderRuns();
+      this.host.say(`run ${short(runId)} aborting`);
+    } catch (e) {
+      this.host.say(describe(e), true);
+    }
   }
 
   // --- records and analysis ------------------------------------------------------------------------

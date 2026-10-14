@@ -14,7 +14,7 @@ Each row states an end-state capability and the constraint it imposes on the con
 | Multiple simultaneous sources (live, registry, sim) | `Source` abstraction from day one; source-equivalence test | L0 |
 | Side-by-side compare across cooldowns | Datasets addressable by registry ref, not file path | Step 4 |
 | Tune-up / DAG state display | Lifecycle state is a schema object, rendered, never stored in the UI | Step 6 |
-| Craft sweeps and pulse sequences, run them, run curated analyses, browse records — all in the UI (ADR 0032) | A request/response API beside the stream (`qdt-server`); every UI-initiated action is a schema object (`SweepDefinition`, `Run`, `MethodSpec`); the UI never holds an instrument or registry handle (rule 8) | Step 4b e2e |
+| Craft sweeps and pulse sequences, run them, run curated analyses, browse records — all in the UI (ADR 0032) | A request/response API beside the stream (`qdt-server`); every UI-initiated action is a schema object (`SweepDefinition`, `Run`, `MethodSpec`); the UI never holds an instrument or registry handle (rule 8) | Step 4b e2e (`apps/flightdeck/e2e/control.test.ts`) and `scripts/demo_control_path.py`; slice frozen (ADR 0036) |
 
 ## Design targets (Analysis 0001, ADR 0008)
 Ceiling of plausible dot-tuning need. The synthetic source emulates this envelope; the L0 throughput test asserts it.
