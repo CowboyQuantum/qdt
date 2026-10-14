@@ -45,3 +45,7 @@ linear and exponential fits (asked for by the human; plane and single exponentia
 Session 2 (2026-10-14, bench): first hardware contact. The OPX1000 passed all seven sequencer conformance
 tests unchanged (`bench/reports/2026-10-14-step5.md`). `scripts/bench_report.py` now writes that report
 from any `-m hardware` run (ADR 0042). The QDAC-II, SMU and scope await their addresses in the stand file.
+Session 3 (2026-10-14, bench): the Keithley (a 2450) passes the conformance suite (5 passed, 2 single-terminal
+skips) after one harness fix: the 2450 accepts one raw-socket connection at a time, so the suite's fixtures
+now close every backend at teardown (`closing` in `tests/conftest.py`). The QDAC-II sits on a wire with no
+DHCP and has no address yet; the scope is next.
