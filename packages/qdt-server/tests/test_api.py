@@ -137,6 +137,64 @@ def test_diamonds_run_through_the_api_with_a_cold_sensor(client):
     assert result.estimate("charging_energy").value == pytest.approx(1e-3, rel=0.05)
 
 
+def edited(outer: bool = True) -> dict:
+    """What Flight Deck's sequence editor sends beyond the template: a ramp with a symbol duration, a
+    wait, a kick on the bias line bound to a constant or the stepped axis, two measures, shots reduced."""
+    v = lambda name, unit="V": {"name": name, "unit": unit}
+    axes = [{"name": "P2", "channel": "P2_pulse", "start": 0.03, "stop": 0.18, "num": 8}]
+    if outer:
+        axes.insert(0, {"name": "P1", "channel": "P1", "start": 0.03, "stop": 0.18, "num": 6})
+    body = [
+        {
+            "op": "ramp",
+            "channel": "P2_pulse",
+            "start": 0.0,
+            "stop": v("v_P2"),
+            "duration": v("t_ramp", "ns"),
+        },
+        {"op": "wait", "duration": 200},
+        {"op": "measure", "channel": "sensor", "duration": 1000, "result": "I_before"},
+        {"op": "step", "channel": "bias_pulse", "level": v("v_kick"), "duration": 100},
+        {"op": "measure", "channel": "sensor", "duration": 1000, "result": "I_after"},
+    ]
+    kick = {"symbol": "v_kick", "axis": "P1"} if outer else {"symbol": "v_kick", "value": 1e-4}
+    return {
+        "name": "edited sequence",
+        "axes": axes,
+        "stage": {
+            "instrument": "dot",
+            "axes": ["P2"],
+            "sequence": {"name": "pulsed readout", "body": body},
+            "bindings": [{"symbol": "v_P2", "axis": "P2"}, {"symbol": "t_ramp", "value": 40}, kick],
+            "shots": 3,
+            "reduce": {"I_before": "mean", "I_after": "mean"},
+        },
+    }
+
+
+@pytest.mark.parametrize("outer", [True, False], ids=["2-D", "1-D"])
+def test_an_edited_sequence_compiles_and_runs(client, outer):
+    plan = client.post("/sweeps/compile", json=edited(outer))
+    assert plan.status_code == 200, plan.text
+    dataset = plan.json()["dataset"]
+    assert [d["name"] for d in dataset["dims"]] == (["P1", "P2"] if outer else ["P2"])
+    assert sorted(v["name"] for v in dataset["data_vars"]) == ["I_after", "I_before"]
+    run = Run.model_validate(client.post("/runs", json={"definition": edited(outer)}).json())
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed" and run.record_id, run.error
+
+
+def test_a_1d_dc_sweep_runs(client):
+    d = {
+        "name": "SG trace",
+        "axes": [{"name": "SG", "channel": "SG", "start": -0.2, "stop": 0.2, "num": 16}],
+        "sensed": [{"name": "I_sensor", "channel": "sensor"}],
+    }
+    run = Run.model_validate(client.post("/runs", json={"definition": d}).json())
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed" and run.record_id, run.error
+
+
 def test_the_browser_may_call_from_another_origin(client):
     r = client.options(
         "/runs",
