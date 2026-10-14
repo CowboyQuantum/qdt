@@ -114,6 +114,15 @@ class Executor:
         current: dict[str, float] = {}
         applied: dict[str, float] = {}
         seq = 0
+        # the operating point (ADR 0038): set once, settled once, held for the whole scan
+        settle = 0.0
+        for lv in definition.levels:
+            ch = plan.channel(lv.channel)
+            self._backends[ch.instrument].set(ch.channel, lv.value)
+            applied[lv.channel] = lv.value
+            settle = max(settle, ch.settle_s)
+        if settle > 0:
+            self._sleep(settle)
         for k in repeats:
             buffers: dict[str, list[float]] = {s.name: [] for s in definition.sensed}
             for idx in itertools.product(*(range(a.num) for a in stepped)):

@@ -166,6 +166,14 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   await page.getByRole("button", { name: "reset to template" }).click();
   expect(await page.locator("#ops .op-row").count()).toBe(2);
   await page.fill("#sweep input[name=name]", "e2e trace");
+  // operating point (ADR 0038): hold a DC level for the sweep; in 1-D, P1 is not swept and may be held too
+  await page.getByRole("button", { name: "add level" }).click();
+  await page.locator("#levels .level-row").first().locator("select[name=level_channel]").selectOption("P2");
+  await page.locator("#levels .level-row").first().locator("input[name=level_value]").fill("0.05");
+  expect(await page.textContent("#level-errors")).toBe("");
+  await page.locator("#levels .level-row").first().locator("select[name=level_channel]").selectOption("P1");
+  expect(await page.textContent("#level-errors")).toBe(""); // 1-D: P1 is not swept, so it may be held
+  await page.locator("#levels .level-row").first().locator("select[name=level_channel]").selectOption("P2");
   await page.click("#sweep button[type=submit]");
   await page.waitForFunction(() => /e2e trace · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => /· trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });

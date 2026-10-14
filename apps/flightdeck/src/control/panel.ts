@@ -22,7 +22,7 @@ import {
   type OpKind,
   type OpRow,
 } from "./sequence";
-import { axisName, dcSweep, stageSweep, standChannels, type AxisForm, type StandChannels } from "./sweeps";
+import { axisName, buildLevels, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels } from "./sweeps";
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { text?: string } = {}, ...children: (Node | string)[]) => {
   const el = document.createElement(tag);
@@ -48,6 +48,8 @@ export class ControlPanel {
   private rows: OpRow[] = [];
   private bindings: BindingRow[] = [];
   private rowsEdited = false;
+  /** The operating point as typed (ADR 0038): DC levels held for the whole sweep. */
+  private levelRows: LevelRow[] = [];
   private methods: MethodSpec[] = [];
   private records: MeasurementRecord[] = [];
   private selectedRecord: MeasurementRecord | null = null;
@@ -65,6 +67,8 @@ export class ControlPanel {
     ops: HTMLDivElement;
     symbols: HTMLDivElement;
     sequenceErrors: HTMLUListElement;
+    levels: HTMLDivElement;
+    levelErrors: HTMLUListElement;
   };
 
   constructor(
@@ -84,6 +88,8 @@ export class ControlPanel {
       ops: h("div", { id: "ops" }),
       symbols: h("div", { id: "symbols" }),
       sequenceErrors: h("ul", { id: "sequence-errors" }),
+      levels: h("div", { id: "levels" }),
+      levelErrors: h("ul", { id: "level-errors" }),
     };
     this.build();
   }
@@ -126,6 +132,7 @@ export class ControlPanel {
       field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" })),
       field("sensor", h("select", { name: "sensor" })),
       field("shots", num("shots", 1, "1")),
+      this.buildOperatingPoint(),
       this.buildSequenceEditor(),
       field("options", h("input", { name: "options", value: '{"seed": 1, "noise": true}' })),
       h("button", { type: "submit", text: "run" }),
@@ -137,7 +144,10 @@ export class ControlPanel {
     (f.elements.namedItem("kind") as HTMLSelectElement).addEventListener("change", () => this.fillSelects());
     // the template follows the inner axis and the sensor until the sequence is edited; axis names feed the bindings
     for (const name of ["inner_channel", "inner_name", "sensor", "outer_channel"]) {
-      (f.elements.namedItem(name) as HTMLElement).addEventListener("change", () => this.followTemplate());
+      (f.elements.namedItem(name) as HTMLElement).addEventListener("change", () => {
+        this.followTemplate();
+        this.validateLevels(); // a newly swept channel may clash with a held one
+      });
     }
 
     const analysis = h(
@@ -186,6 +196,64 @@ export class ControlPanel {
     this.followTemplate();
     this.els.method.replaceChildren(...this.methods.map((m) => h("option", { value: m.name, text: m.title })));
     this.fillParams();
+  }
+
+  // --- operating point (ADR 0038): DC levels set before the scan, held throughout -------------------
+
+  private buildOperatingPoint(): HTMLFieldSetElement {
+    const add = () => {
+      const touched = this.touchedChannels();
+      const free = this.stand.dc.find((c) => !touched.includes(c.logical) && !this.levelRows.some((r) => r.channel === c.logical));
+      this.levelRows = [...this.levelRows, { channel: free?.logical ?? "", value: "0" }];
+      this.renderLevels();
+    };
+    return h(
+      "fieldset",
+      { id: "operating-point" },
+      h("legend", { text: "operating point (DC levels held for the whole sweep)" }),
+      this.els.levels,
+      h("div", { className: "buttons" }, h("button", { type: "button", text: "add level", onclick: add })),
+      h("div", { className: "hint", text: "gates not listed keep whatever level they have; a pulse on a gate's _pulse line adds to its level here" }),
+      this.els.levelErrors,
+    );
+  }
+
+  /** Channels the sweep itself steps or senses: not available to the operating point. */
+  private touchedChannels(): string[] {
+    const kind = this.value("kind");
+    const out = [this.value("inner_channel"), this.value("outer_channel")];
+    if (kind === "dc") out.push(this.value("sensor"));
+    return out.filter(Boolean);
+  }
+
+  private renderLevels(): void {
+    this.els.levels.replaceChildren(
+      ...this.levelRows.map((row, i) => {
+        const channel = h("select", { name: "level_channel" }, ...this.stand.dc.map((c) => h("option", { value: c.logical, text: c.logical })));
+        channel.value = row.channel;
+        channel.addEventListener("change", () => {
+          row.channel = channel.value;
+          this.validateLevels();
+        });
+        const value = h("input", { name: "level_value", value: row.value, placeholder: "level (V)" });
+        value.addEventListener("input", () => {
+          row.value = value.value;
+          this.validateLevels();
+        });
+        const remove = () => {
+          this.levelRows = this.levelRows.filter((_, j) => j !== i);
+          this.renderLevels();
+        };
+        return h("div", { className: "level-row" }, channel, value, h("span", { text: "V" }), h("button", { type: "button", text: "✕", title: "remove", onclick: remove }));
+      }),
+    );
+    this.validateLevels();
+  }
+
+  private validateLevels(): ReturnType<typeof buildLevels> {
+    const built = buildLevels(this.levelRows, this.stand.dc, this.touchedChannels());
+    this.els.levelErrors.replaceChildren(...built.errors.map((e) => h("li", { text: e })));
+    return built;
   }
 
   // --- pulse-sequence editor (ADR 0035: a form over PulseSequence, one row per primitive) --------------
@@ -370,6 +438,9 @@ export class ControlPanel {
     const sensor = v("sensor");
     const innerName = v("inner_name").trim() || undefined;
     const outer = v("outer_channel") ? axis("outer") : null;
+    const held = this.validateLevels();
+    if (held.errors.length) throw new Error(held.errors.join("; "));
+    const levels = held.levels;
     if (v("kind") === "stage") {
       const inner = this.stand.pulse.find((c) => c.logical === v("inner_channel"));
       if (!inner) throw new Error("a stage sweep needs a pulse channel for its inner axis");
@@ -377,6 +448,7 @@ export class ControlPanel {
       return {
         definition: stageSweep({
           name: v("name"),
+          levels,
           outer,
           inner: axis("inner", innerName),
           sensor,
@@ -391,7 +463,7 @@ export class ControlPanel {
       };
     }
     return {
-      definition: dcSweep({ name: v("name"), outer, inner: axis("inner", innerName), sensor, result: "I_sensor" }),
+      definition: dcSweep({ name: v("name"), levels, outer, inner: axis("inner", innerName), sensor, result: "I_sensor" }),
       options,
     };
   }
