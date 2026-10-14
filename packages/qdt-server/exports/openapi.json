@@ -3308,6 +3308,46 @@
         "summary": "Get Run"
       }
     },
+    "/runs/{run_id}/abort": {
+      "post": {
+        "description": "Queued: aborted at once. Running: stops between frames; poll the run for its record.",
+        "operationId": "abort_run_runs__run_id__abort_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Abort Run"
+      }
+    },
     "/stand": {
       "get": {
         "operationId": "get_stand_stand_get",

@@ -222,3 +222,38 @@ def test_a_built_ui_is_served_beside_the_api(tmp_path, client):
         assert "Flight Deck" in c.get("/").text
         assert c.get("/assets/app.js").text == "// app"
         assert c.get("/stand").json()["stand_id"] == "simulated-double-dot"  # API routes first
+
+
+def test_a_run_can_be_aborted_queued_or_running(tmp_path):
+    from qdt_server.app import simulated_backends
+
+    def slow(options):  # 1024 pixels at 400 px/s: long enough to catch it running
+        backends = simulated_backends(options)
+        for device in backends.values():
+            device.points_per_second = 400.0
+        return backends
+
+    app = create_app(Settings(root=tmp_path / "registry", stream_port=0, backends=slow))
+    with TestClient(app) as c:
+        first = Run.model_validate(c.post("/runs", json={"definition": definition()}).json())
+        queued = Run.model_validate(c.post("/runs", json={"definition": definition()}).json())
+
+        r = c.post(f"/runs/{queued.run_id}/abort")
+        assert r.status_code == 202 and r.json()["state"] == "aborted"
+
+        t0 = time.monotonic()
+        while c.get(f"/runs/{first.run_id}").json()["state"] == "queued":
+            assert time.monotonic() - t0 < 10
+            time.sleep(0.02)
+        time.sleep(0.3)  # a few lines in
+        assert c.post(f"/runs/{first.run_id}/abort").status_code == 202
+        run = wait_for(c, first.run_id)
+        assert run.state == "aborted" and run.record_id, run.error
+        record = MeasurementRecord.model_validate(c.get(f"/records/{run.record_id}").json())
+        assert record.outcome == "aborted"
+
+        assert c.post(f"/runs/{first.run_id}/abort").status_code == 409
+        assert c.post("/runs/" + "0" * 32 + "/abort").status_code == 404
+        # the queued one never ran and recorded nothing
+        assert Run.model_validate(c.get(f"/runs/{queued.run_id}").json()).record_id is None
+        assert [r["record_id"] for r in c.get("/records").json()] == [record.record_id]

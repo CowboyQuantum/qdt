@@ -8,7 +8,7 @@ Flight Deck talks to this API and the stream only (rule 8).
 ```
 qdt_server/
   app.py        # create_app(settings) → FastAPI; lifespan starts the stream server; routes
-  runs.py       # RunManager: queue → compile → execute on a backend → stream → record → ingest; `Run` objects
+  runs.py       # RunManager: queue → compile → execute on a backend → stream → record → ingest; abort; `Run` objects
   catalogue.py  # METHODS: MethodSpec per curated method + the callable; run_method()
   __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port --ui <dist>]
 ```

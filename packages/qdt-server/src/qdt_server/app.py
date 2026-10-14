@@ -180,6 +180,16 @@ def create_app(settings: Settings) -> FastAPI:
         except KeyError:
             raise HTTPException(404, f"no run {run_id!r}") from None
 
+    @app.post("/runs/{run_id}/abort", response_model=Run, status_code=202)
+    def abort_run(run_id: str, request: Request) -> Run:
+        """Queued: aborted at once. Running: stops between frames; poll the run for its record."""
+        try:
+            return runs(request).abort(run_id)
+        except KeyError:
+            raise HTTPException(404, f"no run {run_id!r}") from None
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from None
+
     @app.get("/records", response_model=list[MeasurementRecord])
     def find_records(
         request: Request,
