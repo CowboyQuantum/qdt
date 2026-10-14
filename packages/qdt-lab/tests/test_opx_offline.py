@@ -84,7 +84,7 @@ def test_an_emitted_stage_compiles_to_a_valid_qua_program_and_config():
     opx = Opx1000(_FakeQMM(), CHANNELS)
     compiled = opx.compile(chopped_program())
     config = opx._qm.config
-    assert sorted(config["elements"]) == ["el_ai1", "el_ao1"]
+    assert sorted(config["elements"]) == ["el_ai1", "el_ao1", "el_ao1_wave"]
     assert config["elements"]["el_ao1"]["sticky"]["analog"] is True
     script = qm.generate_qua_script(compiled.plan["qua"], config)  # validates program + config
     for needle in (
@@ -151,6 +151,17 @@ def test_a_stage_in_logical_channel_names_compiles_onto_the_declared_ports():
     ports ('ao1'); a real run failed with "OPX channel 'P2_pulse' is not 'ao<p>'" until this mapping."""
     opx = Opx1000(_FakeQMM(), CHANNELS)
     compiled = opx.compile(chopped_program(logical=True))
-    assert sorted(opx._qm.config["elements"]) == ["el_ai1", "el_ao1"]
+    assert sorted(opx._qm.config["elements"]) == ["el_ai1", "el_ao1", "el_ao1_wave"]
     script = qm.generate_qua_script(compiled.plan["qua"], opx._qm.config)
     assert "el_ao1" in script and "P2_pulse" not in script
+
+
+def test_the_waveform_element_is_not_sticky_and_the_stage_element_is():
+    """A looped waveform on a sticky element accumulates its last sample every repetition (bench,
+    2026-10-14: a sine railed within a second); `play` uses a non-sticky twin, stages keep sticky."""
+    opx = Opx1000(_FakeQMM(), CHANNELS)
+    opx.compile(chopped_program())
+    elements = opx._qm.config["elements"]
+    assert elements["el_ao1"]["sticky"]["analog"] is True
+    assert "sticky" not in elements["el_ao1_wave"]
+    assert elements["el_ao1_wave"]["singleInput"] == elements["el_ao1"]["singleInput"]

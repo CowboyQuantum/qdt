@@ -41,6 +41,14 @@ the sources cabled right now, the rest skip. `bench/test_l1_loopback.py`.
 | OPX LF-FEM ao1 (`QDT_L1_OPX_CHANNEL`), direct mode → the same scope input, DC **50 Ω**, 0.1 V/div, edge trigger at half amplitude | a repeating 0.25 V, 1 µs pulse (4 µs period) through `WaveformSource.play`; one record through `WaveformSense`; amplitude = plateau mean − baseline, width = time between half-amplitude crossings | amplitude: the scope DC formula at 0.1 V/div (±23 mV) + the 50 Ω input's ±1.5 % of 0.25 V (≈ ±27 mV total); no published LF-FEM DAC accuracy, none budgeted; width: 4 ns clock + 2 grid steps (±6 ns) |
 
 ## L2: instrument-on-instrument (ADR 0040; closes Open Decision #10)
+
+**The combiner board (Probe 03, 2026-10-14)** is the part on the bench that adds the QDAC level and the
+OPX pulse; it stands in for the bias tee below. Measured (`docs/probes/03-combiner-board.md`):
+DC-side division 2.525 open circuit, a **20 Hz low-pass** (τ = 7.9 ms: settle ≥ 50 ms per DC step);
+pulse-side gain 0.81 above 200 kHz and 0.59 at DC (division ≈ 1.65 open circuit), 2 ns edge, 14 % droop
+over 30 µs; **output impedance ≈ 25 kΩ**, so its sink must be high-impedance (the scope's 1 MΩ, or a
+unity-gain buffer before the OPX's 50 Ω input); the two inputs add to 3 mV. Ground switches up.
+
 There is no surrogate DUT board. The L2 tests use the bench's instruments reading each other, plus two
 off-the-shelf parts: a **bias tee** and the **scope's DC-coupled 1 MΩ input**. Specifications below are
 taken from the instruments' and the bias tee's datasheets. The test code computes pass thresholds from

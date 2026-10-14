@@ -73,3 +73,7 @@ device (an OPX-only stand): a 64-point line and a 16 × 32 plane, both recorded 
 Flight Deck; V_in = 1.013–1.016 × v_p2, residual < 1 mV. Three bugs found and fixed on the way: the OPX
 driver did not resolve the stand's logical channel names; a failed backend build leaked the sockets of the
 drivers already built; a server restart with the same device id failed on the registration time.
+Session 12 (2026-10-14, bench): Probe 03 characterised the combiner board that replaces the bias tee: DC
+division 2.525, a 20 Hz low-pass on the DC side, pulse side 0.81 above 200 kHz and 0.59 at DC with a 2 ns
+edge, output impedance ≈ 25 kΩ (so the sink must be high-impedance: the scope, or a buffer before the OPX
+input). Two OPX driver bugs fixed: looped waveforms on the sticky element railed; settle after `play`.

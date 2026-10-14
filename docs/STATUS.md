@@ -4,91 +4,84 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (IN PROGRESS).
-**Branch:** `step-5/first-real-sweep` (PR against `main`; the human merges). PRs #25–#34 merged 2026-10-14.
-**Last session:** 2026-10-14, session 11 of Step 5, at the bench. **The first sweeps on real hardware ran
-through the server and Flight Deck.** Device: the OPX's own ao1 → ai1 loopback, on an OPX-only local
-stand (`bench-opx.stand.json`: `P2_pulse` ao1, `P_outer` ao2 open, `sensor` ai1), because the QDAC and
-the SMU had dropped off the wire by then. A 64-point line (`V_in = 1.0133 · v_p2 + 2 mV`, residual
-0.5 mV) and a 16 × 32 plane (row slopes 1.016 ± 0.001 along the swept output, columns flat to 0.3 mV
-along the open outer axis), both recorded in the registry at `~/.qdt/registry` and visible in Flight
-Deck's dataset selector. The OPX input constants from Probe 02 make these volts. Three bugs found by the
-first real run, all fixed with tests:
-1. the OPX driver did not resolve the stand's **logical channel names** (`P2_pulse`) to its ports;
-   the compiler hands it sequences in logical names, the emulator-backed CI path never differed;
-2. a failed `build_backends` **leaked the sockets** of the drivers already built (the 2450 allows one)
-   and the error did not name the instrument; `open_visa` now also retries a connect;
-3. a **server restart** with the same device id failed on the later registration time.
+**Branch:** `step-5/probe03-combiner` (PR against `main`; the human merges). PRs #25–#35 merged 2026-10-14.
+**Last session:** 2026-10-14, session 12 of Step 5, at the bench. **Probe 03 characterised the combiner
+board** that stands in for ADR 0040's bias tee (`docs/probes/03-combiner-board.md`): DC-side division
+2.525 open circuit, a 20 Hz low-pass (τ = 7.9 ms); pulse side 0.81 above 200 kHz, 0.59 at DC, 2 ns edge,
+14 % droop over 30 µs; output impedance ≈ 25 kΩ; the two inputs add to 3 mV. The first hour went to a
+board whose output was not reaching the OPX: its ground switches were down, and once up, the OPX's 50 Ω
+input loaded the 25 kΩ output to nothing, so the sink became the scope's 1 MΩ. Two OPX driver bugs
+surfaced and are fixed: looped waveforms played on the sticky stage element walked to the rail (a
+non-sticky twin element plays waveforms now; L0 test), and the probe settles 2 s after `play` because
+the OPX reloads its machine per waveform. The QDAC is on USB (no spare Ethernet cable); the SMU and the
+scope on self-assigned addresses; the stand file carries all of them.
 
 ## Step 5 exit criteria
 | Criterion | State |
 |---|---|
 | conformance suite passes on all four real instruments under `-m hardware` | ✔ OPX1000 7/7, Keithley 2450 5/5 (+2 skips), QDAC-II 3/3, HD304MSO 6/6 (2026-10-14) |
-| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ◐ **definition → hardware → Flight Deck → registry works** (session 11, OPX loopback). Missing: the L2-1 wiring through the bias tee with the QDAC, and the **plane fit** as a curated method for the overlay |
-| bench report committed | ✔ `bench/reports/2026-10-14-step5.md` (conformance on all four; L1 rows 1–3); Probe 02 findings. L2 to come. The server runs are in the registry, not the report |
+| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ◐ definition → hardware → Flight Deck → registry works (OPX loopback, session 11). L2-1's wiring is now characterised (Probe 03) but its sink must be high-impedance: **a buffer before the OPX input, or the scope as the sink** (human decision). The plane fit for the overlay is not written |
+| bench report committed | ✔ `bench/reports/2026-10-14-step5.md` (conformance; L1 rows 1–3); Probes 02 and 03 in their docs and fixtures |
 
 ## Done
 - Steps 0–4b DONE. ADR 0001–0044. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037 and 0038), identity/envelope/`qdt-hdf5-v1`
   (0028), modeling (0033), control (0036).
-- **Drivers (ADR 0041),** all four proven on hardware: `qdevil/qdac2` (TCP or USB serial, ADR 0043),
-  `keithley/k2400` (a 2450), `keysight/infiniivision` (DSOX/MSOX/HD3), `qm/opx1000` (Sequencer and
-  `WaveformSource.play`; input constants measured, ADR 0044; logical channel names resolved).
-  `drivers/scpi.py` retries a connect; `build_backends` closes partial builds.
-- **Control path on hardware (session 11):** `qdt-server --stand <file> --device-id <id>` runs stage
-  sweeps on the OPX; records land in the registry; Flight Deck draws them live. A restart reuses the
-  registered device.
-- **L1 complete (sessions 7–9):** `bench/test_l1_loopback.py`; `bench/conftest.py` fixtures;
-  `QDT_L1_SOURCES` names cabled sources.
-- **Probe 02 (session 10):** OPX input calibration; fixtures `bench/fixtures/probe02/`.
-- **Bench reports (ADR 0042):** `scripts/bench_report.py`; one file per day, a section per run.
-- **Extras:** `[qdac]` adds pyvisa, pyvisa-py and pyserial; `[keysight]` and `[smu]` add pyvisa and
-  pyvisa-py; `[opx]` adds qm-qua 1.4.1.
-- 319 Python tests (+5 Postgres-parametrized), 4 skipped, 23 hardware-only in `packages/`, 11
+- **Drivers (ADR 0041),** all four proven on hardware; OPX input constants measured (ADR 0044); OPX
+  resolves logical channel names; `play` on a non-sticky twin element; `open_visa` retries a connect;
+  `build_backends` closes partial builds and names the failing instrument.
+- **Control path on hardware (session 11):** `qdt-server --stand` runs stage sweeps on the OPX; records
+  in the registry; Flight Deck draws them; a restart reuses the registered device.
+- **L1 complete (sessions 7–9):** `bench/test_l1_loopback.py`, `bench/conftest.py` fixtures.
+- **Probe 02 (session 10):** OPX input calibration. **Probe 03 (session 12):** the combiner board;
+  `bench/probes/probe03/combiner_probe.py` (sections accumulate in `combiner.json`), fixtures in
+  `bench/fixtures/probe03/`.
+- **Bench reports (ADR 0042):** `scripts/bench_report.py`.
+- 320 Python tests (+5 Postgres-parametrized), 4 skipped, 23 hardware-only in `packages/`, 11
   hardware-only in `bench/`; Flight Deck 68 unit tests and 4 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-5/first-real-sweep` awaits the human. The server may still be running
-  on the OPX-only stand (`pkill -f "python -m qdt_server"` stops it).
+- Nothing uncommitted. PR for `step-5/probe03-combiner` awaits the human.
 
 ## Known broken / not yet real
-- **The QDAC and the SMU dropped off the wire** during session 11 (no ping, no ARP, no USB port on the
-  QDAC); not diagnosed. Both must be back for L2-1. The 2450's link-local address also acquired a stale
-  route via Wi-Fi on the Mac (`route -n get <ip>` said `en0`); `sudo route delete <ip>` or re-plugging
-  the dock adapter clears it.
-- **Plane fit not written:** the L2-1 overlay needs the curated plane method (and L2-3 the single
-  exponential) in `qdt-analysis`.
-- **No hardware `WaveformSense` row for the OPX input** in the conformance suite (ADR 0044).
-- **OPX input offset** −1.7 mV at 0 V in, not applied; the loopback line shows +2 mV at v_p2 = 0.
-- **QDAC-II outputs can come up dead** (firmware 14-1.70): `*RST` fixes it; verify one channel at the
-  start of a bench session. Not a driver action.
+- **L2-1's sink:** the combiner's ≈ 25 kΩ output cannot drive the OPX's 50 Ω input (0.5 mV per volt
+  arrived). Options: a unity-gain buffer at the board output (keeps L2-1 as the step defines it), the
+  scope's 1 MΩ as the sink (then the OPX does not read the result), or a low-impedance rebuild of the
+  board (fast, but a different board). Human decision.
+- **DC sweeps through the combiner must settle ≥ 50 ms per step** (20 Hz low-pass); set
+  `ChannelMap.settle_s` on the QDAC channel in the stand file for L2-1.
+- **Plane fit not written** (L2-1 overlay); single exponential (L2-3) likewise.
+- **No hardware `WaveformSense` row for the OPX input** in the conformance suite (ADR 0044); a looped-
+  waveform row for `WaveformSource` on hardware would also have caught the sticky bug.
+- **OPX input offset** −1.7 mV at 0 V in, not applied.
+- **QDAC-II outputs can come up dead** (firmware 14-1.70): `*RST` fixes it; verify one channel first.
 - **QDAC-II current readout** in the HIGH sense range hides a 1 MΩ load; `SENS<n>:RANG LOW` at 0 V.
-- **Link-local addresses move** (2450, scope); `dns-sd -B _scpi-raw._tcp local.` finds them.
-- **HD3 sockets:** VXI-11 refuses intermittently; the socket form sometimes times out the first connect
-  (now retried in `open_visa`).
-- **Serial numbers:** driver errors show vendor and model only; `bench_report.py` does not redact
-  `*IDN?` serials (decision pending).
+- **Link-local addresses move** (2450, scope); `dns-sd -B _scpi-raw._tcp local.` finds them. The Mac
+  sometimes routes a 169.254 host via Wi-Fi (`route -n get <ip>`); `sudo route delete <ip>` clears it.
+- **HD3 sockets:** VXI-11 refuses intermittently; the socket form sometimes times out the first connect.
+- **Serial numbers:** `bench_report.py` does not redact `*IDN?` serials (decision pending).
 - **Bench network:** the Mac's dock adapter needs aliases on the 10.20 subnet (`netmask` spelled out)
   and its 169.254 self-assigned address; its 10.20 alias has a /8 mask by accident.
 - **qm-qua deprecation:** the OPX driver's QUA config carries a deprecated `version` key.
 - **Today's report** holds many runs, including failed ones; the plugin never rewrites (ADR 0042).
 - **OPX results:** one frame per result at job end; maps fill line by line (one stage per stepped point).
-  With both axes in the stage (session 11's plane) the whole map is one job and arrives at its end.
 - **OPX `drive`:** not supported on the LF-FEM stage.
 - Carried over: diamond estimator needs a cold sensor (ADR 0030); zero-clipping in the dot model (ADR
   0020); overlays in one colour; Postgres suite only in CI; `FINISH_LINE.md` TODO (human); Windows pnpm
   via `corepack pnpm`.
 
 ## Next action
-**Human, at the bench:**
+**Human:**
 1. Merge the PR.
-2. Get the QDAC and the SMU back on the wire (check their Ethernet cables at the switch and their
-   power); a session re-finds them (QDAC at its fixed address, SMU by mDNS) and updates the stand file.
-3. Record the bias tee's model and specifications in `docs/BENCH.md` § L2 (human), then wire L2-1:
-   QDAC ch → bias tee DC port, OPX ao1 → RF port, bias tee out → OPX ai1.
+2. Decide L2-1's sink: a buffer at the combiner output into the OPX input (the step as written), or the
+   scope (then L2-1 is restated: the OPX plays, the scope reads, the plane fit runs on the scope's
+   record). Say which; a session wires the stand file and the sweep accordingly.
+3. If a buffer: put it in, keep QDAC ch01 and OPX ao1 on the board, board out → buffer → OPX ai1.
 
-**Then (sessions):** the curated **plane fit** (iso-line overlays) in `qdt-analysis`, then L2-1 through
-the server for the exit criterion; the single exponential and L2-3; a hardware OPX-input row for the
-conformance suite; the QDAC current-sense range; the Flight Deck time-series view; close Step 5.
+**Then (sessions):** the curated **plane fit** (iso-line overlays) in `qdt-analysis`; the L2-1 sweep
+through the server with `settle_s = 0.05` on the QDAC channel; the single exponential and L2-3 (the
+combiner's own droop is the real exponential now); a hardware `WaveformSource`/`WaveformSense` row for
+the OPX in the conformance suite; the Flight Deck time-series view; close Step 5.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -97,14 +90,14 @@ conformance suite; the QDAC current-sense range; the Flight Deck time-series vie
   accepted (0037); the operating point comes before Step 5 (0038); wall-clock CI gates are advisory
   (0039); no surrogate DUT (0040); drivers first, simple; fits later (0041); bench reports write
   themselves (0042); USB serial counts for the QDAC-II (0043); drivers are recreated here rather than
-  adapted from QCoDeS, an adapter only if breadth is ever needed (discussion, no ADR); the OPX input
-  constants are measured, not assumed (0044).
-- **2026-10-14, tabled for later:** Flight Deck should also visualise time-series data, the bench scope's
-  records first and then any instrument that can represent a time series. The `Dataset` contract already
-  carries (record, time) variables on a declared grid (ADR 0015); a renderer in `apps/flightdeck`, not a
-  schema change. Candidate for Step 6 or a Flight Deck session after Step 5 closes.
+  adapted from QCoDeS (discussion, no ADR); the OPX input constants are measured, not assumed (0044);
+  the combiner board stands in for the bias tee and is characterised by a probe before it is used
+  (Probe 03, no ADR: BENCH.md records the part).
+- **2026-10-14, tabled for later:** Flight Deck should also visualise time-series data (scope records
+  first, then any instrument with a time series). A renderer, not a schema change.
 
 ## Decisions pending
+- L2-1's sink: buffer before the OPX input, or the scope.
 - A default operating point per device (not in ADR 0038).
 - Whether to fix the dot model's zero-clipping (ADR 0020 amendment).
 - Whether the diamond estimator should survive warm edges.

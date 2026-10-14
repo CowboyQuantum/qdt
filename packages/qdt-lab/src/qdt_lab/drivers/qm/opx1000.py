@@ -63,6 +63,11 @@ def _element(channel: str) -> str:
     return "el_" + re.sub(r"\W", "_", channel)
 
 
+def _wave_element(channel: str) -> str:
+    """The non-sticky twin of `_element(channel)`, for looped waveform playback."""
+    return _element(channel) + "_wave"
+
+
 @dataclass(frozen=True)
 class _Port:
     fem: int
@@ -198,6 +203,14 @@ class Opx1000:
                 "operations": ops,
                 "sticky": {"analog": True, "digital": False, "duration": CLOCK_NS},
             }
+            # `play` loops a waveform on a non-sticky twin of the element: a sticky element adds each
+            # repetition onto the level it holds, so a loop whose last sample is not 0 walks to the
+            # rail (bench, 2026-10-14: a 20 kHz sine railed within a second)
+            elements[_wave_element(ch)] = {
+                "singleInput": {"port": (CONTROLLER, p.fem, p.port)},
+                "intermediate_frequency": 0,
+                "operations": ops,
+            }
         for ch, p in self._ports.items():
             if p.kind != "ai":
                 continue
@@ -276,7 +289,7 @@ class Opx1000:
         qm = self._ensure(arbitrary={channel: [float(x) for x in resampled]})
         from qm import qua
 
-        el = _element(channel)
+        el = _wave_element(channel)
         with qua.program() as prog, qua.infinite_loop_():
             qua.play("arb", el)
         self._jobs[channel] = qm.execute(prog)
