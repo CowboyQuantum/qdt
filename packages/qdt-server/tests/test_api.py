@@ -2,7 +2,9 @@
 
 import asyncio
 import time
+from datetime import UTC, datetime
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -287,3 +289,64 @@ def test_a_chopped_readout_records_the_difference(client):
     d["stage"]["sequence"]["body"][-1]["b"] = "I_nope"
     bad = client.post("/sweeps/compile", json=d)
     assert bad.status_code == 422 and "measured earlier" in bad.text
+
+
+def test_a_sweep_runs_on_the_real_drivers_streams_and_records(tmp_path):
+    """Step 5: the server on a stand of real drivers (here over their SCPI emulators): a QDAC-II gate
+    stepped outside, a Keithley sourcing V and sensing I on its one terminal inside. The record holds
+    the I-V line of the emulator's 1 MOhm load."""
+    from qdt_lab.drivers.keithley.k2400_emulator import emulated as k2400
+    from qdt_lab.drivers.qdevil.qdac2_emulator import emulated as qdac2
+    from qdt_schemas.identity import DeviceRecord
+    from qdt_schemas.payload_hdf5 import read_payload
+    from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
+
+    stand = StandConfig(
+        stand_id="bench",
+        instruments=(
+            InstrumentConfig(id="dac0", backend="qdac2", capabilities=("level_source",)),
+            InstrumentConfig(
+                id="smu", backend="keithley2400", capabilities=("level_source", "level_sense")
+            ),
+        ),
+        channels=(
+            ChannelMap(logical="P1", instrument="dac0", channel="ch01", quantity="voltage"),
+            ChannelMap(logical="smu_v", instrument="smu", channel="out", quantity="voltage"),
+            ChannelMap(logical="smu_i", instrument="smu", channel="out_i", quantity="current"),
+        ),
+    )
+    device = DeviceRecord(
+        device_id="dut-1",
+        kind="device",
+        simulated=False,
+        registered_at=datetime(2026, 10, 14, tzinfo=UTC),
+    )
+    built = {
+        "dac0": qdac2(stand.instrument_channels("dac0")),
+        "smu": k2400("2450", stand.instrument_channels("smu")),
+    }
+    settings = Settings(
+        root=tmp_path / "registry",
+        stream_port=0,
+        stand=stand,
+        device=device,
+        backends=lambda o: built,
+    )
+    d = {
+        "name": "iv on drivers",
+        "axes": [
+            {"name": "P1", "channel": "P1", "start": 0.0, "stop": 0.1, "num": 2},
+            {"name": "V", "channel": "smu_v", "start": -1.0, "stop": 1.0, "num": 5},
+        ],
+        "sensed": [{"name": "I", "channel": "smu_i"}],
+    }
+    with TestClient(create_app(settings)) as c:
+        run = wait_for(c, Run.model_validate(c.post("/runs", json={"definition": d}).json()).run_id)
+        assert run.state == "completed" and run.record_id, run.error
+        record = MeasurementRecord.model_validate(c.get(f"/records/{run.record_id}").json())
+        assert record.device_id == "dut-1" and record.stand_id == "bench"
+        payload = read_payload(tmp_path / "registry" / "payloads" / record.payload.path)
+    np.testing.assert_allclose(
+        payload.arrays["I"], np.tile(np.linspace(-1, 1, 5) / 1e6, (2, 1)), rtol=1e-9
+    )
+    assert built["dac0"].get("ch01") == 0.1  # the outer gate was really stepped through the driver
