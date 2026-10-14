@@ -4,15 +4,12 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 4b — Control path → `docs/steps/04b-control-path.md` (Step 4 DONE, ADR 0033)
-**Branch:** `step-4b/view-options` (PR against `main` open; the human merges). PRs #14–#18 merged.
-**Last session:** 2026-10-13, session 13. Two sessions built Step 4 in parallel; the human merged PR #9
-(`step-4/analysis`: record + method provenance, lattice estimation, ADR 0029) and closed PR #10. This
-session then ported onto `main` what #9 lacked: a source–drain bias across the sensor SET, the
-`diamonds` sweep, the Coulomb diamond method with injection–recovery, and a recovery scorer (ADR 0030).
-`ScenarioRef` (PR #10's reading of the scenario ref) was dropped per the human's choice. After seeing the
-overlays in Flight Deck the human reviewed the analysis objects and decided: curated methods only,
-multi-record analyses deferred, and results may carry arrays. Built as ADR 0031: an output is a Dataset
-in a payload referenced from the result.
+**Branch:** `step-4b/pulse-editor` (session 3, just opened). PRs #14–#19 merged; `main` is the only
+other branch (local and remote).
+**Last session:** 2026-10-13, Step 4b session 2b (PR #19, merged): Flight Deck view options —
+derivative and gradient transforms, swap axes, axis labels, all client-side. Before it, session 2
+(PR #18) built the control panel over `qdt-server` with the e2e test, and session 1 (ADR 0034) built
+`control.py` and `packages/qdt-server`.
 
 ## Step 4 exit criteria — all met (DONE, ADR 0033)
 | Criterion | State |
@@ -74,8 +71,7 @@ in a payload referenced from the result.
 - 267 Python tests (+5 Postgres-parametrized with `QDT_TEST_PG_DSN`), 41 Flight Deck unit tests, 3 e2e.
 
 ## In flight
-- Nothing uncommitted. PR `step-4/result-output` → `main` open. Remote branches `step-4/analysis`,
-  `step-4/diamonds` (merged) and `step-4/analysis-overlays` (PR #10, closed) await the human's pruning.
+- Nothing in flight yet. No open PRs; stale branches pruned 2026-10-13.
 
 ## Known broken / not yet real
 - The diamond estimator needs sharp edges: at the stability default sensor width (40 mV, kT_s ≈ 80 µeV)
@@ -98,7 +94,7 @@ in a payload referenced from the result.
   Windows: `corepack pnpm ...` in `apps/flightdeck`.
 
 ## Next action
-**Human:** merge the PR; then the demo: `uv run python -m qdt_server`, `corepack pnpm dev` in
+**Human (optional, any time):** the demo: `uv run python -m qdt_server`, `corepack pnpm dev` in
 `apps/flightdeck`, open the URL. The panel on the right: pick channels, set ranges, "run" (the map
 draws live), the record appears under Records, "analyse" → pick a method → "run analysis" → "show
 overlays". For diamonds: kind "DC", outer `SG` −0.2…0.2, inner `bias` −0.0015…0.0015 (name `V_sd`),
