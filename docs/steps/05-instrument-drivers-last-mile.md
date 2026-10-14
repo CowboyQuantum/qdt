@@ -63,3 +63,6 @@ HD3 datasheet's DC measurement accuracy (`bench/test_l1_loopback.py`). Two hours
 outputs stuck at 0 V after its boot history, fixed by `*RST` (BENCH.md quirks).
 Session 8 (2026-10-14, bench): L1 row 2, SMU (2450, front terminals) → scope, passes at five levels. The
 SMU was found by mDNS on a new self-assigned address. L1 row 3 (OPX AO → scope) is left.
+Session 9 (2026-10-14, bench): L1 row 3, OPX LF-FEM ao1 → scope (50 Ω), a repeating 0.25 V / 1 µs pulse
+through `WaveformSource.play`, amplitude and width within the oracle. **All three L1 rows pass.** Left: the OPX
+calibration constants (AO → AI loopback), L2, the fits.
