@@ -34,3 +34,16 @@ def test_newer_version_than_package_is_refused():
 def test_unknown_type_is_refused():
     with pytest.raises(ValueError, match="not a persisted"):
         upgrade("Nope", {})
+
+
+# The registry recomputes these hashes from a stored payload and compares them with the record
+# (definition, stand) or keys rows by them (plan). An additive change (ADR 0037) must leave how
+# existing objects serialize untouched, or a payload recorded before it could no longer be ingested.
+HASHED = ("ExecutionPlan", "StandConfig", "SweepDefinition")
+
+
+@pytest.mark.parametrize("type_name", HASHED)
+def test_hashed_fixture_reserializes_unchanged(type_name):
+    path = FIXTURES / type_name / f"v{current_version(type_name)}.json"
+    data = json.loads(path.read_text())
+    assert load(type_name, data).model_dump(mode="json") == data

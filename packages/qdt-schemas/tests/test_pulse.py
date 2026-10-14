@@ -2,7 +2,9 @@ import pytest
 from pydantic import ValidationError
 
 from qdt_schemas.pulse import (
+    Affine,
     Call,
+    Difference,
     Drive,
     Measure,
     PulseSequence,
@@ -92,5 +94,61 @@ def test_result_names_unique_per_shot():
             body=(
                 Measure(channel="s", duration=10, result="r"),
                 Measure(channel="s", duration=10, result="r"),
+            ),
+        )
+
+
+def chopped(**diff) -> PulseSequence:
+    v = Symbol(name="v", unit="V")
+    return PulseSequence(
+        name="chopped",
+        body=(
+            Step(channel="g", level=v, duration=100),
+            Measure(channel="sensor", duration=1000, result="I_on"),
+            Step(channel="g", level=Affine(symbol=v, scale=1.0, offset=0.002), duration=100),
+            Measure(channel="sensor", duration=1000, result="I_off"),
+            Difference(**({"result": "dI", "a": "I_on", "b": "I_off"} | diff)),
+        ),
+    )
+
+
+def test_affine_follows_its_symbol_and_counts_as_using_it():
+    s = chopped()
+    assert s.symbols() == {"v": "V"}
+    assert PulseSequence.model_validate_json(s.model_dump_json()) == s
+    assert Affine(symbol=Symbol(name="v", unit="V"), scale=-2.0, offset=0.1).of(0.05) == 0.0
+    with pytest.raises(ValidationError, match="units"):
+        PulseSequence(
+            name="x",
+            body=(
+                Step(channel="g", level=Symbol(name="v", unit="V"), duration=1),
+                Drive(
+                    channel="e",
+                    frequency=Affine(symbol=Symbol(name="v", unit="Hz")),
+                    amplitude=0.1,
+                    duration=1,
+                ),
+            ),
+        )
+
+
+def test_difference_is_a_result_of_two_earlier_measures():
+    s = chopped()
+    assert s.results() == ("I_on", "I_off", "dI")
+    assert s.result_channel("dI") == "sensor"
+    assert [op.op for op in s.expand()][-1] == "difference"
+    with pytest.raises(ValidationError, match="measured earlier"):
+        chopped(b="I_later")
+    with pytest.raises(ValidationError, match="from itself"):
+        chopped(b="I_on")
+    with pytest.raises(ValidationError, match="unique"):
+        chopped(result="I_on")
+    with pytest.raises(ValidationError, match="measured earlier"):  # time order: measure after it
+        PulseSequence(
+            name="x",
+            body=(
+                Measure(channel="sensor", duration=1, result="a"),
+                Difference(result="d", a="a", b="b"),
+                Measure(channel="sensor", duration=1, result="b"),
             ),
         )

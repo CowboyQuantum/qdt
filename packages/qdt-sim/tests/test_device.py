@@ -118,3 +118,59 @@ def test_from_config_rejects_a_quantity_that_contradicts_the_role():
     )
     with pytest.raises(ValueError, match="sensor"):
         SimulatedDevice.from_config(stand.instrument(DEVICE_ID), channels)
+
+
+def chopped(shots: int = 1, reduce: str = "keep"):
+    """Chopped readout: measure at the swept level, then at the swept level + one axis step, subtract."""
+    from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, SymbolBinding
+    from qdt_schemas.pulse import Affine, Difference, Measure, PulseSequence, Step, Symbol
+
+    v = Symbol(name="v_p2", unit="V")
+    p2 = SweepAxis(name="P2", channel="P2_pulse", start=0.03, stop=0.17, num=15)  # step 0.01 V
+    seq = PulseSequence(
+        name="chopped",
+        body=(
+            Step(channel="P2_pulse", level=v, duration=500),
+            Measure(channel="sensor", duration=2000, result="I_on"),
+            Step(channel="P2_pulse", level=Affine(symbol=v, offset=p2.step), duration=500),
+            Measure(channel="sensor", duration=2000, result="I_off"),
+            Difference(result="dI", a="I_on", b="I_off"),
+        ),
+    )
+    return SweepDefinition(
+        name="chopped",
+        axes=(SweepAxis(name="P1", channel="P1", start=0.03, stop=0.17, num=4), p2),
+        stage=SequencerStage(
+            instrument=DEVICE_ID,
+            axes=("P2",),
+            sequence=seq,
+            bindings=(SymbolBinding(symbol="v_p2", axis="P2"),),
+            shots=shots,
+            reduce={r: reduce for r in ("I_on", "I_off", "dI")} if reduce != "keep" else {},
+        ),
+    )
+
+
+def test_affine_level_follows_the_swept_symbol():
+    _, xds = run(chopped(), quiet())
+    on, off = xds["I_on"].values, xds["I_off"].values
+    # the chop point is one axis step up: I_off at index i is I_on at index i + 1
+    np.testing.assert_allclose(off[:, :-1], on[:, 1:], rtol=1e-12)
+
+
+def test_difference_is_per_shot_and_recorded_beside_the_measures():
+    plan, xds = run(chopped(), quiet())
+    assert {v.name for v in plan.dataset.data_vars} == {"I_on", "I_off", "dI"}
+    assert next(v for v in plan.dataset.data_vars if v.name == "dI").unit == "A"
+    np.testing.assert_allclose(
+        xds["dI"].values, xds["I_on"].values - xds["I_off"].values, rtol=1e-12
+    )
+    # with charge sampling and readout noise, kept shots: the difference is taken shot by shot
+    _, noisy = run(chopped(shots=3), default_device(seed=1))
+    assert noisy["dI"].dims[-1] == "shot"
+    np.testing.assert_allclose(noisy["dI"].values, noisy["I_on"].values - noisy["I_off"].values)
+    # reduced on the sequencer: the mean of differences equals the difference of means
+    _, mean = run(chopped(shots=3, reduce="mean"), default_device(seed=1))
+    np.testing.assert_allclose(
+        mean["dI"].values, mean["I_on"].values - mean["I_off"].values, rtol=1e-9, atol=1e-18
+    )

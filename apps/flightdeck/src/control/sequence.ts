@@ -1,21 +1,14 @@
 // Pulse-sequence editor model (Step 4b): rows of text a form edits → a `PulseSequence` and the stage's
 // `SymbolBinding`s. A form over the schema, not a timeline (ADR 0035): one row per primitive in time
-// order, one text cell per field. A value cell holds a number or a symbol name; a symbol is bound below
-// the table to an axis or a constant. Pure functions: no DOM, no network. They refuse what the server's
+// order, one text cell per field. A value cell holds a number, a symbol name, or an affine of one
+// (`v_P2 + 0.002`, `-v_P2`, `0.5*v_P2 - 1e-3`, ADR 0037); a symbol is bound below the table to an axis or
+// a constant. A `difference` row subtracts two earlier measures per shot (chopped readout, ADR 0037). Pure functions: no DOM, no network. They refuse what the server's
 // validators would refuse (PulseSequence, SequencerStage), so errors show while typing.
-import type {
-  ChannelMap,
-  Drive,
-  Measure,
-  PulseSequence,
-  Ramp,
-  Step,
-  Symbol as PulseSymbol,
-  SymbolBinding,
-  Wait,
-} from "../schema/api";
+import type { Affine, Call, ChannelMap, PulseSequence, Symbol as PulseSymbol, SymbolBinding } from "../schema/api";
 
-type Primitive = Step | Ramp | Wait | Drive | Measure;
+// Every primitive of the generated schema except `call`: a primitive added to PulseSequence by ADR
+// appears here by itself, and the coverage check below fails tsc until the form has its columns.
+type Primitive = Exclude<PulseSequence["body"][number], Call>;
 export type OpKind = NonNullable<Primitive["op"]>;
 type OpOf<K extends OpKind> = Extract<Primitive, { op?: K }>;
 type FieldOf<K extends OpKind> = Exclude<keyof OpOf<K>, "op" | "schema_version">;
@@ -27,6 +20,7 @@ export const OP_FIELDS = {
   wait: ["duration"],
   drive: ["channel", "frequency", "phase", "amplitude", "duration"],
   measure: ["channel", "duration", "result"],
+  difference: ["result", "a", "b"],
 } as const satisfies { [K in OpKind]: readonly FieldOf<K>[] };
 
 // Compile-time check against the generated types: every required field of every primitive has a column.
@@ -65,12 +59,37 @@ export function fieldUnit(field: FieldName, channel: ChannelMap | undefined): st
   return "";
 }
 
-/** A value cell: a finite number, or a symbol name. */
-export function parseValue(text: string, unit: string): number | PulseSymbol {
+const NUM = String.raw`(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?`;
+const AFFINE = new RegExp(String.raw`^(?:([+-]?${NUM})\s*\*\s*|(-)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:([+-])\s*(${NUM}))?$`);
+
+/** A value cell: a finite number, a symbol name, or `[scale *] symbol [± offset]` (also `-symbol`).
+ * A bare name stays a `Symbol`, so sequences without offsets serialize exactly as before. */
+export function parseValue(text: string, unit: string): number | PulseSymbol | Affine {
   const t = text.trim();
   if (t !== "" && Number.isFinite(Number(t))) return Number(t);
-  if (IDENT.test(t)) return { name: t, unit };
-  throw new Error(t === "" ? "empty" : `"${t}" is neither a number nor a symbol name`);
+  const m = AFFINE.exec(t);
+  if (!m) throw new Error(t === "" ? "empty" : `"${t}" is neither a number, a symbol name, nor "symbol + offset"`);
+  const [, scaleText, minus, name, sign, offsetText] = m;
+  const symbol: PulseSymbol = { name: name!, unit };
+  const scale = scaleText !== undefined ? Number(scaleText) : minus ? -1 : 1;
+  const offset = offsetText !== undefined ? (sign === "-" ? -1 : 1) * Number(offsetText) : 0;
+  if (scale === 1 && offset === 0) return symbol;
+  return { symbol, ...(scale !== 1 ? { scale } : {}), ...(offset !== 0 ? { offset } : {}) };
+}
+
+/** The symbol a value depends on (bare or inside an affine), if any. */
+export function symbolOf(v: number | PulseSymbol | Affine): PulseSymbol | null {
+  if (typeof v === "number") return null;
+  return "symbol" in v ? v.symbol : v;
+}
+
+/** The symbol name a cell's text refers to, if it parses as one (for showing its binding). */
+export function symbolInText(text: string): string | null {
+  try {
+    return symbolOf(parseValue(text, ""))?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface SequenceBuild {
@@ -86,6 +105,7 @@ export function buildSequence(name: string, rows: readonly OpRow[], channels: re
   const errors: string[] = [];
   const symbols = new Map<string, string>();
   const results = new Set<string>();
+  const measured = new Set<string>(); // measure results so far, in time order
   const body: Primitive[] = [];
   if (!rows.length) errors.push("the sequence needs at least one op");
   rows.forEach((row, i) => {
@@ -102,12 +122,16 @@ export function buildSequence(name: string, rows: readonly OpRow[], channels: re
         op.channel = t;
       } else if (field === "result") {
         if (!IDENT.test(t)) errors.push(`${where}: result needs a name`);
-        else if (results.has(t)) errors.push(`${where}: result "${t}" is already measured in this shot`);
+        else if (results.has(t)) errors.push(`${where}: result "${t}" is already a result in this shot`);
         results.add(t);
         op.result = t;
+      } else if (field === "a" || field === "b") {
+        if (!measured.has(t)) errors.push(`${where}: ${field} must name a measure earlier in the shot${measured.size ? ` (${[...measured].join(", ")})` : ""}`);
+        else if (field === "b" && t === text("a")) errors.push(`${where}: subtracts "${t}" from itself`);
+        op[field] = t;
       } else {
         const unit = fieldUnit(field, channel);
-        let v: number | PulseSymbol;
+        let v: number | PulseSymbol | Affine;
         try {
           v = parseValue(t, unit);
         } catch (e) {
@@ -117,14 +141,19 @@ export function buildSequence(name: string, rows: readonly OpRow[], channels: re
         if (typeof v === "number" && field === "duration" && (!Number.isInteger(v) || v < 0)) {
           errors.push(`${where}: duration is a whole number of ns ≥ 0`);
         }
-        if (typeof v !== "number") {
-          const had = symbols.get(v.name);
-          if (had !== undefined && had !== unit) errors.push(`${where}: symbol "${v.name}" is used in ${had || "no unit"} and ${unit || "no unit"}`);
-          else symbols.set(v.name, unit);
+        if (field === "duration" && typeof v !== "number" && "symbol" in v) {
+          errors.push(`${where}: a duration takes a number or a bare symbol, not "${t}"`);
+        }
+        const sym = symbolOf(v);
+        if (sym) {
+          const had = symbols.get(sym.name);
+          if (had !== undefined && had !== unit) errors.push(`${where}: symbol "${sym.name}" is used in ${had || "no unit"} and ${unit || "no unit"}`);
+          else symbols.set(sym.name, unit);
         }
         if (VALUE_FIELDS.has(field) || field === "duration") op[field] = v;
       }
     }
+    if (row.op === "measure" && typeof op.result === "string") measured.add(op.result);
     body.push(op as unknown as Primitive);
   });
   if (!name.trim()) errors.push("the sequence needs a name");
@@ -156,6 +185,11 @@ export function buildBindings(rows: readonly BindingRow[], axes: readonly string
   return { bindings, errors };
 }
 
+/** Measure result names in row order (what a difference row may subtract). */
+export function measuredResults(rows: readonly OpRow[]): string[] {
+  return rows.flatMap((r) => (r.op === "measure" && r.fields.result ? [r.fields.result] : []));
+}
+
 /** Mirrors SweepDefinition's rule: each stage axis is swept inside the sequence, so some symbol bound
  * to it must appear in a level. Typing a number over the template's `v_<axis>` breaks this. */
 export function unusedStageAxes(bindings: readonly SymbolBinding[], stageAxes: readonly string[]): string[] {
@@ -172,8 +206,9 @@ export function templateRows(t: { channel: string; symbol: string; sensor: strin
   ];
 }
 
-/** A fresh row of `op`, prefilled from the stand so it is valid as soon as it is added. */
-export function newRow(op: OpKind, channels: readonly ChannelMap[]): OpRow {
+/** A fresh row of `op`, prefilled from the stand (and, for a difference, the last two measure results)
+ * so it is valid as soon as it is added. */
+export function newRow(op: OpKind, channels: readonly ChannelMap[], measured: readonly string[] = []): OpRow {
   // a sequencer pulses its `_pulse` lines (the stand convention, `standChannels`); any voltage line otherwise
   const voltages = channels.filter((c) => c.quantity === "voltage");
   const voltage = (voltages.find((c) => c.logical.endsWith("_pulse")) ?? voltages[0])?.logical ?? "";
@@ -189,6 +224,8 @@ export function newRow(op: OpKind, channels: readonly ChannelMap[]): OpRow {
       return { op, fields: { channel: voltage, frequency: "1e9", phase: "0", amplitude: "0", duration: "100" } };
     case "measure":
       return { op, fields: { channel: sensor, duration: "1000", result: "I_sensor" } };
+    case "difference":
+      return { op, fields: { result: "dI", a: measured.at(-2) ?? "", b: measured.at(-1) ?? "" } };
   }
 }
 

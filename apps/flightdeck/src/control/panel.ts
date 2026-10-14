@@ -8,10 +8,12 @@ import {
   buildBindings,
   buildSequence,
   fieldUnit,
+  measuredResults,
   moveRow,
   newRow,
   OP_FIELDS,
   OP_KINDS,
+  symbolInText,
   syncBindings,
   templateRows,
   unusedStageAxes,
@@ -201,10 +203,11 @@ export class ControlPanel {
         "div",
         { className: "buttons" },
         add,
-        h("button", { type: "button", text: "add op", onclick: () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels)]) }),
+        h("button", { type: "button", text: "add op", onclick: () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels, measuredResults(this.rows))]) }),
         h("button", { type: "button", text: "reset to template", onclick: reset }),
       ),
-      h("div", { className: "hint", text: "a value is a number (V, ns, Hz) or a symbol name; bind each symbol below to an axis (swept) or a number" }),
+      h("div", { className: "hint", text: "a value is a number (V, ns, Hz), a symbol name, or symbol ± offset (v_P2 + 0.002); bind each symbol below to an axis (swept) or a number" }),
+      h("div", { className: "hint", text: "difference: result = a − b of two earlier measures, per shot (chopped readout); recorded beside them" }),
       h("div", { className: "hint", text: "a pulse level adds to the gate's DC level, holds until the next op on that line, and returns to 0 at the start of every shot" }),
       this.els.symbols,
       this.els.sequenceErrors,
@@ -247,7 +250,7 @@ export class ControlPanel {
         opSelect.value = row.op;
         opSelect.addEventListener("change", () => {
           // a new primitive starts prefilled; it keeps the channel when that channel suits it
-          const next = newRow(opSelect.value as OpKind, this.channels);
+          const next = newRow(opSelect.value as OpKind, this.channels, measuredResults(this.rows.slice(0, i)));
           const kept = row.fields.channel && byName.get(row.fields.channel);
           if (kept && "channel" in next.fields && (kept.quantity === "current") === (next.op === "measure")) next.fields.channel = kept.logical;
           this.editRows(this.rows.map((r, j) => (j === i ? next : r)));
@@ -315,7 +318,7 @@ export class ControlPanel {
       const span = input.previousElementSibling as HTMLSpanElement | null;
       if (!span) continue;
       const field = input.dataset.field!;
-      const t = targets.get(input.value.trim());
+      const t = targets.get(symbolInText(input.value) ?? "");
       span.textContent = t === undefined ? field : `${field} ← ${t === "" ? "?" : axes.includes(t) ? `${t} (swept)` : t}`;
     }
   }

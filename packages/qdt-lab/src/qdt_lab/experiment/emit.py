@@ -61,8 +61,9 @@ class SimulatedEmitter:
 
     Parameters: `n_<axis>` per stage axis (axis_num); per symbol bound to a stage axis `<sym>_start`
     and `<sym>_step` (axis_start / axis_step); per symbol bound to a stepped axis `<sym>` (axis_value);
-    per constant symbol `<sym>` (const); `shots` (const). Results: one per `measure`, float64, in the
-    sense channel's quantity unit, dims = stage axes (+ `shots` when kept and shots > 1).
+    per constant symbol `<sym>` (const); `shots` (const). Results: one per `measure` and per
+    `difference` (ADR 0037), float64, in the sense channel's quantity unit, dims = stage axes (+ `shots`
+    when kept and shots > 1). Affine values travel inside the sequence; the device applies them.
     """
 
     backend = "simulated"
@@ -115,9 +116,13 @@ class SimulatedEmitter:
 
         results = []
         for op in seq.expand():
-            if op.op != "measure":
+            if op.op == "difference":
+                qa, qb = (channels[seq.result_channel(x)].quantity for x in (op.a, op.b))
+                if qa != qb:
+                    raise ValueError(f"difference {op.result!r} subtracts a {qb} from a {qa}")
+            elif op.op != "measure":
                 continue
-            if op.channel not in channels:
+            elif op.channel not in channels:
                 raise ValueError(f"measure on unknown channel {op.channel!r}")
             dims = tuple(f"n_{a}" for a in stage.axes)
             if stage.reduction(op.result) == "keep" and stage.shots > 1:
@@ -131,7 +136,7 @@ class SimulatedEmitter:
                     name=op.result,
                     dims=dims,
                     dtype="float64",
-                    unit=QUANTITY_UNIT[channels[op.channel].quantity],
+                    unit=QUANTITY_UNIT[channels[seq.result_channel(op.result)].quantity],
                 )
             )
         body = json.dumps(

@@ -96,8 +96,9 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
   const bound = buildBindings(f.sequence?.bindings ?? [{ symbol, target: inner }], axisNames);
   errors.push(...bound.errors);
   if (!bound.errors.length) errors.push(...unusedStageAxes(bound.bindings, [inner]));
-  const results = built.sequence ? built.sequence.body.flatMap((op) => (op.op === "measure" ? [op.result] : [])) : [];
-  if (built.sequence && !results.length) errors.push("the sequence measures nothing");
+  const body = built.sequence?.body ?? [];
+  const results = body.flatMap((op) => (op.op === "measure" || op.op === "difference" ? [op.result] : []));
+  if (built.sequence && !body.some((op) => op.op === "measure")) errors.push("the sequence measures nothing");
   errors.push(...checkResults(results, axisNames));
   if (errors.length) throw new Error(errors.join("; "));
   return {

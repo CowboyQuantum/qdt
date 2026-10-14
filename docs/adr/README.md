@@ -40,3 +40,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0034 | `qdt-server`: FastAPI over the schema objects, REST for commands and queries, the existing WebSocket for data | Accepted |
 | 0035 | The Step 4b pulse-sequence editor is a form over `PulseSequence` (rows, number-or-symbol cells, bindings), not a timeline; 1-D sweeps | Accepted |
 | 0036 | Control slice frozen at schema_version 1: `Run`, `MethodSpec`, `ParameterSpec`, `EstimateSpec` | Accepted (closes Step 4b) |
+| 0037 | Chopped readout: `Affine` values and a `difference` primitive in `PulseSequence`, additive without a version bump | Accepted (amends the 0022 pulse slice) |

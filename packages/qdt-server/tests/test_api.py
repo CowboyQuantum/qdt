@@ -257,3 +257,33 @@ def test_a_run_can_be_aborted_queued_or_running(tmp_path):
         # the queued one never ran and recorded nothing
         assert Run.model_validate(c.get(f"/runs/{queued.run_id}").json()).record_id is None
         assert [r["record_id"] for r in c.get("/records").json()] == [record.record_id]
+
+
+def test_a_chopped_readout_records_the_difference(client):
+    """ADR 0037: the chop point follows the swept level (an Affine), and the sequencer subtracts the two
+    measures per shot into a result of its own, recorded beside them."""
+    d = edited()
+    v = {"name": "v_P2", "unit": "V"}
+    d["stage"]["sequence"]["body"] = [
+        {"op": "step", "channel": "P2_pulse", "level": v, "duration": 500},
+        {"op": "measure", "channel": "sensor", "duration": 1000, "result": "I_on"},
+        {
+            "op": "step",
+            "channel": "P2_pulse",
+            "level": {"symbol": v, "offset": 0.002},
+            "duration": 500,
+        },
+        {"op": "measure", "channel": "sensor", "duration": 1000, "result": "I_off"},
+        {"op": "difference", "result": "dI", "a": "I_on", "b": "I_off"},
+    ]
+    d["stage"]["bindings"] = [{"symbol": "v_P2", "axis": "P2"}]
+    d["stage"]["reduce"] = {"I_on": "mean", "I_off": "mean", "dI": "mean"}
+    plan = client.post("/sweeps/compile", json=d)
+    assert plan.status_code == 200, plan.text
+    assert sorted(x["name"] for x in plan.json()["dataset"]["data_vars"]) == ["I_off", "I_on", "dI"]
+    run = Run.model_validate(client.post("/runs", json={"definition": d}).json())
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed" and run.record_id, run.error
+    d["stage"]["sequence"]["body"][-1]["b"] = "I_nope"
+    bad = client.post("/sweeps/compile", json=d)
+    assert bad.status_code == 422 and "measured earlier" in bad.text

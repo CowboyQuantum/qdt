@@ -28,7 +28,7 @@ import numpy as np
 from qdt_lab.stream.frame import Frame
 from qdt_schemas.activity import SequencerProgram
 from qdt_schemas.data import Dataset, DatasetChunk, IndexSlice
-from qdt_schemas.pulse import PulseSequence, Symbol
+from qdt_schemas.pulse import Affine, PulseSequence, Symbol
 from qdt_schemas.stand import ChannelMap, InstrumentConfig
 
 from .dot import DoubleDotModel
@@ -267,12 +267,21 @@ class _DeviceRun:
         values = self._symbol_values(index)
 
         def val(x):
-            return values[x.name] if isinstance(x, Symbol) else x
+            if isinstance(x, Symbol):
+                return values[x.name]
+            if isinstance(x, Affine):
+                return x.of(values[x.symbol.name])
+            return x
 
         samples: dict[str, list[float]] = {}
         for _ in range(self._shots):
             pulse: dict[str, float] = {}
+            shot: dict[str, float] = {}
             for op in ops:
+                if op.op == "difference":  # per shot, before any reduction; takes no time
+                    shot[op.result] = shot[op.a] - shot[op.b]
+                    samples.setdefault(op.result, []).append(shot[op.result])
+                    continue
                 duration_ns = val(op.duration)
                 if op.op == "step":
                     pulse[op.channel] = val(op.level)
@@ -282,7 +291,8 @@ class _DeviceRun:
                     i = device.read(
                         device.gate_vector(pulse), 1, duration_ns * 1e-9, device.bias_level(pulse)
                     )
-                    samples.setdefault(op.result, []).append(float(i[0]))
+                    shot[op.result] = float(i[0])
+                    samples.setdefault(op.result, []).append(shot[op.result])
                     continue
                 device.clock_s += duration_ns * 1e-9
         return {k: np.asarray(v) for k, v in samples.items()}
