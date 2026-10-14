@@ -11,7 +11,7 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
 
 | Role (protocol) | Instrument | Backend key | Address variable | Notes |
 |---|---|---|---|---|
-| `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet | `qdac2` | `QDT_QDAC2_ADDRESS` | channels used: TODO |
+| `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet or its rear USB port | `qdac2` | `QDT_QDAC2_ADDRESS` | `TCPIP::<host>::5025::SOCKET`, or `ASRL/dev/cu.usbserial-NNNN::INSTR` (921600 baud, set by the driver; ADR 0043). The LAN address is set over USB: `syst:comm:lan:dhcp 0`, `:ipad "<ip>"`, `:smask`, `:gat`, `:upd`, then a power cycle with the cable in. Channels used: TODO |
 | `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings |
 | `WaveformSense` | Keysight InfiniiVision X | `infiniivision` | `QDT_SCOPE_ADDRESS` | trigger and vertical scale set on the front panel |
 | `LevelSource` + `LevelSense` on one terminal | Keithley 2400-series | `keithley2400` | `QDT_SMU_ADDRESS` | legacy or 2450-style SCPI picked from `*IDN?` |
