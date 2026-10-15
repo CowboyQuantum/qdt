@@ -183,6 +183,8 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | 8 | Stream transport for `Dataset` | RESOLVED (ADR 0008): WebSocket + Arrow IPC; see `docs/analysis/0001-stream-budget.md` |
 | 9 | Flight Deck stack | RESOLVED (ADR 0013): TypeScript; raw WebGL2 2D renderer, no library; see `docs/analysis/0002-renderer-benchmark.md` |
 | 10 | Surrogate DUT design | **Closed by ADR 0040:** no board; L2 is instrument-on-instrument (bias tee, the scope's 1 MΩ input) |
+| 11 | §10 scope: frames, named envelopes, balanced branching | Parked; inputs in `docs/analysis/0004-pulse-scope-and-custom-isa.md`; admit one at a time by ADR with the quartet |
+| 12 | Backend capability declaration on `InstrumentConfig` | Parked; required before any primitive not every backend executes (Analysis 0004) |
 
 ## 13. Success criteria
 
