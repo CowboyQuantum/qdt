@@ -15,8 +15,12 @@ Those never live in the result: they are a `Dataset` of their own, with `source.
 written as a `qdt-hdf5-v1` payload and referenced by `AnalysisResult.output` (ADR 0031), so Flight
 Deck draws them like any measurement and the registry stores them like any payload.
 
-Simulated ground truth (`SimScenario`) is a Step 6 family. Until then, injection-recovery truth lives in
-the tests, not in results.
+Step 6 (ADR 0048) adds, beside the frozen three: `SimScenario` (a reproducible simulated situation: model
+overrides, seed, noise; the truth is derived from the model by `qdt-sim`, never stored here),
+`CalibrationNode` (one step of a tune-up as data: the experiment, the method that reads it, the
+`DecisionRule` that judges it), `NodeOutcome` (what running a node produced: its record, its result, the
+verdict and the decided quantities) and `SimResult` (a committed outcome of a node on a scenario, with the
+truth, that CI reproduces). None of the four is persisted yet; outcomes point at records and results, which are.
 """
 
 from typing import Literal
@@ -24,6 +28,7 @@ from typing import Literal
 from pydantic import AwareDatetime, Field, model_validator
 
 from ._base import QdtModel
+from .activity import SweepDefinition
 from .data import Annotation, AttrValue
 from .envelope import PayloadRef
 
@@ -123,3 +128,146 @@ class AnalysisResult(QdtModel):
             if e.name == name:
                 return e
         raise KeyError(f"no estimate {name!r}")
+
+
+# --- Step 6: scenarios, calibration nodes, outcomes (ADR 0048) ------------------------------------
+
+
+class SimScenario(QdtModel):
+    """A reproducible simulated situation: which scalar parameters of the simulated device's model are
+    overridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the
+    truth a method must recover; this package holds the recipe only (rule 1)."""
+
+    scenario_id: str = Field(
+        min_length=1, description="Stable name of the scenario, e.g. 'default-occupied-window'."
+    )
+    description: str = Field(default="", description="What the scenario stands for.")
+    model: dict[str, AttrValue] = Field(
+        default_factory=dict,
+        description=(
+            "Scalar overrides of the simulated device's default model, by field name (e.g. "
+            "sensor_width_v). Matrix parameters are not overridable through a scenario yet."
+        ),
+    )
+    seed: int = Field(default=0, ge=0, description="Seed of every random draw in the device.")
+    noise: bool = Field(default=True, description="Whether the device's noise models are on.")
+    attrs: dict[str, AttrValue] = Field(
+        default_factory=dict, description="Free-form scalar metadata."
+    )
+
+
+class DecisionRule(QdtModel):
+    """A curated decision as data: which rule judges a node's result, with which parameters (the
+    `FitModel` of decisions)."""
+
+    name: str = Field(
+        min_length=1, description="Dotted rule name, e.g. 'qdt_tuning.decisions.virtual_gates'."
+    )
+    version: str = Field(
+        min_length=1,
+        description="Rule version; bump it whenever the same result could be judged differently.",
+    )
+    parameters: dict[str, AttrValue] = Field(
+        default_factory=dict,
+        description="Every parameter the rule used, defaults included, so a verdict can be reproduced.",
+    )
+
+
+class CalibrationNode(QdtModel):
+    """One step of a tune-up as data: the experiment to run, the curated method that reads its record,
+    the rule that turns the estimates into a verdict and the quantities the next node needs."""
+
+    node_id: str = Field(
+        min_length=1, description="Stable name of the node, e.g. 'charge-lattice'."
+    )
+    description: str = Field(default="", description="What the node establishes.")
+    definition: SweepDefinition = Field(
+        description="The experiment, in the stand's logical channel names."
+    )
+    method: FitModel = Field(
+        description="The curated method that reads the record, with every parameter."
+    )
+    decision: DecisionRule = Field(description="The rule that judges the method's result.")
+    depends_on: tuple[str, ...] = Field(
+        default=(), description="Node ids whose accepted outcomes this node needs; unique."
+    )
+    attrs: dict[str, AttrValue] = Field(
+        default_factory=dict, description="Free-form scalar metadata."
+    )
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "CalibrationNode":
+        if len(set(self.depends_on)) != len(self.depends_on):
+            raise ValueError("depends_on names each node once")
+        if self.node_id in self.depends_on:
+            raise ValueError("a node does not depend on itself")
+        return self
+
+
+NodeStatus = Literal["accepted", "rejected", "failed"]
+
+
+class NodeOutcome(QdtModel):
+    """What running a node produced: the record and result it made (durable, in the registry), the
+    rule's verdict and the quantities it decided. The lifecycle state Flight Deck renders and never stores."""
+
+    outcome_id: str = Field(
+        pattern=r"^[0-9a-f]{32}$", description="Client-minted UUID4 as 32 lowercase hex digits."
+    )
+    node_id: str = Field(min_length=1, description="The CalibrationNode that ran.")
+    scenario_id: str | None = Field(
+        default=None, description="The SimScenario it ran on; None on a real device."
+    )
+    record_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{32}$",
+        description="MeasurementRecord the experiment produced; None when it failed before recording.",
+    )
+    result_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{32}$",
+        description="AnalysisResult the method produced; None when it failed before analysing.",
+    )
+    status: NodeStatus = Field(
+        description=(
+            "accepted: the rule took the result and `outputs` hold the decided quantities. rejected: the "
+            "result was read but the rule declined it; see `message`. failed: the experiment or the "
+            "method did not complete."
+        )
+    )
+    message: str = Field(default="", description="Human-readable note, e.g. why it was rejected.")
+    outputs: dict[str, float] = Field(
+        default_factory=dict,
+        description="The decided quantities by name, e.g. a virtual-gate matrix's entries; empty unless accepted.",
+    )
+    created_at: AwareDatetime = Field(description="When the decision was made.")
+    attrs: dict[str, AttrValue] = Field(
+        default_factory=dict,
+        description="Free-form scalar metadata, e.g. figures the rule checked.",
+    )
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "NodeOutcome":
+        if self.status == "accepted" and (self.record_id is None or self.result_id is None):
+            raise ValueError("an accepted outcome names its record and result")
+        if self.status != "accepted" and self.outputs:
+            raise ValueError("only an accepted outcome carries outputs")
+        return self
+
+
+class SimResult(QdtModel):
+    """A committed outcome of a node on a scenario, with the truth the model gives for the decided
+    quantities: the fixture CI reproduces (within tolerance) whenever the node, the method or the
+    simulator changes."""
+
+    scenario: SimScenario = Field(description="The scenario the node ran on.")
+    node_id: str = Field(min_length=1, description="The node that ran.")
+    outcome: NodeOutcome = Field(description="What it produced.")
+    estimates: tuple[Estimate, ...] = Field(
+        default=(), description="The method's estimates the rule judged."
+    )
+    truth: dict[str, float] = Field(
+        default_factory=dict,
+        description="The model's values for the decided quantities, by the same names as `outputs`.",
+    )
+    created_at: AwareDatetime = Field(description="When the fixture was made.")

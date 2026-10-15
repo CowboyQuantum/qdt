@@ -20,6 +20,7 @@ qdt-sim = { workspace = true }
 qdt-telemetry = { workspace = true }
 qdt-frameworks = { workspace = true }
 qdt-server = { workspace = true }
+qdt-tuning = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -50,4 +51,4 @@ extend-select = ["I"]
 "bench/probes/**" = ["BLE001", "SIM117", "RUF007", "UP031"]  # one-off probe code: blind excepts isolate API mismatches by design
 
 [tool.ruff.lint.isort]
-known-first-party = ["qdt_schemas", "qdt_lab", "qdt_analysis", "qdt_registry", "qdt_sim", "qdt_telemetry", "qdt_frameworks", "qdt_server"]
+known-first-party = ["qdt_schemas", "qdt_lab", "qdt_analysis", "qdt_registry", "qdt_sim", "qdt_telemetry", "qdt_frameworks", "qdt_server", "qdt_tuning"]

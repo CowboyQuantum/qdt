@@ -4,6 +4,10 @@ The committed fixture `tests/fixtures/stability_24x32.npy` is `stability_fixture
 `default_device(seed=7)`; `scripts/make_sim_fixtures.py` regenerates it.
 """
 
+import dataclasses
+
+import numpy as np
+
 from qdt_schemas.activity import (
     SensedLevel,
     SequencerStage,
@@ -11,6 +15,7 @@ from qdt_schemas.activity import (
     SweepDefinition,
     SymbolBinding,
 )
+from qdt_schemas.modeling import SimScenario
 from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 
@@ -154,3 +159,39 @@ def diamonds(
 def stability_fixture() -> SweepDefinition:
     """The committed-fixture sweep: small, noisy, 3 shots averaged on the device."""
     return stability(24, 32, shots=3, reduce="mean", name="fixture stability 24x32")
+
+
+# --- scenarios as data (Step 6, ADR 0048) -----------------------------------------------------------
+
+
+def model_for(scenario: SimScenario) -> DoubleDotModel:
+    """The model a scenario describes: the default with its scalar overrides. Raises ValueError for a
+    field the model does not have, TypeError for one that is not a scalar."""
+    base = default_model()
+    unknown = set(scenario.model) - {f.name for f in dataclasses.fields(base)}
+    if unknown:
+        raise ValueError(
+            f"scenario {scenario.scenario_id!r} overrides unknown fields {sorted(unknown)}"
+        )
+    for name in scenario.model:
+        if isinstance(getattr(base, name), np.ndarray | tuple):
+            raise TypeError(
+                f"scenario {scenario.scenario_id!r}: {name!r} is not a scalar; not overridable"
+            )
+    return dataclasses.replace(base, **scenario.model) if scenario.model else base
+
+
+def device_for(scenario: SimScenario, stand: StandConfig | None = None) -> SimulatedDevice:
+    """Realize a scenario: `default_device` with the scenario's model, seed and noise."""
+    return default_device(
+        seed=scenario.seed, noise=scenario.noise, stand=stand, model=model_for(scenario)
+    )
+
+
+def lattice_truth(
+    scenario: SimScenario, x_gate: str = "P1", y_gate: str = "P2"
+) -> dict[str, float]:
+    """The charge lattice the scenario's model gives, by the names the `charge-lattice` node outputs
+    (`l_ij`, electrons per volt, [dot, gate])."""
+    lattice = model_for(scenario).charge_lattice(x_gate, y_gate)
+    return {f"l_{i + 1}{j + 1}": float(lattice[i, j]) for i in range(2) for j in range(2)}
