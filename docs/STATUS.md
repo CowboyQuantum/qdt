@@ -4,86 +4,77 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (IN PROGRESS;
-the exit run exists, the step closes after the human's review).
-**Branch:** `step-5/l2-capture-bench` (PR against `main`; the human merges). PRs #25–#39 merged 2026-10-14/15.
-**Last session:** 2026-10-15, session 15 (bench, afternoon). **All three L2 rows pass on hardware through
-the control path** (`bench/test_l2_capture.py`): the human's scope-as-sink decision, the capture path of
-ADR 0047 and both curated fits, on the real stand: QDAC ch01 → combiner DC in, OPX ao1 → combiner pulse in,
-board out → scope ch1 at 1 MΩ, with `qdt-server --stand` owning the QDAC and the scope and the OPX pulse
-train played beside the sweep. L2-1 DC: plane `slope_row` 0.385–0.386 V/V against 1/2.589 (Probe 03),
-r² 0.9999; with the pulse on: unchanged, plateau gain 0.595 against 0.61 from Probe 03's record. L2-3:
-τ 2.0 µs against 1.86 µs by the same fit on Probe 03's record. Every run recorded, overlaid in Flight
-Deck. **Probe 04** (the human's question: how fast can the QDAC be stepped?): the output edge follows
-`set()` by < 4.5 ms (USB serial; steady to ±0.2 ms), settles to 1 % in 3 µs and to 0.1 % in < 1 ms for
-any step to 1 V; **`settle_s = 0.01` direct, `0.05` through the combiner**; the output filter setting
-(DC/MED/HIGH) made no difference to the step on this unit. Bench:
-- QDAC-II (USB serial today; Ethernet also works, ADR 0043), ch01 → combiner, ch02 → scope ch2 (Probe 04);
-- Keithley 2450 and InfiniiVision HD304MSO on self-assigned addresses (mDNS finds the 2450; the scope
-  answers TCP but not ping);
-- OPX1000 with LF-FEMs (the dock adapter needs its 10.20 alias after a reboot: `sudo ifconfig en11 alias
-  10.20.150.250 netmask 255.255.255.0`);
+every row of the ladder has run on hardware; the step closes on the human's word).
+**Branch:** `step-5/opx-conformance-l2-2` (PR against `main`; the human merges). PRs #25–#40 merged 2026-10-14/15.
+**Last session:** 2026-10-15, session 16 (bench). **The OPX1000 passes every conformance row** (source 5/5,
+sense 6/6, sequencer 7/7): registered through its logical-name resolution; the suite's test waveform is now
+0.1 V (the LF-FEM's direct mode is ±0.5 V) and its record grid starts at the trigger (the OPX opens its
+readout window there; pre-trigger samples are a scope's ability, not part of the protocol); a new suite
+test, a second `play` replaces the first. **L2-2 passes** (`bench/test_l2_current_readout.py`): the SMU
+into the scope's 1 MΩ reads −1.9989, −0.9995, +0.9994, +1.9988 µA at ±2 and ±1 V (R = 1.0006 MΩ), with its
+current measure range held at 10 µA; the QDAC into the scope's 50 Ω reads ±1 mA in its HIGH range after a
++73 µA zero. Three QDAC-II findings for QDevil (BENCH.md quirks): the LOW sense range measures nothing on
+this unit (≈ 2 nA for 1 µA and for 1 mA alike), ch02 went dead after Probe 04 and `*RST` did not revive it,
+and together with Probe 04's filter finding every relay-switched output setting looks stuck; also the
+output impedance is 50 Ω (half the setpoint into 50 Ω). Bench:
+- QDAC-II (USB serial), ch01 → combiner, **ch02 dead**, ch03 → scope ch2 (L2-2);
+- Keithley 2450 on the switch (its cable to scope ch3 was moved to the QDAC); HD304MSO answers TCP, not ping;
+- OPX1000 with LF-FEMs (dock alias `sudo ifconfig en11 alias 10.20.150.250 netmask 255.255.255.0`);
 - the combiner board (Probe 03) standing in for the bias tee.
 
 ## Step 5 exit criteria
 | Criterion | State |
 |---|---|
-| conformance suite passes on all four real instruments under `-m hardware` | ✔ OPX1000 7/7, Keithley 2450 5/5 (+2 skips), QDAC-II 3/3, HD304MSO 6/6 (2026-10-14) |
-| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ✔ 2026-10-15: capture sweeps through the server on the real stand, recorded, fitted from the API, overlays replayed to Flight Deck; `bench/test_l2_capture.py` (3 rows) |
-| bench report committed | ✔ `bench/reports/2026-10-15-step5.md` (L2 rows); `2026-10-14-step5.md` (conformance; L1 rows 1–3); Probes 02–04 in their docs and fixtures |
+| conformance suite passes on all four real instruments under `-m hardware` | ✔ OPX1000 18/18 (all three capabilities, 2026-10-15), Keithley 2450 5/5 (+2 skips), QDAC-II 3/3, HD304MSO 6/6 |
+| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ✔ 2026-10-15 (session 15); L2-2 and L2-3 also pass |
+| bench report committed | ✔ `bench/reports/2026-10-15-step5.md`; Probes 02–04 in their docs and fixtures |
 
 ## Done
 - Steps 0–4b DONE. ADR 0001–0047. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037, 0038 and 0047), identity/envelope/`qdt-hdf5-v1`
   (0028), modeling (0033), control (0036; amended additively by 0046).
-- **Drivers (ADR 0041),** all four proven on hardware; OPX input constants measured (ADR 0044).
+- **Drivers (ADR 0041),** all four proven on hardware in every capability; OPX input constants (ADR 0044).
 - **Control path on hardware:** stage sweeps on the OPX (session 11); capture sweeps on the QDAC + scope
   stand (session 15, ADR 0047).
-- **L1 complete (sessions 7–9); L2 complete (session 15):** `bench/test_l1_loopback.py`,
-  `bench/test_l2_capture.py`, `bench/scope_accuracy.py` (the HD3 datasheet formula, shared),
-  `bench/conftest.py` fixtures (the front-panel fixture takes a trigger coupling).
-- **Probes:** 02 (OPX input calibration), 03 (the combiner board), **04 (QDAC settling)**.
+- **L1 complete; L2 complete (L2-1, L2-3 session 15; L2-2 session 16):** `bench/test_l1_loopback.py`,
+  `bench/test_l2_capture.py`, `bench/test_l2_current_readout.py`, `bench/scope_accuracy.py`.
+- **Probes:** 02 (OPX input calibration), 03 (the combiner board), 04 (QDAC settling).
 - **Curated methods:** charge transitions (0029), Coulomb diamonds (0030), plane fit (0045), single
-  exponential (0046); both fits now proven on hardware records.
+  exponential (0046); both fits proven on hardware records.
 - **Bench reports (ADR 0042):** `scripts/bench_report.py`.
-- 352 Python tests (+5 Postgres-parametrized), 4 skipped, 23 hardware-only in `packages/`, 14
+- 353 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
   hardware-only in `bench/`; Flight Deck 71 unit tests and 5 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-5/l2-capture-bench` awaits the human.
+- Nothing uncommitted. PR for `step-5/opx-conformance-l2-2` awaits the human.
 
 ## Known broken / not yet real
-- **The QDAC-II's output filter setting had no effect on the step** (Probe 04; firmware 14-1.70): DC,
-  MED and HIGH all gave a 1.9 µs edge, and MED and HIGH pass a 100 kHz sine alike. The firmware knows the
-  setting (it refuses the sine generator under DC). Verify with the front panel or QDevil before a stand
-  file assumes a low-noise filter on a held gate. The driver never sets the filter.
-- **The command latency bound is poll-limited** (< 4.5 ms, the scope's query round trip); the QDAC's
-  serial query round trip is 16 ms, so an acknowledgement in `set` is not worth it. The Ethernet link
-  may be faster (not measured).
-- **Nothing in a sweep plays a waveform:** L2-3's OPX pulse train is played beside the sweep by the
-  test; the scope's trigger is set on the instrument (BENCH.md records the convention).
-- **A sweep leaves its last level on the QDAC** (ADR 0038 holds levels, never zeroes them); a capture
-  that wants 0 V holds it through `levels`. Whether a sweep should return to a rest level is undecided.
-- **Captures of one point are sequential**, one channel per capture (ADR 0047).
-- **A 3-D capture variable (stepped axis, record, time) has no Flight Deck view.**
-- **Flight Deck offers every method on every record** (`applies_to` is not read); the trace view has no
-  axes or labels and does not draw an analysis output curve beside the trace.
-- **The exponential's edge detector is a heuristic** (ADR 0046); `amplitude` is referenced to the
-  window's start. **The plane fit is ordinary least squares** (ADR 0045).
-- **No hardware `WaveformSense` row for the OPX input** in the conformance suite (ADR 0044).
-- **OPX input offset** −1.7 mV at 0 V in, not applied.
-- **QDAC-II outputs can come up dead** (firmware 14-1.70): `*RST` fixes it; verify one channel first.
-- **QDAC-II current readout** in the HIGH sense range hides a 1 MΩ load; `SENS<n>:RANG LOW` at 0 V.
-- **Link-local addresses move** (2450, scope); `dns-sd -B _scpi-raw._tcp local.` finds the 2450; the
-  scope is found in the ARP table and answers TCP on 5025 but not ping. The HD3 refuses a socket for a
-  few seconds after one closes (retry). Its SCPI is slow: a query round trip is 4.5 ms, a write with
-  `*OPC?` 44 ms; a single-shot left waiting blocks `*OPC?` (send `:STOP` first).
-- **Bench network:** the dock adapter loses its 10.20 alias on reboot (`sudo ifconfig en11 alias ...`).
+- **QDAC-II (firmware 14-1.70), three findings for QDevil:** the output filter setting changes nothing
+  (Probe 04); the LOW current-sense range reads ≈ 2 nA for any current; ch02 is dead (0 V for every
+  setpoint, setpoint reported, `*RST` no cure). The HIGH range works (zero ≈ +73 µA, 2–3 % low); the
+  driver never sets filter or range. Power-cycle the unit when the bench allows.
+- **The QDAC's output impedance is 50 Ω:** a 50 Ω load halves the level; high-impedance loads are fine.
+- **The 2450 autoranges its current measurement to 10 nA at 0 V** and then charges the cable at 10 nA:
+  hold the range (`:SENS:CURR:RANG`) in a stand whose SMU drives a capacitive line. How a sense range is
+  declared is a pending decision (channel map vs. inferred).
+- **The command latency bound is poll-limited** (< 4.5 ms); the Ethernet link is not measured.
+- **Nothing in a sweep plays a waveform:** L2-3's OPX pulse train is played beside the sweep.
+- **A sweep leaves its last level on the QDAC** (ADR 0038); a capture that wants 0 V holds it through `levels`.
+- **Captures of one point are sequential**, one channel per capture (ADR 0047). **A 3-D capture variable
+  has no Flight Deck view.** **Flight Deck offers every method on every record**; the trace view has no
+  axes or labels and no output curve.
+- **The exponential's edge detector is a heuristic** (ADR 0046). **The plane fit is ordinary least
+  squares** (ADR 0045).
+- **OPX input offset** −1.7 mV at 0 V in, not applied. **OPX `drive`:** not supported on the LF-FEM
+  stage. **OPX results:** one frame per result at job end.
+- **QDAC-II outputs can come up dead after a power cycle** (`*RST` fixes that case).
+- **Link-local addresses move**; the scope answers TCP on 5025 but not ping, refuses a socket for a few
+  seconds after one closes, and its SCPI is slow (query 4.5 ms, write with `*OPC?` 44 ms; a waiting
+  single-shot blocks `*OPC?`: send `:STOP` first).
+- **Bench network:** the dock adapter loses its 10.20 alias on reboot.
 - **Serial numbers:** `bench_report.py` does not redact `*IDN?` serials (decision pending).
-- **qm-qua deprecation:** the OPX driver's QUA config carries a deprecated `version` key; `job.halt` is
-  deprecated for `job.cancel`.
+- **qm-qua deprecations:** the QUA config's `version` key; `job.halt` for `job.cancel`.
 - **Today's report** holds many runs, including failed ones; the plugin never rewrites (ADR 0042).
-- **OPX results:** one frame per result at job end; maps fill line by line.
-- **OPX `drive`:** not supported on the LF-FEM stage.
 - Carried over: diamond estimator needs a cold sensor (ADR 0030); zero-clipping in the dot model (ADR
   0020); overlays in one colour; Postgres suite only in CI; `FINISH_LINE.md` TODO (human); Windows pnpm
   via `corepack pnpm`.
@@ -91,15 +82,15 @@ any step to 1 V; **`settle_s = 0.01` direct, `0.05` through the combiner**; the 
 ## Next action
 **Human:**
 1. Merge the PR.
-2. Review the Step 5 exit: the three criteria are met. Say whether Step 5 closes now or after the
-   remaining rows (a hardware `WaveformSource`/`WaveformSense` conformance row for the OPX; L2-2, the
-   current readout into the scope's 1 MΩ, which no test has run).
-3. Verify the QDAC-II output filter on the front panel (Probe 04 finding 1).
+2. Close Step 5 or name what is still missing: every exit criterion is met and every ladder row has run
+   on hardware. A session then marks the step DONE (status, `docs/steps/README.md`, DEVELOPMENT_PLAN
+   §7.2) and opens Step 6's file.
+3. Report the three QDAC-II findings to QDevil; power-cycle the unit; check whether ch02 returns.
 
-**Then (sessions):** close Step 5 (status, step index, DEVELOPMENT_PLAN §7.2 row); the OPX conformance
-rows; L2-2; the Flight Deck time-series view's remainder (axes, `applies_to` filter, output curve);
-Step 6 planning (ADR: a `PlayedWaveform` activity and sub-ms stepping on the sequencer, informed by
-Probe 04).
+**Then (sessions):** Step 6 planning (ADRs: a `PlayedWaveform` activity; sub-ms stepping on the sequencer,
+informed by Probe 04; how a sense range is declared); the Flight Deck time-series view's remainder (axes,
+`applies_to` filter, output curve beside the trace); a Probe on the QDAC's Ethernet latency if Step 6 needs
+the bound tightened.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -117,17 +108,18 @@ Probe 04).
   first part: record traces draw as traces with markers; axes, labels and the method filter remain.)
 - **2026-10-15:** the single exponential is written off the bench (session 14); **the scope is L2-1's
   sink**; **waveform capture is a server feature** the human wants to keep (ADR 0047); the human asked
-  how fast the QDAC can be stepped in an untriggered sweep (Probe 04: the serial latency, not the
-  analog settling, is the wait).
+  how fast the QDAC can be stepped in an untriggered sweep (Probe 04); the human chose to finish the OPX
+  conformance rows and L2-2 before closing Step 5 (session 16); the combiner wiring stays intact
+  throughout, L2-2 and Probe 04 use spare QDAC channels and scope inputs.
 
 ## Decisions pending
-- Whether Step 5 closes now (exit criteria met) or after the OPX conformance rows and L2-2.
-- Whether a sweep should also *play* a waveform at every point (a `PlayedWaveform` activity) or L2-3
-  keeps playing its pulse train beside the sweep.
+- Closing Step 5 (every criterion met) and opening Step 6.
+- Whether a sweep should also *play* a waveform at every point (a `PlayedWaveform` activity).
 - Whether a sweep returns the stepped channels to a rest level at its end.
+- How a sense range is declared (channel map vs. inferred): the 2450's autorange and the QDAC's LOW range
+  both argue for declaring it.
 - A default operating point per device (not in ADR 0038).
 - Whether to fix the dot model's zero-clipping (ADR 0020 amendment).
 - Whether the diamond estimator should survive warm edges.
 - Whether `bench_report.py` should redact `*IDN?` serial fields.
-- How the QDAC-II current-sense range is declared (channel map vs. inferred).
 - When the Flight Deck time-series view's remainder (axes, `applies_to` filter, output curve) is scheduled.

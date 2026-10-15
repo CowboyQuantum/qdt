@@ -105,3 +105,10 @@ recorded in the registry and shown in Flight Deck with its overlays: **the Step 
 0.1 % in < 1 ms; the output filter setting made no difference on this unit. `settle_s = 0.01` direct, `0.05`
 through the combiner. Two bench facts in the tests: a sweep leaves its last level on the QDAC; a trigger at
 the pulse's height is marginal (AC-coupled at 40 %).
+Session 16 (2026-10-15, bench): **the OPX1000 passes the WaveformSource and WaveformSense conformance rows**
+(18/18 with the sequencer); the suite's waveform is 0.1 V and its record grid starts at the trigger (pre-trigger
+samples are a scope's ability, not the protocol's); a new suite test: a second `play` replaces the first.
+**L2-2 passes** (`bench/test_l2_current_readout.py`): the SMU at 1 MΩ (R = 1.0006 MΩ; its current range held
+at 10 µA because autoranging to 10 nA slowed the source), the QDAC at 50 Ω in the HIGH range (1 mA; its LOW
+range measures nothing on this unit; ch02 died and `*RST` did not revive it; the output impedance is 50 Ω).
+Every row of the Step 5 ladder has now run on hardware.
