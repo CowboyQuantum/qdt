@@ -534,9 +534,9 @@ def test_a_coupled_channel_moves_with_its_axis_from_its_held_level():
     )
     sets = [(ch, round(v, 6)) for ch, v in dac.calls]
     assert sets[0] == ("ch01", 0.1)  # the operating point first
+    # at R = 0 the companion's target, 0.1 − 0.5 · 0.0, is the level already applied: no redundant set
     assert sets[1:] == [
         ("ch00", 0.0),
-        ("ch01", 0.1),  # origin 0.1 − 0.5 · 0.0
         ("ch00", 0.1),
         ("ch01", 0.05),
         ("ch00", 0.2),
