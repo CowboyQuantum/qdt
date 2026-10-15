@@ -81,3 +81,10 @@ the `RunManager` (live on the stream), then the method, the rule and `add_outcom
 nodes, starts a tune-up and renders the DAG state (FINISH_LINE). The two-node tune-up completes unattended
 through the API and from the UI on the simulator. Left: a `tuneups` table, parallel branches, resume; the
 third node; click-to-set.
+Session 5 (2026-10-15): **the third node, the root** (ADR 0052): `sensor-operating-point` reads the sensor's
+Coulomb diamonds (`detect_diamonds`, ADR 0030) and parks the sensor gate `flank_offset_v` above the peak nearest
+`near_v`; `charge-lattice` holds that gate through `levels`, bound from the sensor node's `sg_operating_v`.
+`TEMPLATES` take the stand's sensor gate; the simulated stand offers three nodes. On a cold-sensor scenario the
+three-node tune-up completes through the API and from the UI: peak −0.0599 V (model −0.06), period 0.248
+(0.25), then the lattice at SG = −0.04 V and residuals 0.001/−0.003. Left: a `sensor_peak` method for the
+flank (the offset is a parameter today); click-to-set; a bench confirmation.
