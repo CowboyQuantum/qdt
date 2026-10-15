@@ -56,3 +56,11 @@ IN PROGRESS (opened 2026-10-15 on the human's word after Step 5 closed). Session
 Open decisions from Step 5's bench record; nothing built yet. First task: the schema slice's shape
 (`SimScenario`, `SimResult`, `CalibrationNode`, ADR 0033 reserved the names) and the first node, against
 `SimulatedDevice` only (ADR 0007).
+Session 2 (2026-10-15): **the schema slice and the first node** (ADR 0048). `SimScenario`, `DecisionRule`,
+`CalibrationNode`, `NodeOutcome`, `SimResult` added beside the frozen three; `qdt-tuning` (pure: nodes as data,
+curated decision rules with `RULES`/`apply`); `qdt-sim` realizes a scenario (`device_for`, `lattice_truth`);
+`qdt_server.tuning.run_node` runs one node through the user's run path and applies the rule. The
+`charge-lattice` node (stability diagram → `detect_transitions` → `virtual_gates`) is accepted on the default
+scenario: lattice within 0.6 % (diagonal) and 2.3 % (cross terms) of the model, virtual-gate matrix within
+0.007; two `SimResult` fixtures committed and reproduced in CI. Next: the DAG runner over `depends_on`, a second
+node that consumes the first's outputs, outcomes persisted, Flight Deck's DAG state display.
