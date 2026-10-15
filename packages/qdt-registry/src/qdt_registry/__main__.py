@@ -71,9 +71,13 @@ def cli() -> None:
     f.add_argument("--definition", help="definition name")
     f.add_argument("--remote", action="store_true", help="ask the server, not the cache")
     sub.add_parser("sync", help="upload unsynced rows and payloads to the server")
-    s = sub.add_parser("serve", help="stream one record's payload (or a result's output) for Flight Deck")
+    s = sub.add_parser(
+        "serve", help="stream one record's payload (or a result's output) for Flight Deck"
+    )
     s.add_argument("record_id", nargs="?")
-    s.add_argument("--output", metavar="RESULT_ID", help="serve this result's output Dataset instead")
+    s.add_argument(
+        "--output", metavar="RESULT_ID", help="serve this result's output Dataset instead"
+    )
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument(

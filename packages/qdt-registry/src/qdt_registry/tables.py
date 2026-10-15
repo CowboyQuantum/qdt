@@ -23,10 +23,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-DDL_VERSION = 2
+DDL_VERSION = 3
 """Bumps with every table change; a change is an ADR plus an additive migration, never a DROP."""
 
-ADDITIVE_UPGRADES: dict[int, str] = {1: "adds analysis_results (Step 4, ADR 0029)"}
+ADDITIVE_UPGRADES: dict[int, str] = {
+    1: "adds analysis_results (Step 4, ADR 0029)",
+    2: "adds tuning_outcomes (Step 6, ADR 0050)",
+}
 """From-version → what the next version adds, for upgrades that only create new tables. A client may
 upgrade a server across these with `create_all`; any other change needs a real migration (ADR 0026)."""
 
@@ -110,6 +113,26 @@ analysis_results = Table(
     Index("ix_analysis_results_record", "record_id", "created_at"),
     Index("ix_analysis_results_method", "method_sha256"),
     comment="AnalysisResult rows: estimates and overlays with dual provenance (Step 4, ADR 0029).",
+)
+
+tuning_outcomes = Table(
+    "tuning_outcomes",
+    metadata,
+    Column("outcome_id", String(32), primary_key=True),
+    Column("tuneup_id", String(32), nullable=True),
+    Column("node_id", String(255), nullable=False),
+    Column("record_id", String(32), ForeignKey("records.record_id"), nullable=True),
+    Column("result_id", String(32), ForeignKey("analysis_results.result_id"), nullable=True),
+    Column("status", String(16), nullable=False),
+    Column("created_at", Timestamp, nullable=False),
+    Column("schema_version", Integer, nullable=False),
+    Column("body", Body, nullable=False, comment="NodeOutcome, canonical JSON."),
+    CheckConstraint(
+        "status in ('accepted', 'rejected', 'failed')", name="ck_tuning_outcomes_status"
+    ),
+    Index("ix_tuning_outcomes_tuneup", "tuneup_id", "created_at"),
+    Index("ix_tuning_outcomes_node", "node_id", "created_at"),
+    comment="NodeOutcome rows: a calibration node's verdict and decided quantities, pointing at its record and result (Step 6, ADR 0050).",
 )
 
 cache_metadata = MetaData()

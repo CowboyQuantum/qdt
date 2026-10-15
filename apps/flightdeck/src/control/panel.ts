@@ -2,7 +2,7 @@
 // curated analysis, put overlays and outputs on the stream. Talks to qdt-server through ApiClient only.
 // The view itself (what is drawn) stays a function of the Dataset stream (rule 8).
 import { ApiClient, ApiError } from "../api/client";
-import type { AnalysisResult, ChannelMap, MeasurementRecord, MethodSpec, Run, SweepDefinition } from "../schema/api";
+import type { AnalysisResult, CalibrationNode, ChannelMap, MeasurementRecord, MethodSpec, Run, SweepDefinition, TuneUp } from "../schema/api";
 import { check, defaults, overrides, parse, type ParamValues } from "./methods";
 import {
   buildBindings,
@@ -35,6 +35,19 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
 
 const short = (id: string) => id.slice(0, 8);
 const TERMINAL = new Set(["completed", "aborted", "failed"]);
+const TUNEUP_TERMINAL = new Set(["completed", "stopped", "failed"]);
+
+/** One line per node of a tune-up: its status so far, its message, and an accepted node's outputs
+ * (ADR 0050). Pure, so the DAG state the finish line asks for is testable without a DOM. */
+export function tuneupLines(t: TuneUp): { node: string; status: string; message: string; outputs: string }[] {
+  const byNode = new Map((t.outcomes ?? []).map((o) => [o.node_id, o]));
+  return t.nodes.map((n) => {
+    const o = byNode.get(n.node_id);
+    const status = o ? o.status : t.current_node === n.node_id ? "running" : t.state === "running" || t.state === "queued" ? "waiting" : "not run";
+    const outputs = o && o.status === "accepted" ? Object.entries(o.outputs ?? {}).map(([k, v]) => `${k}=${Number(v).toPrecision(4)}`).join(" ") : "";
+    return { node: n.node_id, status, message: o?.message ?? "", outputs };
+  });
+}
 
 export interface ControlHost {
   /** Report a message (an error or a status) to the user. */
@@ -51,6 +64,8 @@ export class ControlPanel {
   /** The operating point as typed (ADR 0038): DC levels held for the whole sweep. */
   private levelRows: LevelRow[] = [];
   private methods: MethodSpec[] = [];
+  private nodes: CalibrationNode[] = [];
+  private tuneup: TuneUp | null = null;
   private records: MeasurementRecord[] = [];
   private selectedRecord: MeasurementRecord | null = null;
   private lastResult: AnalysisResult | null = null;
@@ -69,6 +84,8 @@ export class ControlPanel {
     sequenceErrors: HTMLUListElement;
     levels: HTMLDivElement;
     levelErrors: HTMLUListElement;
+    nodes: HTMLDivElement;
+    tuneupState: HTMLDivElement;
     capture: HTMLFieldSetElement;
     /** Parts of the form a capture does not use (the inner axis, the sensor, the shots). */
     sweepOnly: HTMLElement[];
@@ -93,6 +110,8 @@ export class ControlPanel {
       sequenceErrors: h("ul", { id: "sequence-errors" }),
       levels: h("div", { id: "levels" }),
       levelErrors: h("ul", { id: "level-errors" }),
+      nodes: h("div", { id: "nodes" }),
+      tuneupState: h("div", { id: "tuneup-state" }),
       capture: h("fieldset", { id: "capture" }),
       sweepOnly: [],
     };
@@ -101,11 +120,13 @@ export class ControlPanel {
 
   async init(): Promise<void> {
     try {
-      const [stand, methods] = await Promise.all([this.api.stand(), this.api.methods()]);
+      const [stand, methods, nodes] = await Promise.all([this.api.stand(), this.api.methods(), this.api.nodes()]);
       this.stand = standChannels(stand);
       this.channels = [...stand.channels];
       this.methods = methods;
+      this.nodes = nodes;
       this.fillSelects();
+      this.renderNodes();
       await this.refreshRecords();
     } catch (e) {
       this.host.say(`server: ${describe(e)}`, true);
@@ -185,6 +206,19 @@ export class ControlPanel {
     );
     this.els.method.addEventListener("change", () => this.fillParams());
 
+    const tuneup = h(
+      "div",
+      { id: "tuneup" },
+      h("h3", { text: "Tune-up" }),
+      h("div", { className: "hint", text: "calibration nodes this stand can run (ADR 0048–0050); the server orders them by their dependencies and stops at the first that is not accepted" }),
+      this.els.nodes,
+      h("div", { className: "buttons" },
+        h("button", { type: "button", id: "run-tuneup", text: "run tune-up", onclick: () => void this.startTuneUp() }),
+        h("button", { type: "button", id: "stop-tuneup", text: "stop", onclick: () => void this.stopTuneUp() }),
+      ),
+      this.els.tuneupState,
+    );
+
     this.root.append(
       f,
       h("h3", { text: "Runs" }),
@@ -192,6 +226,86 @@ export class ControlPanel {
       h("h3", {}, "Records ", h("button", { type: "button", text: "refresh", onclick: () => void this.refreshRecords() })),
       this.els.recordsList,
       analysis,
+      tuneup,
+    );
+  }
+
+  // --- tune-ups (ADR 0050): nodes as data, run in order on the server, the DAG state rendered -------
+
+  private renderNodes(): void {
+    this.els.nodes.replaceChildren(
+      ...this.nodes.map((n) =>
+        h(
+          "label",
+          { className: "node" },
+          h("input", { type: "checkbox", name: "node", value: n.node_id, checked: true }),
+          h("span", { className: "node-id", text: n.node_id }),
+          h("span", { className: "node-deps", text: n.depends_on?.length ? ` ← ${n.depends_on.join(", ")}` : "" }),
+          h("span", { className: "hint", text: ` ${n.description ?? ""}` }),
+        ),
+      ),
+    );
+  }
+
+  private selectedNodeIds(): string[] {
+    return [...this.els.nodes.querySelectorAll<HTMLInputElement>("input[name=node]:checked")].map((i) => i.value);
+  }
+
+  private async startTuneUp(): Promise<void> {
+    const node_ids = this.selectedNodeIds();
+    if (!node_ids.length) return this.host.say("pick at least one node", true);
+    try {
+      const options = JSON.parse(this.value("options") || "{}") as Record<string, string | number | boolean>;
+      this.tuneup = await this.api.startTuneUp({ node_ids: node_ids as [string, ...string[]], options });
+      this.renderTuneUp();
+      this.host.say(`tune-up ${short(this.tuneup.tuneup_id)} queued`);
+      void this.followTuneUp(this.tuneup.tuneup_id);
+    } catch (e) {
+      this.host.say(describe(e), true);
+    }
+  }
+
+  private async stopTuneUp(): Promise<void> {
+    if (!this.tuneup || TUNEUP_TERMINAL.has(this.tuneup.state)) return this.host.say("no tune-up running", true);
+    try {
+      this.tuneup = await this.api.stopTuneUp(this.tuneup.tuneup_id);
+      this.renderTuneUp();
+      this.host.say(`tune-up ${short(this.tuneup.tuneup_id)} stopping after the current node`);
+    } catch (e) {
+      this.host.say(describe(e), true);
+    }
+  }
+
+  private async followTuneUp(tuneupId: string): Promise<void> {
+    while (true) {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        this.tuneup = await this.api.tuneup(tuneupId);
+      } catch (e) {
+        this.host.say(describe(e), true);
+        return;
+      }
+      this.renderTuneUp();
+      if (TUNEUP_TERMINAL.has(this.tuneup.state)) {
+        this.host.say(`tune-up ${short(tuneupId)} ${this.tuneup.state}${this.tuneup.message ? `: ${this.tuneup.message}` : ""}`, this.tuneup.state === "failed");
+        await this.refreshRecords();
+        return;
+      }
+    }
+  }
+
+  private renderTuneUp(): void {
+    const t = this.tuneup;
+    if (!t) return this.els.tuneupState.replaceChildren();
+    this.els.tuneupState.replaceChildren(
+      h("div", { className: "tuneup-head", text: `${short(t.tuneup_id)} ${t.name} · ${t.state}${t.message ? ` · ${t.message}` : ""}` }),
+      h(
+        "ol",
+        { className: "dag" },
+        ...tuneupLines(t).map((l) =>
+          h("li", { className: `node-${l.status}` }, h("b", { text: l.node }), ` · ${l.status}`, l.message ? ` · ${l.message}` : "", l.outputs ? h("div", { className: "outputs", text: l.outputs }) : ""),
+        ),
+      ),
     );
   }
 

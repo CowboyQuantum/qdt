@@ -1441,6 +1441,152 @@
       "title": "MeasurementRecord",
       "type": "object"
     },
+    "NodeOutcome": {
+      "additionalProperties": false,
+      "description": "What running a node produced: the record and result it made (durable, in the registry), the\nrule's verdict and the quantities it decided. The lifecycle state Flight Deck renders and never stores.",
+      "properties": {
+        "attrs": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Free-form scalar metadata, e.g. figures the rule checked.",
+          "title": "Attrs",
+          "type": "object"
+        },
+        "created_at": {
+          "description": "When the decision was made.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "description": "Human-readable note, e.g. why it was rejected.",
+          "title": "Message",
+          "type": "string"
+        },
+        "node_id": {
+          "description": "The CalibrationNode that ran.",
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "outcome_id": {
+          "description": "Client-minted UUID4 as 32 lowercase hex digits.",
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Outcome Id",
+          "type": "string"
+        },
+        "outputs": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "The decided quantities by name, e.g. a virtual-gate matrix's entries; empty unless accepted.",
+          "title": "Outputs",
+          "type": "object"
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MeasurementRecord the experiment produced; None when it failed before recording.",
+          "title": "Record Id"
+        },
+        "result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AnalysisResult the method produced; None when it failed before analysing.",
+          "title": "Result Id"
+        },
+        "scenario_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The SimScenario it ran on; None on a real device.",
+          "title": "Scenario Id"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "status": {
+          "description": "accepted: the rule took the result and `outputs` hold the decided quantities. rejected: the result was read but the rule declined it; see `message`. failed: the experiment or the method did not complete.",
+          "enum": [
+            "accepted",
+            "rejected",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tuneup_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The TuneUp this outcome belongs to; None when the node ran on its own (ADR 0050).",
+          "title": "Tuneup Id"
+        }
+      },
+      "required": [
+        "schema_version",
+        "outcome_id",
+        "node_id",
+        "tuneup_id",
+        "scenario_id",
+        "record_id",
+        "result_id",
+        "status",
+        "message",
+        "outputs",
+        "created_at",
+        "attrs"
+      ],
+      "title": "NodeOutcome",
+      "type": "object"
+    },
     "ParameterBinding": {
       "additionalProperties": false,
       "description": "How one integer parameter of an emitted or hand-written program is computed at run time.",

@@ -11,6 +11,7 @@ qdt_tuning/
   nodes.py      # CalibrationNode constructors: the experiment in logical channel names, the method, the rule, the inputs
   decisions.py  # RULES: curated decision rules, name → (version, callable); apply(rule, result) → Decision
   bind.py       # bind(node, outcomes): fill the node's `inputs` paths from upstream accepted outputs (ADR 0049)
+  dag.py        # order(nodes): topological sort over depends_on, stable (ADR 0050); nodes.TEMPLATES: what a server offers
 ```
 
 ## Rules

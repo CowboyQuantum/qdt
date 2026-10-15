@@ -7,7 +7,8 @@ version (the `FitModel` a result will carry), the parameters a form offers, the 
 to and the estimates it promises. Users run methods; they do not author them (ADR 0031).
 
 Both are rendered by the UI and never stored in it (`docs/FINISH_LINE.md`). Frozen at schema_version 1
-by ADR 0036.
+by ADR 0036; `TuneUp` (ADR 0050) is added beside them: the lifecycle of a tune-up over calibration
+nodes, the DAG state the finish line asks the UI to render.
 """
 
 from typing import Literal
@@ -16,9 +17,10 @@ from pydantic import AwareDatetime, Field, model_validator
 
 from ._base import QdtModel
 from .data import AttrValue
-from .modeling import FitModel
+from .modeling import CalibrationNode, FitModel, NodeOutcome
 
 RunState = Literal["queued", "running", "completed", "aborted", "failed"]
+TuneUpState = Literal["queued", "running", "completed", "stopped", "failed"]
 ParameterKind = Literal["float", "int", "str", "bool"]
 _KINDS: dict[str, type | tuple[type, ...]] = {
     "float": (int, float),
@@ -157,4 +159,74 @@ class Run(QdtModel):
             raise ValueError(f"a {self.state} run has no finished_at")
         if self.state == "queued" and self.started_at is not None:
             raise ValueError("a queued run has no started_at")
+        return self
+
+
+class TuneUp(QdtModel):
+    """The lifecycle of one tune-up on the server (ADR 0050): its nodes in the order they run, the
+    outcomes so far, and where it stands. Rendered by Flight Deck (FINISH_LINE's DAG state), kept in
+    the server's memory like `Run`; the outcomes it produced are durable in the registry."""
+
+    tuneup_id: str = Field(
+        pattern=r"^[0-9a-f]{32}$", description="Server-minted UUID4 as 32 lowercase hex digits."
+    )
+    name: str = Field(min_length=1, description="Human-readable name, e.g. the node ids joined.")
+    nodes: tuple[CalibrationNode, ...] = Field(
+        min_length=1,
+        description="The nodes, in topological order: every dependency before its dependent.",
+    )
+    stand_id: str = Field(min_length=1, description="Stand it runs on.")
+    device_id: str = Field(min_length=1, description="Device it runs against.")
+    scenario_id: str | None = Field(
+        default=None, description="The SimScenario the simulated backends were built from, if any."
+    )
+    state: TuneUpState = Field(
+        description=(
+            "queued → running → completed (every node accepted) | stopped (a node was rejected or "
+            "failed, or a stop was requested; see `message`) | failed (the runner itself failed)."
+        )
+    )
+    outcomes: tuple[NodeOutcome, ...] = Field(
+        default=(),
+        description="The nodes' outcomes so far, in run order; the last one ends a stopped tune-up.",
+    )
+    current_node: str | None = Field(
+        default=None, description="The node running now; None unless `state` is running."
+    )
+    message: str = Field(default="", description="Why it stopped or failed; empty otherwise.")
+    created_at: AwareDatetime = Field(description="When the tune-up was accepted.")
+    started_at: AwareDatetime | None = Field(
+        default=None, description="When its first node started."
+    )
+    finished_at: AwareDatetime | None = Field(default=None, description="When it left `running`.")
+    attrs: dict[str, AttrValue] = Field(
+        default_factory=dict, description="Free-form scalar metadata, e.g. the run options."
+    )
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "TuneUp":
+        ids = [n.node_id for n in self.nodes]
+        if len(set(ids)) != len(ids):
+            raise ValueError("node ids must be unique")
+        seen: set[str] = set()
+        for n in self.nodes:
+            missing = set(n.depends_on) - seen
+            if missing:
+                raise ValueError(f"node {n.node_id!r} depends on {sorted(missing)}, not before it")
+            seen.add(n.node_id)
+        if any(o.node_id not in seen for o in self.outcomes):
+            raise ValueError("an outcome names a node that is not in the tune-up")
+        if self.state in ("failed", "stopped") and not self.message:
+            raise ValueError(f"a {self.state} tune-up says why")
+        if self.state in ("queued", "running") and self.finished_at is not None:
+            raise ValueError(f"a {self.state} tune-up has no finished_at")
+        if self.state == "queued" and (self.started_at is not None or self.outcomes):
+            raise ValueError("a queued tune-up has not started")
+        if self.state == "completed" and (
+            len(self.outcomes) != len(self.nodes)
+            or any(o.status != "accepted" for o in self.outcomes)
+        ):
+            raise ValueError("a completed tune-up has every node accepted")
+        if self.current_node is not None and self.state != "running":
+            raise ValueError("only a running tune-up has a current node")
         return self

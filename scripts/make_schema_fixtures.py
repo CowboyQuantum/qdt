@@ -14,7 +14,7 @@ from qdt_schemas.data import Annotation
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import PERSISTED, current_version
-from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel
+from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel, NodeOutcome
 from qdt_sim.scenarios import DEVICE_ID, default_stand, stability
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-schemas/tests/fixtures"
@@ -59,6 +59,19 @@ def examples() -> dict[str, object]:
         "Annotation": annotation,
         "DeviceRecord": DeviceRecord(
             device_id=DEVICE_ID, kind="double_dot", simulated=True, registered_at=T0
+        ),
+        "NodeOutcome": NodeOutcome(
+            outcome_id="0" * 31 + "3",
+            node_id="charge-lattice",
+            tuneup_id="0" * 31 + "4",
+            scenario_id="default-occupied-window",
+            record_id="0" * 31 + "1",
+            result_id="0" * 31 + "2",
+            status="accepted",
+            message="lattice condition 1.56, cross ratios 0.214 and 0.223",
+            outputs={"l_11": 74.45, "c_21": -0.2225},
+            created_at=T0,
+            attrs={"method": "qdt_analysis.transitions.detect_transitions"},
         ),
         "MeasurementRecord": MeasurementRecord(
             record_id="0" * 31 + "1",

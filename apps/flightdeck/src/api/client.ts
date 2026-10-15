@@ -3,17 +3,21 @@
 // Dataset stream (rule 8): it never holds an instrument or a registry.
 import type {
   AnalysisResult,
+  CalibrationNode,
   DeviceRecord,
   ExecutionPlan,
   MeasurementRecord,
   MethodRequest,
   MethodSpec,
+  NodeOutcome,
   ReplayRequest,
   Run,
   RunRequest,
   StandConfig,
   StreamInfo,
   SweepDefinition,
+  TuneUp,
+  TuneUpRequest,
 } from "../schema/api";
 
 export class ApiError extends Error {
@@ -107,6 +111,26 @@ export class ApiClient {
   }
   replay(request: ReplayRequest): Promise<StreamInfo> {
     return this.call("POST", "/stream/replay", request);
+  }
+  /** The calibration nodes this server offers, built for its stand's sequencer (ADR 0050). */
+  nodes(): Promise<CalibrationNode[]> {
+    return this.call("GET", "/nodes");
+  }
+  startTuneUp(request: TuneUpRequest): Promise<TuneUp> {
+    return this.call("POST", "/tuneups", request);
+  }
+  tuneups(): Promise<TuneUp[]> {
+    return this.call("GET", "/tuneups");
+  }
+  tuneup(tuneupId: string): Promise<TuneUp> {
+    return this.call("GET", `/tuneups/${encodeURIComponent(tuneupId)}`);
+  }
+  /** Stops between nodes: the node running now finishes and is judged; poll `tuneup`. */
+  stopTuneUp(tuneupId: string): Promise<TuneUp> {
+    return this.call("POST", `/tuneups/${encodeURIComponent(tuneupId)}/stop`);
+  }
+  outcomes(tuneupId: string): Promise<NodeOutcome[]> {
+    return this.call("GET", `/outcomes?tuneup_id=${encodeURIComponent(tuneupId)}`);
   }
 }
 

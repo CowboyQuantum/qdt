@@ -22,17 +22,18 @@ from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
 from qdt_lab.stream import PayloadSource, StreamServer
 from qdt_registry import Registry
 from qdt_schemas.activity import ExecutionPlan, SweepDefinition
-from qdt_schemas.control import MethodSpec, Run
+from qdt_schemas.control import MethodSpec, Run, TuneUp
 from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
-from qdt_schemas.modeling import AnalysisResult
+from qdt_schemas.modeling import AnalysisResult, CalibrationNode, NodeOutcome, SimScenario
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_sim.dot import DoubleDotModel
 from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
 
 from . import catalogue
 from .runs import BackendFactory, RunManager
+from .tuning import TuneUpManager
 
 MODEL_OPTIONS = {
     f.name for f in dataclasses.fields(DoubleDotModel) if f.type in ("float", "int", float, int)
@@ -158,6 +159,28 @@ class ReplayRequest(BaseModel):
     )
 
 
+class TuneUpRequest(BaseModel):
+    """Start a tune-up (ADR 0050): which node templates (GET /nodes), in any order, on which scenario."""
+
+    node_ids: list[str] = Field(
+        min_length=1,
+        description="Node ids from GET /nodes; the server orders them by their dependencies.",
+    )
+    options: dict[str, AttrValue] = Field(
+        default_factory=dict, description="Run options for every node's sweep, as in RunRequest."
+    )
+    scenario: SimScenario | None = Field(
+        default=None,
+        description=(
+            "On the simulated stand: the scenario the backends are built from (seed, noise, model "
+            "overrides become run options) and the outcomes are tagged with; ignored by a real stand."
+        ),
+    )
+    name: str | None = Field(
+        default=None, description="Display name; default: the node ids joined."
+    )
+
+
 class StreamInfo(BaseModel):
     """Where Flight Deck connects for data."""
 
@@ -197,6 +220,7 @@ def create_app(settings: Settings) -> FastAPI:
                 stream,
                 settings.root / "outbox",
             )
+            app.state.tuneups = TuneUpManager(app.state.runs)
             yield
 
     # one schema per model (no -Input/-Output pairs): the UI's generated types mirror qdt-schemas 1:1
@@ -213,6 +237,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     def runs(request: Request) -> RunManager:
         return request.app.state.runs
+
+    def tuneups(request: Request) -> TuneUpManager:
+        return request.app.state.tuneups
 
     @app.get("/stand", response_model=StandConfig)
     def get_stand(request: Request) -> StandConfig:
@@ -350,6 +377,59 @@ def create_app(settings: Settings) -> FastAPI:
         except ValueError as e:  # already announced on this stream
             raise HTTPException(409, str(e)) from None
         return StreamInfo(url=stream.url)
+
+    # --- tune-ups (Step 6, ADR 0050) -----------------------------------------------------------
+
+    @app.get("/nodes", response_model=list[CalibrationNode])
+    def list_nodes(request: Request) -> list[CalibrationNode]:
+        """The calibration nodes this server can run: every template, built for the stand's sequencer."""
+        return tuneups(request).templates()
+
+    @app.post("/tuneups", response_model=TuneUp, status_code=202)
+    async def start_tuneup(body: TuneUpRequest, request: Request) -> TuneUp:
+        try:
+            nodes = tuneups(request).nodes_for(body.node_ids)
+            return await tuneups(request).start(
+                nodes, body.options, scenario=body.scenario, name=body.name
+            )
+        except (ValueError, KeyError) as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.get("/tuneups", response_model=list[TuneUp])
+    def list_tuneups(request: Request) -> list[TuneUp]:
+        return list(tuneups(request).tuneups.values())
+
+    @app.get("/tuneups/{tuneup_id}", response_model=TuneUp)
+    def get_tuneup(tuneup_id: str, request: Request) -> TuneUp:
+        try:
+            return tuneups(request).tuneups[tuneup_id]
+        except KeyError:
+            raise HTTPException(404, f"no tune-up {tuneup_id!r}") from None
+
+    @app.post("/tuneups/{tuneup_id}/stop", response_model=TuneUp)
+    def stop_tuneup(tuneup_id: str, request: Request) -> TuneUp:
+        try:
+            return tuneups(request).stop(tuneup_id)
+        except KeyError:
+            raise HTTPException(404, f"no tune-up {tuneup_id!r}") from None
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from None
+
+    @app.get("/outcomes", response_model=list[NodeOutcome])
+    def list_outcomes(
+        request: Request,
+        tuneup_id: str | None = None,
+        node_id: str | None = None,
+        status: str | None = None,
+    ) -> list[NodeOutcome]:
+        return registry(request).outcomes(tuneup_id=tuneup_id, node_id=node_id, status=status)
+
+    @app.get("/outcomes/{outcome_id}", response_model=NodeOutcome)
+    def get_outcome(outcome_id: str, request: Request) -> NodeOutcome:
+        try:
+            return registry(request).outcome(outcome_id)
+        except KeyError:
+            raise HTTPException(404, f"no outcome {outcome_id!r}") from None
 
     # last, so every API route matches first: the UI is static files on the same origin, nothing more
     if settings.ui is not None:

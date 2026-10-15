@@ -39,7 +39,9 @@ def test_output_is_written_once_read_back_and_synced(tmp_path, server, device, r
     report = reg.sync()
     assert report.analysis_results == 1
     assert report.payload_bytes == record.payload.size_bytes + stored.output.size_bytes
-    assert (store / stored.output.path).read_bytes() == (reg.store / stored.output.path).read_bytes()
+    assert (store / stored.output.path).read_bytes() == (
+        reg.store / stored.output.path
+    ).read_bytes()
     assert reg.results(record_id=record.record_id, remote=True) == [stored]
     assert reg.result(stored.result_id, remote=True) == stored
     assert reg.sync().payload_bytes == 0

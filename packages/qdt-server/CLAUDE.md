@@ -10,16 +10,19 @@ qdt_server/
   app.py        # create_app(settings) → FastAPI; lifespan starts the stream server; routes
   runs.py       # RunManager: queue → compile → execute on a backend → stream → record → ingest; abort; `Run` objects
   catalogue.py  # METHODS: MethodSpec per curated method + the callable; run_method()
+  tuning.py     # run_node / run_tuneup (direct); TuneUpManager: tune-ups through the RunManager, TuneUp lifecycle, outcomes to the registry (ADR 0048–0050)
   __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port --ui <dist>]
 ```
 
 ## Rules
 - Every request and response body is a schema object (`SweepDefinition`, `ExecutionPlan`, `Run`,
-  `MeasurementRecord`, `MethodSpec`, `AnalysisResult`) or a list of them. No ad-hoc JSON shapes: the
+  `MeasurementRecord`, `MethodSpec`, `AnalysisResult`, `CalibrationNode`, `TuneUp`, `NodeOutcome`) or a
+  list of them. No ad-hoc JSON shapes: the
   OpenAPI document is generated from them and the UI's client is generated from that (ADR 0034).
 - The server never defines schema objects (that is `qdt-schemas`) and never computes an analysis itself
   (that is `qdt-analysis`): it compiles, executes, stores, serves.
-- Runs live in memory; records are the durable thing. A server restart forgets runs, never records.
+- Runs and tune-ups live in memory; records, results and node outcomes are the durable things. A server
+  restart forgets runs and tune-ups, never what they produced.
 - Step 4b wires the `simulated` backend only. Real drivers (Step 5) enter through `build_backends` with
   their factories; the API does not change. The simulated stand is `qdt_sim`'s double dot plus a
   simulated scope (`scope`, channel `scope1`, ADR 0047) whose record is a droop set by the run options

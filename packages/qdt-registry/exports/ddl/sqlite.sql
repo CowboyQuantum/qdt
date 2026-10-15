@@ -1,4 +1,4 @@
--- qdt registry DDL, ddl_version 2, dialect sqlite. Generated; do not edit.
+-- qdt registry DDL, ddl_version 3, dialect sqlite. Generated; do not edit.
 
 CREATE TABLE devices (
 	device_id VARCHAR(255) NOT NULL, 
@@ -79,3 +79,23 @@ CREATE TABLE analysis_results (
 CREATE INDEX ix_analysis_results_method ON analysis_results (method_sha256);
 
 CREATE INDEX ix_analysis_results_record ON analysis_results (record_id, created_at);
+
+CREATE TABLE tuning_outcomes (
+	outcome_id VARCHAR(32) NOT NULL, 
+	tuneup_id VARCHAR(32), 
+	node_id VARCHAR(255) NOT NULL, 
+	record_id VARCHAR(32), 
+	result_id VARCHAR(32), 
+	status VARCHAR(16) NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	schema_version INTEGER NOT NULL, 
+	body JSON NOT NULL, 
+	PRIMARY KEY (outcome_id), 
+	CONSTRAINT ck_tuning_outcomes_status CHECK (status in ('accepted', 'rejected', 'failed')), 
+	FOREIGN KEY(record_id) REFERENCES records (record_id), 
+	FOREIGN KEY(result_id) REFERENCES analysis_results (result_id)
+);
+
+CREATE INDEX ix_tuning_outcomes_node ON tuning_outcomes (node_id, created_at);
+
+CREATE INDEX ix_tuning_outcomes_tuneup ON tuning_outcomes (tuneup_id, created_at);

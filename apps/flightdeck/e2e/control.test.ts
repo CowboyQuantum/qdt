@@ -227,3 +227,26 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
   );
   await page.close();
 });
+
+it("runs a two-node tune-up from the UI and shows the DAG state with both nodes accepted", async () => {
+  // ADR 0050: the nodes come from GET /nodes, the tune-up runs on the server one sweep at a time (each
+  // visible on the stream), and the panel renders the TuneUp as it progresses
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page.on("pageerror", (e) => console.error("page error:", e));
+  await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
+  await page.waitForFunction(() => document.querySelectorAll("#nodes input[name=node]").length === 2);
+  expect(await page.locator("#nodes .node-id").allTextContents()).toEqual(["charge-lattice", "virtual-lattice"]);
+  await page.fill("#sweep input[name=options]", '{"seed": 0, "noise": false}');
+  await page.click("#run-tuneup");
+  await page.waitForFunction(() => /queued|running/.test(document.querySelector("#tuneup-state")?.textContent ?? ""));
+  await page.waitForFunction(() => /· completed/.test(document.querySelector("#tuneup-state .tuneup-head")?.textContent ?? ""), null, { timeout: 120_000 });
+  const lines = await page.locator("#tuneup-state .dag li").allTextContents();
+  expect(lines).toHaveLength(2);
+  expect(lines[0]).toMatch(/charge-lattice · accepted/);
+  expect(lines[0]).toMatch(/c_21=/);
+  expect(lines[1]).toMatch(/virtual-lattice · accepted/);
+  expect(lines[1]).toMatch(/residual_a=/);
+  // both sweeps were runs and records like any other
+  await page.waitForFunction(() => (document.querySelector("#records")?.textContent ?? "").includes("virtual-gate lattice"));
+  await page.close();
+});

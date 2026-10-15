@@ -6,6 +6,7 @@
     reg.find(device_id="dev", definition_sha256=h)    # the Step 3 exit query, offline
     reg.add_result(result, output)                    # an AnalysisResult (+ its output payload, ADR 0031)
     reg.results(record_id=...); reg.output(result_id) # ... and back
+    reg.add_outcome(outcome); reg.outcomes(tuneup_id=...)  # a calibration node's verdict (ADR 0050)
     reg.sync()                                        # needs remote_dsn + remote_store (or the env vars)
 
 Every write is insert-if-absent keyed by a client-minted id or a content hash, so a sync can be retried
@@ -27,7 +28,7 @@ from qdt_schemas import QdtModel
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import load
-from qdt_schemas.modeling import AnalysisResult
+from qdt_schemas.modeling import AnalysisResult, NodeOutcome
 from qdt_schemas.payload_hdf5 import PAYLOAD_TYPE, Payload, read_payload, write_payload
 
 from .tables import (
@@ -41,6 +42,7 @@ from .tables import (
     records,
     registry_meta,
     sync_state,
+    tuning_outcomes,
 )
 
 DSN_ENV = "QDT_REGISTRY_DSN"
@@ -121,6 +123,7 @@ class SyncReport:
     records: int
     payload_bytes: int
     analysis_results: int = 0
+    tuning_outcomes: int = 0
 
 
 class Registry:
@@ -236,7 +239,9 @@ class Registry:
         elif result.output is not None:
             target = self.store / result.output.path
             if not target.exists() or file_sha256(target) != result.output.sha256:
-                raise ValueError(f"output payload {result.output.path!r} is not in this client's store")
+                raise ValueError(
+                    f"output payload {result.output.path!r} is not in this client's store"
+                )
         with self._cache.begin() as conn:
             row = {
                 "result_id": result.result_id,
@@ -347,10 +352,81 @@ class Registry:
             raise KeyError(f"result {result_id!r} has no output payload")
         return read_payload(self.store / ref.path)
 
+    def add_outcome(self, outcome: NodeOutcome) -> NodeOutcome:
+        """Store a calibration node's outcome (ADR 0050; append-only, idempotent). The record and the
+        result it names must already be in this cache. Returns the stored outcome."""
+        with self._cache.connect() as conn:
+            if (
+                outcome.record_id is not None
+                and conn.execute(
+                    select(records.c.record_id).where(records.c.record_id == outcome.record_id)
+                ).first()
+                is None
+            ):
+                raise ValueError(f"record {outcome.record_id!r} is not in this registry")
+            if (
+                outcome.result_id is not None
+                and conn.execute(
+                    select(analysis_results.c.result_id).where(
+                        analysis_results.c.result_id == outcome.result_id
+                    )
+                ).first()
+                is None
+            ):
+                raise ValueError(f"result {outcome.result_id!r} is not in this registry")
+        with self._cache.begin() as conn:
+            row = {
+                "outcome_id": outcome.outcome_id,
+                "tuneup_id": outcome.tuneup_id,
+                "node_id": outcome.node_id,
+                "record_id": outcome.record_id,
+                "result_id": outcome.result_id,
+                "status": outcome.status,
+                "created_at": outcome.created_at,
+                "schema_version": outcome.schema_version,
+                "body": _body(outcome),
+            }
+            if _insert_absent(conn, tuning_outcomes, row):
+                self._mark(conn, "tuning_outcomes", outcome.outcome_id, False)
+        return outcome
+
+    def outcomes(
+        self,
+        *,
+        tuneup_id: str | None = None,
+        node_id: str | None = None,
+        status: str | None = None,
+        remote: bool = False,
+    ) -> list[NodeOutcome]:
+        """Node outcomes matching every given filter, oldest first."""
+        q = select(tuning_outcomes.c.body).order_by(
+            tuning_outcomes.c.created_at, tuning_outcomes.c.outcome_id
+        )
+        for col, v in (("tuneup_id", tuneup_id), ("node_id", node_id), ("status", status)):
+            if v is not None:
+                q = q.where(tuning_outcomes.c[col] == v)
+        with self._engine(remote).connect() as conn:
+            return [load("NodeOutcome", b) for b in conn.execute(q).scalars()]
+
+    def outcome(self, outcome_id: str, *, remote: bool = False) -> NodeOutcome:
+        with self._engine(remote).connect() as conn:
+            body = conn.execute(
+                select(tuning_outcomes.c.body).where(tuning_outcomes.c.outcome_id == outcome_id)
+            ).scalar_one_or_none()
+        if body is None:
+            raise KeyError(outcome_id)
+        return load("NodeOutcome", body)
+
     def unsynced(self) -> dict[str, int]:
         with self._cache.connect() as conn:
             rows = conn.execute(select(sync_state.c.table_name).where(~sync_state.c.synced))
-            out = {"devices": 0, "objects": 0, "records": 0, "analysis_results": 0}
+            out = {
+                "devices": 0,
+                "objects": 0,
+                "records": 0,
+                "analysis_results": 0,
+                "tuning_outcomes": 0,
+            }
             for (t,) in rows:
                 out[t] += 1
             return out
@@ -359,18 +435,25 @@ class Registry:
 
     def sync(self) -> SyncReport:
         """Upload everything not yet confirmed: devices, objects, each record after its payload, then
-        analysis results, each after its output payload if it has one.
+        analysis results, each after its output payload if it has one, then node outcomes.
         Safe to repeat and to interrupt; raises RuntimeError without a server configured."""
         if not self.remote_dsn or self.remote_store is None:
             raise RuntimeError(f"sync needs a server: set {DSN_ENV} and {STORE_ENV}")
         remote = self._engine(True)
-        counts = {"devices": 0, "objects": 0, "records": 0, "analysis_results": 0}
+        counts = {
+            "devices": 0,
+            "objects": 0,
+            "records": 0,
+            "analysis_results": 0,
+            "tuning_outcomes": 0,
+        }
         sent_bytes = 0
         for name, table, key in (
             ("devices", devices, "device_id"),
             ("objects", objects, "sha256"),
             ("records", records, "record_id"),
             ("analysis_results", analysis_results, "result_id"),
+            ("tuning_outcomes", tuning_outcomes, "outcome_id"),
         ):
             for row in self._pending(name, table, key):
                 payload = None

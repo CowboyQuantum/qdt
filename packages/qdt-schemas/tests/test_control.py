@@ -144,3 +144,88 @@ def test_v1_wire_shape_is_frozen(model, wire):
     obj = model.model_validate(wire)
     assert obj.schema_version == 1
     assert obj.model_dump(mode="json") == wire
+
+
+def test_a_tuneup_is_the_lifecycle_of_nodes_in_dependency_order():
+    """ADR 0050: a TuneUp holds its nodes topologically ordered and its outcomes so far; its validators
+    keep the states honest."""
+    from datetime import UTC, datetime
+
+    import pytest
+    from pydantic import ValidationError
+
+    from qdt_schemas.activity import SensedLevel, SweepAxis, SweepDefinition
+    from qdt_schemas.control import TuneUp
+    from qdt_schemas.modeling import CalibrationNode, DecisionRule, FitModel, NodeOutcome
+
+    definition = SweepDefinition(
+        name="d",
+        axes=(SweepAxis(name="g", channel="g", start=0, stop=1, num=4),),
+        sensed=(SensedLevel(name="I", channel="s"),),
+    )
+    node = lambda i, deps=(): CalibrationNode(
+        node_id=i,
+        definition=definition,
+        method=FitModel(name="m", version="1"),
+        decision=DecisionRule(name="r", version="1"),
+        depends_on=deps,
+    )
+    now = datetime(2026, 10, 15, tzinfo=UTC)
+    base = {"tuneup_id": "ab" * 16, "name": "t", "stand_id": "s", "device_id": "d", "created_at": now}
+    queued = TuneUp(nodes=(node("a"), node("b", ("a",))), state="queued", **base)
+    assert queued.outcomes == () and queued.scenario_id is None
+    accepted = NodeOutcome(
+        outcome_id="cd" * 16,
+        node_id="a",
+        tuneup_id="ab" * 16,
+        record_id="ef" * 16,
+        result_id="01" * 16,
+        status="accepted",
+        outputs={"x": 1.0},
+        created_at=now,
+    )
+    running = queued.model_copy(
+        update={"state": "running", "started_at": now, "outcomes": (accepted,), "current_node": "b"}
+    )
+    assert TuneUp.model_validate(running.model_dump()).current_node == "b"
+    done = running.model_copy(
+        update={
+            "state": "completed",
+            "current_node": None,
+            "finished_at": now,
+            "outcomes": (
+                accepted,
+                accepted.model_copy(update={"node_id": "b", "outcome_id": "02" * 16}),
+            ),
+        }
+    )
+    assert TuneUp.model_validate(done.model_dump()).state == "completed"
+    for update, match in [
+        ({"nodes": (node("b", ("a",)), node("a"))}, "not before it"),
+        ({"state": "failed"}, "says why"),
+        ({"state": "stopped"}, "says why"),
+        ({"finished_at": now}, "has no finished_at"),
+        ({"started_at": now}, "has not started"),
+        ({"state": "completed", "finished_at": now}, "every node accepted"),
+        ({"current_node": "a"}, "only a running"),
+        (
+            {
+                "outcomes": (accepted.model_copy(update={"node_id": "zzz"}),),
+                "state": "running",
+                "started_at": now,
+            },
+            "not in the tune-up",
+        ),
+    ]:
+        with pytest.raises(ValidationError, match=match):
+            TuneUp.model_validate(
+                queued.model_dump()
+                | {
+                    k: (
+                        v.model_dump()
+                        if hasattr(v, "model_dump")
+                        else ([x.model_dump() for x in v] if isinstance(v, tuple) else v)
+                    )
+                    for k, v in update.items()
+                }
+            )

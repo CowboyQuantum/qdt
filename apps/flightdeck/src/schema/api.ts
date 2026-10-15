@@ -5,11 +5,13 @@ export interface QdtControlApi {
   Affine?: Affine;
   AnalysisResult?: AnalysisResult;
   Annotation?: Annotation;
+  CalibrationNode?: CalibrationNode;
   Call?: Call;
   CapturedWaveform?: CapturedWaveform;
   ChannelMap?: ChannelMap;
   DataVariable?: DataVariable;
   Dataset?: Dataset;
+  DecisionRule?: DecisionRule;
   DeviceRecord?: DeviceRecord;
   Difference?: Difference;
   Dimension?: Dimension;
@@ -21,12 +23,14 @@ export interface QdtControlApi {
   FixedLevel?: FixedLevel;
   HTTPValidationError?: HTTPValidationError;
   IndexedCoordinate?: IndexedCoordinate;
+  InputBinding?: InputBinding;
   InstrumentConfig?: InstrumentConfig;
   LinearCoordinate?: LinearCoordinate;
   Measure?: Measure;
   MeasurementRecord?: MeasurementRecord;
   MethodRequest?: MethodRequest;
   MethodSpec?: MethodSpec;
+  NodeOutcome?: NodeOutcome;
   ParameterBinding?: ParameterBinding;
   ParameterSpec?: ParameterSpec;
   PayloadRef?: PayloadRef;
@@ -42,6 +46,7 @@ export interface QdtControlApi {
   SequencerProgram?: SequencerProgram;
   SequencerResult?: SequencerResult;
   SequencerStage?: SequencerStage;
+  SimScenario?: SimScenario;
   SourceDescriptor?: SourceDescriptor;
   StandConfig?: StandConfig;
   Step?: Step;
@@ -51,6 +56,8 @@ export interface QdtControlApi {
   SweepDefinition?: SweepDefinition;
   Symbol?: Symbol;
   SymbolBinding?: SymbolBinding;
+  TuneUp?: TuneUp;
+  TuneUpRequest?: TuneUpRequest;
   ValidationError?: ValidationError;
   Wait?: Wait;
 }
@@ -285,537 +292,70 @@ export interface PayloadRef {
   type: "qdt-hdf5-v1";
 }
 /**
- * Insert the named `Segment` here.
+ * One step of a tune-up as data: the experiment to run, the curated method that reads its record,
+ * the rule that turns the estimates into a verdict and the quantities the next node needs. `inputs`
+ * name the places in `definition` an upstream node's outputs fill before the node runs.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "Call".
+ * via the `definition` "CalibrationNode".
  */
-export interface Call {
-  /**
-   * Discriminator.
-   */
-  op?: "call";
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Name of a Segment of this sequence.
-   */
-  segment: string;
-}
-/**
- * A time-resolved record captured at every stepped point by a `WaveformSense` channel (ADR 0047).
- *
- * Becomes a data variable over the stepped axes, a `record` dimension when `records > 1`, and a time
- * axis in seconds: `time` when every capture of the sweep declares the same grid, else `<name>_time`.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "CapturedWaveform".
- */
-export interface CapturedWaveform {
-  /**
-   * Logical WaveformSense channel (ChannelMap.logical).
-   */
-  channel: string;
-  /**
-   * Data variable name.
-   */
-  name: string;
-  /**
-   * Samples per record: the declared time grid the backend fills exactly (ADR 0015).
-   */
-  num: number;
-  /**
-   * Records captured per stepped point; adds a 'record' dimension when more than 1.
-   */
-  records?: number;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Time of the first sample relative to the capture's trigger, in seconds.
-   */
-  start_s: number;
-  /**
-   * Time of the last sample (inclusive), in seconds; greater than `start_s`.
-   */
-  stop_s: number;
-}
-/**
- * Maps a logical channel name to a physical instrument channel.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "ChannelMap".
- */
-export interface ChannelMap {
-  /**
-   * Vendor channel identifier, e.g. 'ch03'.
-   */
-  channel: string;
-  /**
-   * Instrument id as declared in StandConfig.instruments.
-   */
-  instrument: string;
-  /**
-   * Sensing aperture in seconds a LevelSense driver applies on this channel; None means the instrument default (ADR 0017).
-   */
-  integration_s?: number | null;
-  /**
-   * Logical name used by experiments, e.g. 'gate_L'.
-   */
-  logical: string;
-  /**
-   * Physical quantity a level on this channel is expressed in; protocol calls use its SI unit (V or A). ADR 0016.
-   */
-  quantity: "voltage" | "current";
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Seconds the executor waits after changing a level on this channel before sensing through it (ADR 0017).
-   */
-  settle_s?: number;
-}
-/**
- * A named measured quantity laid out over one or more dimensions.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "DataVariable".
- */
-export interface DataVariable {
-  /**
-   * Dimension names in array (row-major) order.
-   *
-   * @minItems 1
-   */
-  dims: [string, ...string[]];
-  /**
-   * Element type of the payload array.
-   */
-  dtype: "float32" | "float64" | "int16" | "int32" | "int64" | "uint16" | "uint32";
-  /**
-   * Variable name, unique among coordinates and data variables.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Physical unit, e.g. 'A', 'V'. Empty string for dimensionless or arbitrary units.
-   */
-  unit: string;
-}
-/**
- * xarray-shaped definition of a stream: dimensions, coordinates, variables, attributes, source.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "Dataset".
- */
-export interface Dataset {
+export interface CalibrationNode {
   /**
    * Free-form scalar metadata.
    */
   attrs?: {
     [k: string]: string | number | boolean;
   };
-  /**
-   * Coordinates labelling the dimensions.
-   */
-  coords?: (LinearCoordinate | IndexedCoordinate | StreamedCoordinate)[];
-  /**
-   * When the producer created the definition (timezone-aware).
-   */
-  created_at: string;
-  /**
-   * Measured variables.
-   *
-   * @minItems 1
-   */
-  data_vars: [DataVariable, ...DataVariable[]];
-  /**
-   * Unique id; every chunk and annotation refers to it.
-   */
-  dataset_id: string;
-  /**
-   * Dimensions, in no particular order.
-   *
-   * @minItems 1
-   */
-  dims: [Dimension, ...Dimension[]];
-  /**
-   * Human-readable name.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: `source.kind` admits 'analysis' (ADR 0031).
-   */
-  schema_version?: number;
-  source: SourceDescriptor;
-}
-/**
- * Implicit coordinate: evenly spaced values from start to stop inclusive, one per index of its dimension.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "LinearCoordinate".
- */
-export interface LinearCoordinate {
-  /**
-   * Name of the Dimension this coordinate labels.
-   */
-  dim: string;
-  /**
-   * Discriminator: implicit, evenly spaced.
-   */
-  kind?: "linear";
-  /**
-   * Coordinate name, unique among coordinates and data variables.
-   */
-  name: string;
-  /**
-   * Number of values; must equal the dimension size.
-   */
-  num: number;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Value at index 0.
-   */
-  start: number;
-  /**
-   * Value at the last index (inclusive).
-   */
-  stop: number;
-  /**
-   * Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.
-   */
-  unit: string;
-}
-/**
- * Implicit coordinate: arbitrary values listed in the definition, one per index of its dimension.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "IndexedCoordinate".
- */
-export interface IndexedCoordinate {
-  /**
-   * Name of the Dimension this coordinate labels.
-   */
-  dim: string;
-  /**
-   * Discriminator: implicit, listed values.
-   */
-  kind?: "indexed";
-  /**
-   * Coordinate name, unique among coordinates and data variables.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.
-   */
-  unit: string;
-  /**
-   * Coordinate values; length must equal the dimension size.
-   *
-   * @minItems 1
-   */
-  values: [number, ...number[]];
-}
-/**
- * Explicit coordinate: values are not known up front and arrive in-band with each chunk (e.g. a scope time axis).
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "StreamedCoordinate".
- */
-export interface StreamedCoordinate {
-  /**
-   * Name of the Dimension this coordinate labels.
-   */
-  dim: string;
-  /**
-   * Element type of the in-band coordinate array.
-   */
-  dtype?: "float32" | "float64" | "int16" | "int32" | "int64" | "uint16" | "uint32";
-  /**
-   * Discriminator: explicit, values in the payload.
-   */
-  kind?: "streamed";
-  /**
-   * Coordinate name, unique among coordinates and data variables.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.
-   */
-  unit: string;
-}
-/**
- * A named array axis.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "Dimension".
- */
-export interface Dimension {
-  /**
-   * Dimension name, unique within the Dataset, e.g. 'gate_L'.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Length along this axis; None means unbounded (append-only, e.g. a free-running time series).
-   */
-  size?: number | null;
-}
-/**
- * What kind of source produced a Dataset. Never identifies an instrument (rule 8).
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "SourceDescriptor".
- */
-export interface SourceDescriptor {
-  /**
-   * Source category. Consumers may branch on this; they may not learn the producing instrument. analysis: produced by an analysis method from other data (ADR 0031).
-   */
-  kind: "live" | "replay" | "synthetic" | "simulation" | "registry" | "analysis";
-  /**
-   * Human-readable label for display, e.g. 'synthetic stability map'.
-   */
-  label?: string;
-  /**
-   * Registry reference when the Dataset is addressable in the registry (Step 3); None otherwise.
-   */
-  registry_ref?: string | null;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-}
-/**
- * A device under test (or a simulated one) that measurements are recorded against.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "DeviceRecord".
- */
-export interface DeviceRecord {
-  /**
-   * Free-form scalar metadata, e.g. model parameters.
-   */
-  attrs?: {
-    [k: string]: string | number | boolean;
-  };
-  /**
-   * Human-readable notes.
-   */
-  description?: string;
-  /**
-   * Stable id chosen when the device is registered, e.g. 'sim-double-dot'. Generic in this repo; site-specific naming lives in the internal extension (rule 7).
-   */
-  device_id: string;
-  /**
-   * Device type, e.g. 'double_dot'; free text, used for filtering.
-   */
-  kind: string;
-  /**
-   * When the device was first registered.
-   */
-  registered_at: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * True for a model behind a simulated backend (qdt-sim).
-   */
-  simulated: boolean;
-}
-/**
- * `result = a − b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).
- *
- * Computed by the sequencer before any reduction, so a mean of differences is what is recorded; the
- * measured results are kept as well. Takes no time.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "Difference".
- */
-export interface Difference {
-  /**
-   * Measure result the difference starts from.
-   */
-  a: string;
-  /**
-   * Measure result subtracted from `a`; same channel unit.
-   */
-  b: string;
-  /**
-   * Discriminator.
-   */
-  op?: "difference";
-  /**
-   * Result stream name; unique within the sequence; becomes a data variable.
-   */
-  result: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-}
-/**
- * Drive `channel` with a tone (ESR / EDSR) for `duration`.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "Drive".
- */
-export interface Drive {
-  /**
-   * Amplitude in the channel's quantity unit, or a Symbol.
-   */
-  amplitude: number | Symbol | Affine;
-  /**
-   * Logical channel (ChannelMap.logical).
-   */
-  channel: string;
-  /**
-   * Duration in integer nanoseconds, or a Symbol in 'ns'.
-   */
-  duration: number | Symbol;
-  /**
-   * Tone frequency in Hz, or a Symbol.
-   */
-  frequency: number | Symbol | Affine;
-  /**
-   * Discriminator.
-   */
-  op?: "drive";
-  /**
-   * Phase in radians, or a Symbol.
-   */
-  phase?: number | Symbol | Affine;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-}
-/**
- * An estimate a method promises in its results.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "EstimateSpec".
- */
-export interface EstimateSpec {
-  /**
-   * One line for display.
-   */
-  description?: string;
-  /**
-   * `Estimate.name` the method reports.
-   */
-  name: string;
-  /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
-   */
-  schema_version?: number;
-  /**
-   * Unit of the estimate; may depend on the data's units.
-   */
-  unit?: string;
-}
-/**
- * A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.
- *
- * Structural, not unrolled: the executor walks it (ADR 0019).
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "ExecutionPlan".
- */
-export interface ExecutionPlan {
-  /**
-   * Free-form scalar metadata, e.g. emitter version.
-   */
-  attrs?: {
-    [k: string]: string | number | boolean;
-  };
-  /**
-   * Every logical channel used, resolved.
-   */
-  channels: ResolvedChannel[];
-  dataset: Dataset;
+  decision: DecisionRule;
   definition: SweepDefinition;
   /**
-   * Unique id; also the Dataset id.
+   * Node ids whose accepted outcomes this node needs; unique.
    */
-  plan_id: string;
+  depends_on?: string[];
   /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: the nested `dataset` is a Dataset v2 (ADR 0031).
+   * What the node establishes.
+   */
+  description?: string;
+  /**
+   * Values of `definition` filled from upstream outputs before the node runs; unique targets.
+   */
+  inputs?: InputBinding[];
+  method: FitModel;
+  /**
+   * Stable name of the node, e.g. 'charge-lattice'.
+   */
+  node_id: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
   schema_version?: number;
-  /**
-   * How each program parameter is computed at run time.
-   */
-  stage_parameters?: ParameterBinding[];
-  /**
-   * The program the stage runs (emitted or hand-written).
-   */
-  stage_program?: SequencerProgram | null;
-  /**
-   * Stand it was compiled against.
-   */
-  stand_id: string;
 }
 /**
- * A logical channel bound to its instrument, physical channel and the role the plan uses it in.
+ * A curated decision as data: which rule judges a node's result, with which parameters (the
+ * `FitModel` of decisions).
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "ResolvedChannel".
+ * via the `definition` "DecisionRule".
  */
-export interface ResolvedChannel {
+export interface DecisionRule {
   /**
-   * Vendor channel identifier.
+   * Dotted rule name, e.g. 'qdt_tuning.decisions.virtual_gates'.
    */
-  channel: string;
+  name: string;
   /**
-   * Instrument id.
+   * Every parameter the rule used, defaults included, so a verdict can be reproduced.
    */
-  instrument: string;
-  /**
-   * Sensing aperture; None = instrument default. A record only: the backend was given it at construction (ADR 0021).
-   */
-  integration_s: number | null;
-  /**
-   * Logical channel name.
-   */
-  logical: string;
-  /**
-   * Declared quantity (unit of every value on it).
-   */
-  quantity: "voltage" | "current";
-  /**
-   * Protocol the executor uses this channel through.
-   */
-  role: "level_source" | "level_sense" | "waveform_source" | "waveform_sense" | "sequencer";
+  parameters?: {
+    [k: string]: string | number | boolean;
+  };
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
   schema_version?: number;
   /**
-   * Settle time after a level change.
+   * Rule version; bump it whenever the same result could be judged differently.
    */
-  settle_s: number;
+  version: string;
 }
 /**
  * An experiment as data: axes outer to inner, what is sensed, what a sequencer runs, how often.
@@ -900,6 +440,45 @@ export interface SweepAxis {
    * Value at the last index (inclusive).
    */
   stop: number;
+}
+/**
+ * A time-resolved record captured at every stepped point by a `WaveformSense` channel (ADR 0047).
+ *
+ * Becomes a data variable over the stepped axes, a `record` dimension when `records > 1`, and a time
+ * axis in seconds: `time` when every capture of the sweep declares the same grid, else `<name>_time`.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "CapturedWaveform".
+ */
+export interface CapturedWaveform {
+  /**
+   * Logical WaveformSense channel (ChannelMap.logical).
+   */
+  channel: string;
+  /**
+   * Data variable name.
+   */
+  name: string;
+  /**
+   * Samples per record: the declared time grid the backend fills exactly (ADR 0015).
+   */
+  num: number;
+  /**
+   * Records captured per stepped point; adds a 'record' dimension when more than 1.
+   */
+  records?: number;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Time of the first sample relative to the capture's trigger, in seconds.
+   */
+  start_s: number;
+  /**
+   * Time of the last sample (inclusive), in seconds; greater than `start_s`.
+   */
+  stop_s: number;
 }
 /**
  * A DC level held for the whole sweep: part of the operating point (ADR 0038).
@@ -1248,6 +827,42 @@ export interface Wait {
   schema_version?: number;
 }
 /**
+ * Drive `channel` with a tone (ESR / EDSR) for `duration`.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Drive".
+ */
+export interface Drive {
+  /**
+   * Amplitude in the channel's quantity unit, or a Symbol.
+   */
+  amplitude: number | Symbol | Affine;
+  /**
+   * Logical channel (ChannelMap.logical).
+   */
+  channel: string;
+  /**
+   * Duration in integer nanoseconds, or a Symbol in 'ns'.
+   */
+  duration: number | Symbol;
+  /**
+   * Tone frequency in Hz, or a Symbol.
+   */
+  frequency: number | Symbol | Affine;
+  /**
+   * Discriminator.
+   */
+  op?: "drive";
+  /**
+   * Phase in radians, or a Symbol.
+   */
+  phase?: number | Symbol | Affine;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
  * Integrate `channel` for `duration` into the result stream `result`, once per shot.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -1276,6 +891,57 @@ export interface Measure {
   schema_version?: number;
 }
 /**
+ * `result = a − b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).
+ *
+ * Computed by the sequencer before any reduction, so a mean of differences is what is recorded; the
+ * measured results are kept as well. Takes no time.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Difference".
+ */
+export interface Difference {
+  /**
+   * Measure result the difference starts from.
+   */
+  a: string;
+  /**
+   * Measure result subtracted from `a`; same channel unit.
+   */
+  b: string;
+  /**
+   * Discriminator.
+   */
+  op?: "difference";
+  /**
+   * Result stream name; unique within the sequence; becomes a data variable.
+   */
+  result: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
+ * Insert the named `Segment` here.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Call".
+ */
+export interface Call {
+  /**
+   * Discriminator.
+   */
+  op?: "call";
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Name of a Segment of this sequence.
+   */
+  segment: string;
+}
+/**
  * A named, reusable sub-sequence (e.g. 'initialise', 'read_out').
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -1299,6 +965,437 @@ export interface Segment {
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
   schema_version?: number;
+}
+/**
+ * Where a node's definition takes a value from an upstream node's accepted outputs (ADR 0049).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "InputBinding".
+ */
+export interface InputBinding {
+  /**
+   * The upstream node; must be in `depends_on`.
+   */
+  node_id: string;
+  /**
+   * The name in that node's `NodeOutcome.outputs`.
+   */
+  output: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Dotted path into this node's `definition` that takes the value, e.g. 'axes.0.couplings.P2' or 'stage.sequence.body.0.level.scale'.
+   */
+  target: string;
+}
+/**
+ * Maps a logical channel name to a physical instrument channel.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "ChannelMap".
+ */
+export interface ChannelMap {
+  /**
+   * Vendor channel identifier, e.g. 'ch03'.
+   */
+  channel: string;
+  /**
+   * Instrument id as declared in StandConfig.instruments.
+   */
+  instrument: string;
+  /**
+   * Sensing aperture in seconds a LevelSense driver applies on this channel; None means the instrument default (ADR 0017).
+   */
+  integration_s?: number | null;
+  /**
+   * Logical name used by experiments, e.g. 'gate_L'.
+   */
+  logical: string;
+  /**
+   * Physical quantity a level on this channel is expressed in; protocol calls use its SI unit (V or A). ADR 0016.
+   */
+  quantity: "voltage" | "current";
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Seconds the executor waits after changing a level on this channel before sensing through it (ADR 0017).
+   */
+  settle_s?: number;
+}
+/**
+ * A named measured quantity laid out over one or more dimensions.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "DataVariable".
+ */
+export interface DataVariable {
+  /**
+   * Dimension names in array (row-major) order.
+   *
+   * @minItems 1
+   */
+  dims: [string, ...string[]];
+  /**
+   * Element type of the payload array.
+   */
+  dtype: "float32" | "float64" | "int16" | "int32" | "int64" | "uint16" | "uint32";
+  /**
+   * Variable name, unique among coordinates and data variables.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Physical unit, e.g. 'A', 'V'. Empty string for dimensionless or arbitrary units.
+   */
+  unit: string;
+}
+/**
+ * xarray-shaped definition of a stream: dimensions, coordinates, variables, attributes, source.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Dataset".
+ */
+export interface Dataset {
+  /**
+   * Free-form scalar metadata.
+   */
+  attrs?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * Coordinates labelling the dimensions.
+   */
+  coords?: (LinearCoordinate | IndexedCoordinate | StreamedCoordinate)[];
+  /**
+   * When the producer created the definition (timezone-aware).
+   */
+  created_at: string;
+  /**
+   * Measured variables.
+   *
+   * @minItems 1
+   */
+  data_vars: [DataVariable, ...DataVariable[]];
+  /**
+   * Unique id; every chunk and annotation refers to it.
+   */
+  dataset_id: string;
+  /**
+   * Dimensions, in no particular order.
+   *
+   * @minItems 1
+   */
+  dims: [Dimension, ...Dimension[]];
+  /**
+   * Human-readable name.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: `source.kind` admits 'analysis' (ADR 0031).
+   */
+  schema_version?: number;
+  source: SourceDescriptor;
+}
+/**
+ * Implicit coordinate: evenly spaced values from start to stop inclusive, one per index of its dimension.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "LinearCoordinate".
+ */
+export interface LinearCoordinate {
+  /**
+   * Name of the Dimension this coordinate labels.
+   */
+  dim: string;
+  /**
+   * Discriminator: implicit, evenly spaced.
+   */
+  kind?: "linear";
+  /**
+   * Coordinate name, unique among coordinates and data variables.
+   */
+  name: string;
+  /**
+   * Number of values; must equal the dimension size.
+   */
+  num: number;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Value at index 0.
+   */
+  start: number;
+  /**
+   * Value at the last index (inclusive).
+   */
+  stop: number;
+  /**
+   * Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.
+   */
+  unit: string;
+}
+/**
+ * Implicit coordinate: arbitrary values listed in the definition, one per index of its dimension.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "IndexedCoordinate".
+ */
+export interface IndexedCoordinate {
+  /**
+   * Name of the Dimension this coordinate labels.
+   */
+  dim: string;
+  /**
+   * Discriminator: implicit, listed values.
+   */
+  kind?: "indexed";
+  /**
+   * Coordinate name, unique among coordinates and data variables.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.
+   */
+  unit: string;
+  /**
+   * Coordinate values; length must equal the dimension size.
+   *
+   * @minItems 1
+   */
+  values: [number, ...number[]];
+}
+/**
+ * Explicit coordinate: values are not known up front and arrive in-band with each chunk (e.g. a scope time axis).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "StreamedCoordinate".
+ */
+export interface StreamedCoordinate {
+  /**
+   * Name of the Dimension this coordinate labels.
+   */
+  dim: string;
+  /**
+   * Element type of the in-band coordinate array.
+   */
+  dtype?: "float32" | "float64" | "int16" | "int32" | "int64" | "uint16" | "uint32";
+  /**
+   * Discriminator: explicit, values in the payload.
+   */
+  kind?: "streamed";
+  /**
+   * Coordinate name, unique among coordinates and data variables.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Physical unit, e.g. 'V', 's', 'Hz'. Empty string for dimensionless.
+   */
+  unit: string;
+}
+/**
+ * A named array axis.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Dimension".
+ */
+export interface Dimension {
+  /**
+   * Dimension name, unique within the Dataset, e.g. 'gate_L'.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Length along this axis; None means unbounded (append-only, e.g. a free-running time series).
+   */
+  size?: number | null;
+}
+/**
+ * What kind of source produced a Dataset. Never identifies an instrument (rule 8).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "SourceDescriptor".
+ */
+export interface SourceDescriptor {
+  /**
+   * Source category. Consumers may branch on this; they may not learn the producing instrument. analysis: produced by an analysis method from other data (ADR 0031).
+   */
+  kind: "live" | "replay" | "synthetic" | "simulation" | "registry" | "analysis";
+  /**
+   * Human-readable label for display, e.g. 'synthetic stability map'.
+   */
+  label?: string;
+  /**
+   * Registry reference when the Dataset is addressable in the registry (Step 3); None otherwise.
+   */
+  registry_ref?: string | null;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
+ * A device under test (or a simulated one) that measurements are recorded against.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "DeviceRecord".
+ */
+export interface DeviceRecord {
+  /**
+   * Free-form scalar metadata, e.g. model parameters.
+   */
+  attrs?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * Human-readable notes.
+   */
+  description?: string;
+  /**
+   * Stable id chosen when the device is registered, e.g. 'sim-double-dot'. Generic in this repo; site-specific naming lives in the internal extension (rule 7).
+   */
+  device_id: string;
+  /**
+   * Device type, e.g. 'double_dot'; free text, used for filtering.
+   */
+  kind: string;
+  /**
+   * When the device was first registered.
+   */
+  registered_at: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * True for a model behind a simulated backend (qdt-sim).
+   */
+  simulated: boolean;
+}
+/**
+ * An estimate a method promises in its results.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "EstimateSpec".
+ */
+export interface EstimateSpec {
+  /**
+   * One line for display.
+   */
+  description?: string;
+  /**
+   * `Estimate.name` the method reports.
+   */
+  name: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Unit of the estimate; may depend on the data's units.
+   */
+  unit?: string;
+}
+/**
+ * A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.
+ *
+ * Structural, not unrolled: the executor walks it (ADR 0019).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "ExecutionPlan".
+ */
+export interface ExecutionPlan {
+  /**
+   * Free-form scalar metadata, e.g. emitter version.
+   */
+  attrs?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * Every logical channel used, resolved.
+   */
+  channels: ResolvedChannel[];
+  dataset: Dataset;
+  definition: SweepDefinition;
+  /**
+   * Unique id; also the Dataset id.
+   */
+  plan_id: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py. 2: the nested `dataset` is a Dataset v2 (ADR 0031).
+   */
+  schema_version?: number;
+  /**
+   * How each program parameter is computed at run time.
+   */
+  stage_parameters?: ParameterBinding[];
+  /**
+   * The program the stage runs (emitted or hand-written).
+   */
+  stage_program?: SequencerProgram | null;
+  /**
+   * Stand it was compiled against.
+   */
+  stand_id: string;
+}
+/**
+ * A logical channel bound to its instrument, physical channel and the role the plan uses it in.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "ResolvedChannel".
+ */
+export interface ResolvedChannel {
+  /**
+   * Vendor channel identifier.
+   */
+  channel: string;
+  /**
+   * Instrument id.
+   */
+  instrument: string;
+  /**
+   * Sensing aperture; None = instrument default. A record only: the backend was given it at construction (ADR 0021).
+   */
+  integration_s: number | null;
+  /**
+   * Logical channel name.
+   */
+  logical: string;
+  /**
+   * Declared quantity (unit of every value on it).
+   */
+  quantity: "voltage" | "current";
+  /**
+   * Protocol the executor uses this channel through.
+   */
+  role: "level_source" | "level_sense" | "waveform_source" | "waveform_sense" | "sequencer";
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Settle time after a level change.
+   */
+  settle_s: number;
 }
 /**
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -1516,6 +1613,67 @@ export interface ParameterSpec {
   unit?: string;
 }
 /**
+ * What running a node produced: the record and result it made (durable, in the registry), the
+ * rule's verdict and the quantities it decided. The lifecycle state Flight Deck renders and never stores.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "NodeOutcome".
+ */
+export interface NodeOutcome {
+  /**
+   * Free-form scalar metadata, e.g. figures the rule checked.
+   */
+  attrs?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * When the decision was made.
+   */
+  created_at: string;
+  /**
+   * Human-readable note, e.g. why it was rejected.
+   */
+  message?: string;
+  /**
+   * The CalibrationNode that ran.
+   */
+  node_id: string;
+  /**
+   * Client-minted UUID4 as 32 lowercase hex digits.
+   */
+  outcome_id: string;
+  /**
+   * The decided quantities by name, e.g. a virtual-gate matrix's entries; empty unless accepted.
+   */
+  outputs?: {
+    [k: string]: number;
+  };
+  /**
+   * MeasurementRecord the experiment produced; None when it failed before recording.
+   */
+  record_id?: string | null;
+  /**
+   * AnalysisResult the method produced; None when it failed before analysing.
+   */
+  result_id?: string | null;
+  /**
+   * The SimScenario it ran on; None on a real device.
+   */
+  scenario_id?: string | null;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * accepted: the rule took the result and `outputs` hold the decided quantities. rejected: the result was read but the rule declined it; see `message`. failed: the experiment or the method did not complete.
+   */
+  status: "accepted" | "rejected" | "failed";
+  /**
+   * The TuneUp this outcome belongs to; None when the node ran on its own (ADR 0050).
+   */
+  tuneup_id?: string | null;
+}
+/**
  * Publish a stored payload on the stream: a record (with its overlays) or a result's output.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -1613,6 +1771,48 @@ export interface RunRequest {
   };
 }
 /**
+ * A reproducible simulated situation: which scalar parameters of the simulated device's model are
+ * overridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the
+ * truth a method must recover; this package holds the recipe only (rule 1).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "SimScenario".
+ */
+export interface SimScenario {
+  /**
+   * Free-form scalar metadata.
+   */
+  attrs?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * What the scenario stands for.
+   */
+  description?: string;
+  /**
+   * Scalar overrides of the simulated device's default model, by field name (e.g. sensor_width_v). Matrix parameters are not overridable through a scenario yet.
+   */
+  model?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * Whether the device's noise models are on.
+   */
+  noise?: boolean;
+  /**
+   * Stable name of the scenario, e.g. 'default-occupied-window'.
+   */
+  scenario_id: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Seed of every random draw in the device.
+   */
+  seed?: number;
+}
+/**
  * Instruments and the logical → physical channel map of one measurement stand.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -1657,4 +1857,106 @@ export interface StreamInfo {
    * WebSocket URL of the Dataset stream.
    */
   url: string;
+}
+/**
+ * The lifecycle of one tune-up on the server (ADR 0050): its nodes in the order they run, the
+ * outcomes so far, and where it stands. Rendered by Flight Deck (FINISH_LINE's DAG state), kept in
+ * the server's memory like `Run`; the outcomes it produced are durable in the registry.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "TuneUp".
+ */
+export interface TuneUp {
+  /**
+   * Free-form scalar metadata, e.g. the run options.
+   */
+  attrs?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * When the tune-up was accepted.
+   */
+  created_at: string;
+  /**
+   * The node running now; None unless `state` is running.
+   */
+  current_node?: string | null;
+  /**
+   * Device it runs against.
+   */
+  device_id: string;
+  /**
+   * When it left `running`.
+   */
+  finished_at?: string | null;
+  /**
+   * Why it stopped or failed; empty otherwise.
+   */
+  message?: string;
+  /**
+   * Human-readable name, e.g. the node ids joined.
+   */
+  name: string;
+  /**
+   * The nodes, in topological order: every dependency before its dependent.
+   *
+   * @minItems 1
+   */
+  nodes: [CalibrationNode, ...CalibrationNode[]];
+  /**
+   * The nodes' outcomes so far, in run order; the last one ends a stopped tune-up.
+   */
+  outcomes?: NodeOutcome[];
+  /**
+   * The SimScenario the simulated backends were built from, if any.
+   */
+  scenario_id?: string | null;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Stand it runs on.
+   */
+  stand_id: string;
+  /**
+   * When its first node started.
+   */
+  started_at?: string | null;
+  /**
+   * queued → running → completed (every node accepted) | stopped (a node was rejected or failed, or a stop was requested; see `message`) | failed (the runner itself failed).
+   */
+  state: "queued" | "running" | "completed" | "stopped" | "failed";
+  /**
+   * Server-minted UUID4 as 32 lowercase hex digits.
+   */
+  tuneup_id: string;
+}
+/**
+ * Start a tune-up (ADR 0050): which node templates (GET /nodes), in any order, on which scenario.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "TuneUpRequest".
+ */
+export interface TuneUpRequest {
+  /**
+   * Display name; default: the node ids joined.
+   */
+  name?: string | null;
+  /**
+   * Node ids from GET /nodes; the server orders them by their dependencies.
+   *
+   * @minItems 1
+   */
+  node_ids: [string, ...string[]];
+  /**
+   * Run options for every node's sweep, as in RunRequest.
+   */
+  options?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * On the simulated stand: the scenario the backends are built from (seed, noise, model overrides become run options) and the outcomes are tagged with; ignored by a real stand.
+   */
+  scenario?: SimScenario | null;
 }
