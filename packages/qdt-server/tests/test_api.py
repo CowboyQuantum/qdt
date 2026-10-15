@@ -434,3 +434,36 @@ def test_a_capture_runs_through_the_server_and_the_exponential_reads_its_droop(c
         f"/records/{run.record_id}/results", json={"method": "qdt_analysis.plane.fit_plane"}
     )
     assert bad.status_code == 400 and "linear coordinates" in bad.json()["detail"]
+
+
+def test_the_server_holds_an_operating_point_that_sweeps_inherit(client):
+    """ADR 0053 (click-to-set): POST /levels sets channels on the stand now and holds them; a compiled
+    sweep carries them unless it moves the channel itself; DELETE releases them."""
+    assert client.get("/levels").json() == []
+    r = client.post(
+        "/levels", json=[{"channel": "P1", "value": 0.05}, {"channel": "SG", "value": -0.04}]
+    )
+    assert r.status_code == 200, r.text
+    assert [(lv["channel"], lv["value"]) for lv in r.json()] == [("P1", 0.05), ("SG", -0.04)]
+    # merged, not replaced
+    merged = client.post("/levels", json=[{"channel": "P2", "value": 0.1}]).json()
+    assert [lv["channel"] for lv in merged] == ["P1", "P2", "SG"]
+    assert client.get("/levels").json()[1]["value"] == 0.1
+    # the stability sweep steps P1 and pulses P2_pulse: it inherits SG and the P2 DC line, not P1
+    plan = client.post("/sweeps/compile", json=definition()).json()
+    held = {lv["channel"]: lv["value"] for lv in plan["definition"].get("levels", [])}
+    assert held == {"P2": 0.1, "SG": -0.04}
+    # a run carries the merged operating point in the definition it records (its hash differs)
+    run = Run.model_validate(client.post("/runs", json={"definition": definition((8, 8))}).json())
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed", run.error
+    assert (
+        run.definition_sha256 != SweepDefinition.model_validate(definition((8, 8))).content_sha256()
+    )
+    # refusals: an unknown channel, a channel that is not a LevelSource
+    assert client.post("/levels", json=[{"channel": "nope", "value": 0.0}]).status_code == 400
+    bad = client.post("/levels", json=[{"channel": "scope1", "value": 0.0}])
+    assert bad.status_code == 400 and "LevelSource" in bad.json()["detail"]
+    assert client.delete("/levels").json() == [] and client.get("/levels").json() == []
+    plan = client.post("/sweeps/compile", json=definition()).json()
+    assert plan["definition"].get("levels", []) == []

@@ -20,6 +20,7 @@ import {
   annotationPath,
   axis,
   chooseView,
+  pointAt,
   difference,
   DEFAULT_OPTIONS,
   meanAlongLeading,
@@ -208,6 +209,28 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     }
     drawTrace(overlay, x.values as never, data.values.subarray(last * n, (last + 1) * n), marks);
   };
+
+  // click-to-set (ADR 0053): a click on the map offers the point under it to the control panel, as
+  // coordinate names and values; the panel decides which are DC channels and the server sets them
+  const onClick = (e: MouseEvent) => {
+    if (view.kind !== "heatmap") return;
+    const r = overlay.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const fx = (e.clientX - r.left) / r.width;
+    const fy = 1 - (e.clientY - r.top) / r.height;
+    panel.offerSetpoint(pointAt(store, view, fx, fy, shown.swap));
+  };
+  // both canvases: whichever is on top receives the click (the overlay may not take pointer events)
+  overlay.addEventListener("click", onClick);
+  plot.addEventListener("click", onClick);
+  signal.addEventListener(
+    "abort",
+    () => {
+      overlay.removeEventListener("click", onClick);
+      plot.removeEventListener("click", onClick);
+    },
+    { once: true },
+  );
 
   const frame = () => {
     if (signal.aborted) return;

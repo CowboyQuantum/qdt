@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiClient, ApiError, apiBase, describeDetail } from "../src/api/client";
 import { check, defaults, overrides, parse } from "../src/control/methods";
-import { tuneupLines } from "../src/control/panel";
+import { setpointFor, tuneupLines } from "../src/control/panel";
 import { captureSweep, dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
 import type { MethodSpec, StandConfig } from "../src/schema/api";
 
@@ -194,5 +194,14 @@ describe("tune-up state (ADR 0050)", () => {
     expect(tuneupLines(stopped).map((l) => l.status)).toEqual(["rejected", "not run"]);
     const queued = { state: "queued", current_node: null, nodes, outcomes: [] } as never;
     expect(tuneupLines(queued).map((l) => l.status)).toEqual(["waiting", "waiting"]);
+  });
+});
+
+describe("click-to-set (ADR 0053)", () => {
+  it("turns a clicked point into levels for the stand's DC channels and names what it skips", () => {
+    const dc = standChannels(stand).dc;
+    const { levels, skipped } = setpointFor([{ name: "P1", value: 0.05 }, { name: "P2", value: 0.1 }, { name: "V_sd", value: 1e-3 }, { name: "SG", value: NaN }], dc);
+    expect(levels).toEqual([{ channel: "P1", value: 0.05 }, { channel: "P2", value: 0.1 }]);
+    expect(skipped).toEqual(["V_sd", "SG"]);
   });
 });

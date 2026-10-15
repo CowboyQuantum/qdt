@@ -4,62 +4,67 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 6 — Closed-loop tuning → `docs/steps/06-closed-loop-tuning.md` (IN PROGRESS, opened 2026-10-15).
-**Branch:** `step-6/sensor-node` (PR against `main`; the human merges). PRs #25–#46 merged 2026-10-14/15.
-**Last session:** 2026-10-15, Step 6 session 5 (not at the bench). **The third node, the tune-up's root**
-(ADR 0052): `sensor-operating-point` runs the sensor's Coulomb diamonds (`detect_diamonds`, ADR 0030) and
-parks the sensor gate `flank_offset_v` (20 mV) above the Coulomb peak nearest `near_v`; `charge-lattice`
-holds that gate through `levels`, bound from the sensor node's `sg_operating_v` (ADR 0038's operating point
-carried by ADR 0049's bindings). `TEMPLATES` take the stand's sensor gate (`SG`) and the server offers the
-sensor node only when the stand has one; without it the charge lattice stands alone as before. **The
-three-node tune-up completes on a cold-sensor scenario through the API and from the UI**: peak −0.0599 V
-(model −0.06), period 0.248 (0.25), charging energy 1.00 meV, lever arm 4.1 meV/V; then the lattice at
-SG = −0.04 V and residual cross ratios 0.001/−0.003; 0.9 s on the sim. Six `SimResult` fixtures reproduced
-in CI. The flank offset is a parameter, not a measurement (the method does not estimate the peak width).
+**Branch:** `step-6/click-to-set` (PR against `main`; the human merges). PRs #25–#47 merged 2026-10-14/15.
+**Last session:** 2026-10-15, Step 6 session 6 (not at the bench). **Click-to-set** (ADR 0053), the listed
+deliverable and FINISH_LINE's one "up" edge. The server holds the stand's operating point: `POST /levels`
+validates the channels (on the stand, on a `LevelSource`), sets them on the backends now and holds them;
+`GET /levels` reads them; `DELETE /levels` releases them. Every sweep the `RunManager` compiles or runs is
+first merged with the held levels for the channels it does not touch (axes, couplings, sensed, captured,
+its own `levels`), so the plan and the record carry the operating point they ran at; tune-up nodes inherit
+it the same way, and a node that holds a channel itself (`charge-lattice` on `SG`) overrides it for that
+channel. Flight Deck: a click on the heatmap yields the point under it as coordinate names and values
+(`pointAt`, rule 8: no channels, no instruments); the panel maps names to the stand's DC channels
+(`setpointFor`), offers "set … on the stand", shows what is held and releases it. e2e: click the map, set,
+held, release. This closes the pending default-operating-point decision: the server is where it lives.
 
 ## Step 6 exit criteria (from the step file)
 | Criterion | State |
 |---|---|
-| a multi-node tune-up runs unattended against the sim | ✔ three nodes (sensor → lattice → virtual gates), two kinds of binding, from `POST /tuneups` and from Flight Deck; outcomes in the registry |
-| first L3 contact as confirmation, not discovery | not started (needs a fridge; the bench can confirm the two stability nodes once a second OPX pulse line is cabled; the sensor node needs `SG`, `bias` and `sensor` channels the bench stand lacks) |
+| a multi-node tune-up runs unattended against the sim | ✔ three nodes (sensor → lattice → virtual gates) from `POST /tuneups` and from Flight Deck; outcomes in the registry |
+| first L3 contact as confirmation, not discovery | not started (needs a fridge) |
+
+**Deliverables (step file):** DAG runner ✔ (ADR 0050); nodes verified against sim ✔ (three, ADR 0048, 0049,
+0052); Flight Deck click-to-set ✔ (ADR 0053); DAPS forward model + bias study as sim scenarios + analysis
+routines — not started (the one deliverable left; it needs the physics decisions in the step's Open list).
 
 ## Done
-- **Steps 0–5 DONE.** ADR 0001–0052 (0051 is a Step 7 decision taken ahead of its step). Frozen: `Dataset`
+- **Steps 0–5 DONE.** ADR 0001–0053 (0051 is a Step 7 decision taken ahead of its step). Frozen: `Dataset`
   (0015; v2 by 0031), protocols (0021), stand/activity/pulse (0022; amended additively by 0037, 0038, 0047,
   0049), identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; Step 6 objects beside it by 0048–0050),
   control (0036; amended additively by 0046; `TuneUp` beside it by 0050). Registry DDL v3 (0026, 0029, 0050).
-- **Step 6 so far:** the modeling objects; `qdt-tuning` (pure: `nodes` + `TEMPLATES`, `decisions` with three
-  rules, `bind`, `dag.order`); `run_node`, `run_tuneup`, `TuneUpManager`; the `sensor-operating-point`,
-  `charge-lattice` and `virtual-lattice` nodes; virtual gates in the sweep; scenario realization and truth in
-  `qdt-sim`; the tune-up API; Flight Deck's Tune-up section; `scripts/make_tuning_fixtures.py`.
+- **Step 6 so far:** the modeling objects; `qdt-tuning` (pure: `nodes` + `TEMPLATES`, three `decisions`,
+  `bind`, `dag.order`); `run_node`, `run_tuneup`, `TuneUpManager`; three nodes; virtual gates in the sweep;
+  scenario realization and truth in `qdt-sim`; the tune-up API; the held operating point and `/levels`;
+  Flight Deck's Tune-up section and click-to-set; `scripts/make_tuning_fixtures.py`.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `apps/flightdeck`.
-- 393 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
-  hardware-only in `bench/`; Flight Deck 72 unit tests and 6 e2e.
+- 394 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
+  hardware-only in `bench/`; Flight Deck 74 unit tests and 6 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6/sensor-node` awaits the human.
+- Nothing uncommitted. PR for `step-6/click-to-set` awaits the human.
 
 ## Known broken / not yet real
-- **`flank_offset_v` is a judgment, not an estimate** (ADR 0052): a `sensor_peak` curated method (width
-  and slope of the Coulomb peak from a zero-bias cut or a sensor-gate sweep) is the successor and a rule
-  `VERSION` bump. **The diamonds method needs a cold sensor** (ADR 0030): on the default warm scenario the
-  root fails and the tune-up stops there, visibly.
-- **`TuneUp` is not persisted; one tune-up at a time; stop between nodes; no parallel branches, retries or
-  resume** (ADR 0050).
-- **Flight Deck: no click-to-set yet; the sweep form does not expose couplings; the Tune-up section runs
-  templates only.**
-- **The bench has one OPX pulse line cabled and no `SG`/`bias`/`sensor` channels**, so neither the virtual
-  pulse axis nor the sensor node can run there yet; the nodes are stand-agnostic.
-- **`detect_transitions` reports `ok` on a noiseless, nearly constant map** (a degenerate lattice); a method
-  fix is a `VERSION` bump (ADR 0029).
-- **`SimScenario.model` overrides scalars only** (ADR 0048). **`InputBinding.target` is a string path**
-  checked at bind time (ADR 0049).
+- **The held operating point is server memory** (like runs and tune-ups): a restart forgets it and the
+  stand stays where it is; records carry it per sweep. A `stand_state` table is a later additive change.
+- **Click-to-set resolves to the cell under the pointer, and only axes named after stand DC channels are
+  settable** (`P1`, `P2`; not `V_sd` on `bias`); the panel does not yet read a record's definition for
+  the axis → channel map.
+- **`flank_offset_v` is a judgment, not an estimate** (ADR 0052); **the diamonds method needs a cold
+  sensor** (ADR 0030).
+- **`TuneUp` is not persisted; one tune-up at a time; stop between nodes; no parallel branches, retries
+  or resume** (ADR 0050). **The sweep form does not expose couplings; the Tune-up section runs templates
+  only.**
+- **The bench has one OPX pulse line cabled and no `SG`/`bias`/`sensor` channels.**
+- **`detect_transitions` reports `ok` on a noiseless, nearly constant map**; a method `VERSION` bump.
+- **`SimScenario.model` overrides scalars only**; **`InputBinding.target` is a string path**.
 - **QDAC-II (firmware 14-1.70), for QDevil:** filter setting changes nothing; LOW sense range reads ≈ 2 nA
   for any current; ch02 dead (`*RST` no cure); output impedance 50 Ω. **The 2450 autoranges to 10 nA at
   0 V.** Bench quirks in BENCH.md.
 - Step 5 carry-overs, Step 6 open decisions: nothing in a sweep plays a waveform; a sweep leaves its last
-  level; captures sequential, one channel each; no 3-D capture view; Flight Deck offers every method on
-  every record; the trace view has no axes, labels or output curve.
+  level (now the held operating point says where the stand *should* be); captures sequential, one
+  channel each; no 3-D capture view; Flight Deck offers every method on every record; the trace view has
+  no axes, labels or output curve.
 - **The exponential's edge detector is a heuristic** (0046); **the plane fit is OLS** (0045). OPX input
   offset −1.7 mV not applied; OPX `drive` unsupported on the LF-FEM stage.
 - **Serial numbers:** `bench_report.py` does not redact `*IDN?` serials (decision pending).
@@ -72,16 +77,16 @@ in CI. The flank offset is a parameter, not a measurement (the method does not e
 ## Next action
 **Human:**
 1. Merge the PR.
-2. Choose the next session: **click-to-set** (Flight Deck emits a set-level request, the one "up" edge of
-   FINISH_LINE; a `POST /levels` that holds an operating point on the stand, or a one-point sweep), a
-   **`sensor_peak` method** (makes the sensor operating point an estimate with an error and retires
-   `flank_offset_v`), or a **bench confirmation** of the stability nodes (cable a second OPX pulse line;
-   `qdt-server --stand`; `POST /tuneups` with `charge-lattice` and `virtual-lattice`).
-3. The QDevil report; the Step 6 Open decisions still waiting (`PlayedWaveform`, sub-ms stepping, sense
-   range declaration, rest level).
+2. Step 6 has one deliverable left, the **DAPS forward model + bias study as sim scenarios and analysis
+   routines**, and its L3 confirmation. Say what the DAPS study is to measure and which physics it needs
+   (the step's Open decisions list tunnel coupling and bias triangles, ADR 0020, 0030); a session then
+   writes the scenario, the method and the node. Or name the next slice instead: a `sensor_peak` method
+   (retires `flank_offset_v`), a bench confirmation of the stability nodes (a second OPX pulse line), or
+   the `PlayedWaveform` activity.
+3. The QDevil report; the Step 6 Open decisions still waiting.
 
-**Then (sessions):** the chosen item; a `tuneups` table when something reads tune-up history; resume and
-parallel branches when a DAG needs them; Step 6's L3 confirmation when a fridge is available.
+**Then (sessions):** the chosen item; a `tuneups` table and a `stand_state` table when something reads
+them; resume and parallel branches when a DAG needs them.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -100,13 +105,14 @@ parallel branches when a DAG needs them; Step 6's L3 confirmation when a fridge 
   before closing Step 5; Step 5 closes and Step 6 opens; the schema slice and the first node first (ADR
   0048); the second node is the virtual-gate stability diagram (ADR 0049); the persisted tune-up before a
   third node (ADR 0050); `qdt-telemetry` ingests, does not collect (ADR 0051, from a separate chat's
-  patch); **"start the next session"**: the third node is the sensor operating point (ADR 0052).
+  patch); the third node is the sensor operating point (ADR 0052); **"continue to next session"**:
+  click-to-set, the listed deliverable (ADR 0053).
 
 ## Decisions pending
-- Next: click-to-set, a `sensor_peak` method, or a bench confirmation of the stability nodes.
+- The DAPS forward model + bias study: what it measures, which physics it needs.
 - Step 6's Open decisions (step file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
-  a rest level at a sweep's end; the time-series view's remainder; the deferred physics.
-- A `tuneups` table (when something reads tune-up history); resume and parallel branches.
-- `detect_transitions` on a noiseless constant map (a method `VERSION` bump).
-- `bench_report.py` and `*IDN?` serials; a default operating point per device; the dot model's
-  zero-clipping; the diamond estimator on warm edges.
+  a rest level at a sweep's end (the held operating point now says where the stand should be); the
+  time-series view's remainder; the deferred physics.
+- A `tuneups` table and a `stand_state` table; resume and parallel branches.
+- `detect_transitions` on a noiseless constant map (a method `VERSION` bump); a `sensor_peak` method.
+- `bench_report.py` and `*IDN?` serials; the dot model's zero-clipping; the diamond estimator on warm edges.

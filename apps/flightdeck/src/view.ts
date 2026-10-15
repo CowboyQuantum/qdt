@@ -166,3 +166,29 @@ export function annotationPath(
   };
   return ann.points.map((p) => [frac(x.values, p[xi]!), frac(y.values, p[yi]!)]);
 }
+
+
+/** The data coordinates under a point of the heatmap given as fractions (0..1, y up), the inverse of
+ * `annotationPath` for one point: each axis's value at the cell the fraction falls in (clamped to the
+ * map). What click-to-set sends upward (FINISH_LINE's one "up" edge, ADR 0053): coordinate names and
+ * values only, never a channel or an instrument (rule 8). */
+export function pointAt(
+  store: DatasetStore,
+  view: Extract<ViewKind, { kind: "heatmap" }>,
+  fx: number,
+  fy: number,
+  swap = false,
+): { name: string; unit: string; value: number }[] {
+  const x = axis(store, swap ? view.rowDim : view.colDim);
+  const y = axis(store, swap ? view.colDim : view.rowDim);
+  const at = (vals: ArrayLike<number>, f: number) => {
+    const n = vals.length;
+    if (n === 0) return NaN;
+    const i = Math.min(n - 1, Math.max(0, Math.floor(f * n)));
+    return Number(vals[i]);
+  };
+  return [
+    { name: x.name, unit: x.unit, value: at(x.values, fx) },
+    { name: y.name, unit: y.unit, value: at(y.values, fy) },
+  ];
+}

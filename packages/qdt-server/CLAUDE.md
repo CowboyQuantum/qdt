@@ -21,8 +21,10 @@ qdt_server/
   OpenAPI document is generated from them and the UI's client is generated from that (ADR 0034).
 - The server never defines schema objects (that is `qdt-schemas`) and never computes an analysis itself
   (that is `qdt-analysis`): it compiles, executes, stores, serves.
-- Runs and tune-ups live in memory; records, results and node outcomes are the durable things. A server
-  restart forgets runs and tune-ups, never what they produced.
+- Runs, tune-ups and the held operating point (`/levels`, ADR 0053) live in memory; records, results and
+  node outcomes are the durable things. A server restart forgets runs, tune-ups and the held levels,
+  never what they produced: every record carries the operating point its sweep ran at, because the
+  `RunManager` merges the held levels into each definition it compiles or runs.
 - Step 4b wires the `simulated` backend only. Real drivers (Step 5) enter through `build_backends` with
   their factories; the API does not change. The simulated stand is `qdt_sim`'s double dot plus a
   simulated scope (`scope`, channel `scope1`, ADR 0047) whose record is a droop set by the run options

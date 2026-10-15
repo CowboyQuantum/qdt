@@ -100,6 +100,20 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
     null,
     { timeout: 20_000 },
   );
+  // click-to-set (ADR 0053): a click on the map offers the point under it; setting it holds the levels on
+  // the stand, and the next compiled sweep inherits what it does not move itself
+  const box = (await page.locator("#overlay").boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  // the map's x axis is the inner (P2) axis, so P2 is listed first
+  await page.waitForFunction(() => /clicked: P2 = .* · P1 = /.test(document.querySelector("#setpoint")?.textContent ?? ""));
+  await page.click("#set-levels");
+  await page.waitForFunction(() => /held: P1 = .* · P2 = /.test(document.querySelector("#held-levels")?.textContent ?? ""));
+  const held = (await (await page.request.get(`http://127.0.0.1:${API_PORT}/levels`)).json()) as { channel: string; value: number }[];
+  expect(held.map((l) => l.channel).sort()).toEqual(["P1", "P2"]);
+  for (const l of held) expect(Math.abs(l.value - 0.105)).toBeLessThan(0.01); // the middle of the 0.03..0.18 window
+  await page.click("#clear-levels");
+  await page.waitForFunction(() => /held: nothing/.test(document.querySelector("#held-levels")?.textContent ?? ""));
+
   // the view options are client-side: switching to the derivative and swapping axes keeps the view alive
   await page.selectOption("#transform", "grad");
   await page.check("#swap");

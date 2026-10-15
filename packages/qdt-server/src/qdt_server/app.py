@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
 from qdt_lab.stream import PayloadSource, StreamServer
 from qdt_registry import Registry
-from qdt_schemas.activity import ExecutionPlan, SweepDefinition
+from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
 from qdt_schemas.control import MethodSpec, Run, TuneUp
 from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
@@ -252,6 +252,28 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/stream", response_model=StreamInfo)
     def get_stream(request: Request) -> StreamInfo:
         return StreamInfo(url=request.app.state.stream.url)
+
+    # --- the stand's operating point (ADR 0053): click-to-set lands here ----------------------------
+
+    @app.get("/levels", response_model=list[FixedLevel])
+    def get_levels(request: Request) -> list[FixedLevel]:
+        """The DC levels the server holds for the stand; every sweep inherits them (ADR 0038, 0053)."""
+        return runs(request).levels()
+
+    @app.post("/levels", response_model=list[FixedLevel])
+    def set_levels(body: list[FixedLevel], request: Request) -> list[FixedLevel]:
+        """Set these channels now and hold them; returns the whole operating point."""
+        try:
+            return runs(request).set_levels(body)
+        except KeyError as e:
+            raise HTTPException(400, f"no channel {e.args[0]!r} on the stand") from None
+        except (ValueError, RuntimeError) as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.delete("/levels", response_model=list[FixedLevel])
+    def clear_levels(request: Request) -> list[FixedLevel]:
+        """Forget the held operating point; the stand stays where it is."""
+        return runs(request).clear_levels()
 
     @app.post("/sweeps/compile", response_model=ExecutionPlan)
     def compile_sweep_route(definition: SweepDefinition, request: Request) -> ExecutionPlan:
