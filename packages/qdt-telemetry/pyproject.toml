@@ -1,7 +1,7 @@
 [project]
 name = "qdt-telemetry"
 version = "0.1.0"
-description = "qdt — cryo telemetry collector (Step 7)"
+description = "qdt — cryo context ingest: cooldown records and per-measurement cryo context from existing fridge logs/monitoring (Step 7, ADR 0051)"
 requires-python = ">=3.11,<3.14"
 dependencies = ["qdt-schemas", "qdt-registry"]
 

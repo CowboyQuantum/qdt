@@ -48,7 +48,7 @@ qdt/
 │   ├── qdt-analysis/         # pure-functional: records in, AnalysisResult out; NO I/O
 │   ├── qdt-registry/         # record-keeping engine; the ONLY package that touches a database
 │   ├── qdt-sim/              # physics models; exposes SimulatedDevice behind qdt-lab protocols
-│   ├── qdt-telemetry/        # cryo telemetry collector (Step 7)
+│   ├── qdt-telemetry/        # cryo context ingest from existing fridge monitoring (Step 7, ADR 0051)
 │   └── qdt-frameworks/       # schema-validated renderers; NO instance data (Step 8)
 ├── apps/
 │   └── flightdeck/           # TypeScript front end; consumes Dataset streams only
@@ -84,7 +84,7 @@ Adapters (arbok), site DDL migrations, bootstrap seeds, `deploy/` compose bundle
 | 4b | Control | `Run`, `MethodSpec` (ADR 0032) | `control.py` |
 | 5 | — | (drivers; no new family) | |
 | 6 | Modeling | `SimScenario`, `SimResult`, `CalibrationNode` | `modeling.py` |
-| 7 | Cryo | `CooldownRecord`, `FridgeEvent`, `TelemetryChannel`, `TelemetrySample` | `cryo.py` |
+| 7 | Cryo | `CooldownRecord`, `FridgeEvent` (`TelemetryChannel`, `TelemetrySample` deferred — ADR 0051) | `cryo.py` |
 | 8 | Governance | `ContractDefinition` | `contracts.py` |
 
 **Rule:** a family is added in the step that first consumes it, and is frozen only after that step's test ladder passes. No DDL exists before Step 3; schema churn is cheapest before then.
@@ -156,7 +156,7 @@ Prior Flight Deck / gatepick work is reference material for what the UI felt lik
 
 ## 9. IT engagement checklist — unchanged from v0.2; sent at Step 7
 
-Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licensing); firewall inbound 5432/8100 (+9000/9001) scoped to lab subnet; VLAN reachability; DHCP reservation / DNS name `qdt-db`; Bluefors log access mode; backup landing location; declared prototype→VM trajectory; Windows Update policy.
+Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licensing); firewall inbound 5432/8100 (+9000/9001) scoped to lab subnet; VLAN reachability; DHCP reservation / DNS name `qdt-db`; access mode for the lab's existing fridge monitoring/logs (ADR 0051); backup landing location; declared prototype→VM trajectory; Windows Update policy.
 
 **Note (2026-10-15):** Analysis 0003 (`docs/analysis/0003-registry-deployment-requirements.md`) revises this list — no Docker required (native Postgres service, not WSL), inbound 5432 plus one payload-transport port, DNS name; 9000/9001 were MinIO defaults and are retired. The Step 7 ADR supersedes this paragraph.
 

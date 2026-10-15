@@ -54,3 +54,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0048 | Step 6's modeling objects: `SimScenario`, `CalibrationNode` with a `DecisionRule`, `NodeOutcome`, `SimResult`; nodes and rules in `qdt-tuning` (pure), the runner in `qdt-server` | Accepted (adds to 0033 as reserved) |
 | 0049 | Virtual gates as coupled axes (`SweepAxis.couplings`), node inputs bound from upstream outcomes (`InputBinding`), the first tune-up runner | Accepted (amends 0022 additively; extends 0048) |
 | 0050 | The tune-up as a lifecycle object (`TuneUp`), outcomes persisted (`tuning_outcomes`, DDL v3), a topological order, the tune-up API and Flight Deck's DAG state | Accepted (adds to 0036, 0026; extends 0048, 0049) |
+| 0051 | `qdt-telemetry` ingests cryo context; no collector, time series, or monitoring | Accepted |
