@@ -21,6 +21,12 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
   setpoint applied (DAC code programmed, `LAST?` equal to `VOLT?`, no error). A `*RST` brought them back.
   Verify one channel with a meter or the scope at the start of a bench session; the driver never resets
   on its own, because a reset zeroes every channel.
+- **Settling after `set` (Probe 04, 2026-10-15):** the output edge follows `set()`'s return by less than
+  4.5 ms (USB serial; steady to ±0.2 ms) and settles to 1 % in 3 µs, to 0.1 % in under 1 ms, for any
+  step up to 1 V. `settle_s = 0.01` for a channel driving a high-impedance input directly; `0.05` through
+  the combiner's DC side. The output filter setting (DC/MED/HIGH) made no difference to the step on this
+  unit (firmware 14-1.70); the driver never sets it, and nothing here relies on it. Verify with QDevil
+  before assuming a low-noise DC filter on a held gate.
 - The current readout in the default (HIGH) sense range carries a common-mode error of the order of
   0.1–0.3 mA per volt of output (manual § accuracy), so a 1 MΩ load is invisible there. To use the
   current as a load check, switch `SENS<n>:RANG LOW` (nA) with the channel at 0 V.
@@ -81,6 +87,16 @@ OPX AO ─── RF port ─┘                 └──► scope ch (DC, 1 MΩ
 - **Pass:** c_DC and c_P within the combined specification. The record is listed in the registry, and
   the overlay is drawn live in Flight Deck.
 - **Pulse length:** ≤ 1 % of the bias tee's low-frequency time constant, so the droop stays below 1 %.
+
+**Run 2026-10-15 (session 15, scope as sink):** all three L2 rows pass through the control path
+(`bench/test_l2_capture.py`, against a running `qdt-server --stand` that owns the QDAC and the scope;
+the OPX pulse train is played beside the sweep). L2-1 DC: plane `slope_row` 0.385–0.386 V/V against
+1/2.589; with the pulse on, unchanged, and the plateau gain 0.595 against 0.61 from Probe 03's record.
+L2-3: τ 2.0 µs against 1.86 µs by the same fit on Probe 03's record. Trigger convention: the scope
+triggers on its own input, rising edge, **AC-coupled** (so a pulse on a stepped DC level keeps
+triggering), at 40 % of the pulse's expected height; a level at the pulse's height triggers marginally
+and the AUTO sweep free-runs. A sweep leaves its last level on the QDAC (ADR 0038 holds levels, never
+zeroes them): a capture that wants 0 V on the DC input holds it through `levels`.
 
 ### L2-2: current readout into a known load
 ```
