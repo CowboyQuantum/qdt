@@ -56,3 +56,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0050 | The tune-up as a lifecycle object (`TuneUp`), outcomes persisted (`tuning_outcomes`, DDL v3), a topological order, the tune-up API and Flight Deck's DAG state | Accepted (adds to 0036, 0026; extends 0048, 0049) |
 | 0051 | `qdt-telemetry` ingests cryo context; no collector, time series, or monitoring | Accepted |
 | 0052 | The sensor operating point as the first node: Coulomb diamonds → a gate parked on a peak's flank, held by the stability nodes through `levels` | Accepted (extends 0048–0050) |
+| 0053 | Click-to-set: the server holds the stand's operating point (`/levels`), every sweep inherits it, Flight Deck's map click is the one "up" edge | Accepted (extends 0038; closes the default-operating-point decision) |

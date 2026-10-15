@@ -88,3 +88,9 @@ Coulomb diamonds (`detect_diamonds`, ADR 0030) and parks the sensor gate `flank_
 three-node tune-up completes through the API and from the UI: peak −0.0599 V (model −0.06), period 0.248
 (0.25), then the lattice at SG = −0.04 V and residuals 0.001/−0.003. Left: a `sensor_peak` method for the
 flank (the offset is a parameter today); click-to-set; a bench confirmation.
+Session 6 (2026-10-15): **click-to-set** (ADR 0053), the deliverable and FINISH_LINE's one "up" edge. The server holds
+the stand's operating point (`GET/POST/DELETE /levels`): set now on the backends, merged into every sweep it compiles
+or runs for the channels the sweep does not touch, so records carry it; tune-up nodes inherit it. Flight Deck: a
+click on the map yields the point under it (`pointAt`), the panel offers it as levels for the stand's DC channels
+(`setpointFor`), shows what is held, releases it. e2e: click, set, held, released. Closes the pending default
+operating point decision. Left: axis → channel from the record's definition for axes not named after gates.
