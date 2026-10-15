@@ -1,0 +1,19 @@
+{
+  "attrs": {
+    "method": "qdt_analysis.transitions.detect_transitions"
+  },
+  "created_at": "2026-10-13T12:00:00Z",
+  "message": "lattice condition 1.56, cross ratios 0.214 and 0.223",
+  "node_id": "charge-lattice",
+  "outcome_id": "00000000000000000000000000000003",
+  "outputs": {
+    "c_21": -0.2225,
+    "l_11": 74.45
+  },
+  "record_id": "00000000000000000000000000000001",
+  "result_id": "00000000000000000000000000000002",
+  "scenario_id": "default-occupied-window",
+  "schema_version": 1,
+  "status": "accepted",
+  "tuneup_id": "00000000000000000000000000000004"
+}

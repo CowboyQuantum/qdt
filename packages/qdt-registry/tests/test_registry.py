@@ -20,12 +20,24 @@ def test_full_loop_sweep_record_query_sync(tmp_path, server, device, recorded_ru
         "definition_sha256": plan.definition.content_sha256(),
     }
     assert reg.find(**by) == [record]
-    assert reg.unsynced() == {"devices": 1, "objects": 3, "records": 1, "analysis_results": 0}
+    assert reg.unsynced() == {
+        "devices": 1,
+        "objects": 3,
+        "records": 1,
+        "analysis_results": 0,
+        "tuning_outcomes": 0,
+    }
 
     report = reg.sync()
     assert (report.devices, report.objects, report.records) == (1, 3, 1)
     assert report.payload_bytes == record.payload.size_bytes
-    assert reg.unsynced() == {"devices": 0, "objects": 0, "records": 0, "analysis_results": 0}
+    assert reg.unsynced() == {
+        "devices": 0,
+        "objects": 0,
+        "records": 0,
+        "analysis_results": 0,
+        "tuning_outcomes": 0,
+    }
     assert reg.find(**by, remote=True) == [record]
     assert reg.find(stand_id=stand.stand_id, definition_name=plan.definition.name, remote=True) == [
         record
@@ -168,4 +180,69 @@ def test_a_version_1_server_is_upgraded_by_adding_tables_only(tmp_path):
     assert reg.find(remote=True) == []
     with engine.connect() as conn:
         version = conn.execute(select(registry_meta.c.value)).scalar_one()
-    assert version == "2" and "analysis_results" in metadata.tables
+    assert version == "3" and "analysis_results" in metadata.tables
+    assert "tuning_outcomes" in metadata.tables  # DDL v3 (ADR 0050)
+
+
+def test_node_outcomes_are_stored_queried_and_synced(tmp_path, server, device, recorded_run):
+    """ADR 0050: a calibration node's outcome is a row that points at its record and result; a failed
+    outcome may name neither; outcomes sync like results."""
+    from datetime import UTC, datetime
+
+    from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel, NodeOutcome
+
+    dsn, store = server
+    reg = Registry(tmp_path / "client", remote_dsn=dsn, remote_store=store)
+    reg.register_device(device)
+    record, path, _, _ = recorded_run(tmp_path)
+    reg.ingest(record, path)
+    method = FitModel(name="m", version="1", parameters={})
+    result = AnalysisResult(
+        result_id="ab" * 16,
+        record_id=record.record_id,
+        dataset_id=record.plan_id,
+        method=method,
+        method_sha256=method.content_sha256(),
+        status="ok",
+        estimates=(Estimate(name="x", value=1.0, unit=""),),
+        created_at=datetime(2026, 10, 15, tzinfo=UTC),
+    )
+    reg.add_result(result)
+    accepted = NodeOutcome(
+        outcome_id="cd" * 16,
+        node_id="charge-lattice",
+        tuneup_id="ef" * 16,
+        record_id=record.record_id,
+        result_id=result.result_id,
+        status="accepted",
+        outputs={"m_11": 1.0},
+        created_at=datetime(2026, 10, 15, 1, tzinfo=UTC),
+    )
+    failed = NodeOutcome(
+        outcome_id="01" * 16,
+        node_id="virtual-lattice",
+        tuneup_id="ef" * 16,
+        status="failed",
+        message="binding inputs",
+        created_at=datetime(2026, 10, 15, 2, tzinfo=UTC),
+    )
+    assert reg.add_outcome(accepted) == accepted
+    reg.add_outcome(accepted)  # idempotent
+    reg.add_outcome(failed)
+    assert reg.outcomes(tuneup_id="ef" * 16) == [accepted, failed]
+    assert reg.outcomes(node_id="charge-lattice") == [accepted]
+    assert reg.outcomes(status="failed") == [failed]
+    assert reg.outcome("cd" * 16) == accepted
+    with pytest.raises(KeyError):
+        reg.outcome("00" * 16)
+    with pytest.raises(ValueError, match="different body"):
+        reg.add_outcome(accepted.model_copy(update={"message": "other"}))
+    with pytest.raises(ValueError, match="not in this registry"):
+        reg.add_outcome(
+            accepted.model_copy(update={"outcome_id": "02" * 16, "record_id": "03" * 16})
+        )
+    assert reg.unsynced()["tuning_outcomes"] == 2
+    report = reg.sync()
+    assert report.tuning_outcomes == 2 and reg.unsynced()["tuning_outcomes"] == 0
+    assert reg.outcomes(tuneup_id="ef" * 16, remote=True) == [accepted, failed]
+    assert reg.sync().tuning_outcomes == 0

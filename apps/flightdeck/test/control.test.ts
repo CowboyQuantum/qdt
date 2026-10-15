@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiClient, ApiError, apiBase, describeDetail } from "../src/api/client";
 import { check, defaults, overrides, parse } from "../src/control/methods";
+import { tuneupLines } from "../src/control/panel";
 import { captureSweep, dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
 import type { MethodSpec, StandConfig } from "../src/schema/api";
 
@@ -176,5 +177,22 @@ describe("api client", () => {
   it("takes the base from ?api= or defaults to the local server", () => {
     expect(apiBase(new URLSearchParams(""))).toBe("http://127.0.0.1:8700");
     expect(apiBase(new URLSearchParams("api=http://lab:9000/"))).toBe("http://lab:9000");
+  });
+});
+
+describe("tune-up state (ADR 0050)", () => {
+  const node = (node_id: string, deps: string[] = []) => ({ node_id, depends_on: deps, description: "" }) as never;
+  const outcome = (node_id: string, status: string, outputs = {}, message = "") => ({ node_id, status, outputs, message }) as never;
+  it("gives each node its status so far, its message, and an accepted node's outputs", () => {
+    const nodes = [node("charge-lattice"), node("virtual-lattice", ["charge-lattice"])];
+    const running = { state: "running", current_node: "virtual-lattice", nodes, outcomes: [outcome("charge-lattice", "accepted", { c_21: -0.22251, m_11: 1.05 })] } as never;
+    expect(tuneupLines(running)).toEqual([
+      { node: "charge-lattice", status: "accepted", message: "", outputs: "c_21=-0.2225 m_11=1.050" },
+      { node: "virtual-lattice", status: "running", message: "", outputs: "" },
+    ]);
+    const stopped = { state: "stopped", current_node: null, nodes, outcomes: [outcome("charge-lattice", "rejected", {}, "ratios")] } as never;
+    expect(tuneupLines(stopped).map((l) => l.status)).toEqual(["rejected", "not run"]);
+    const queued = { state: "queued", current_node: null, nodes, outcomes: [] } as never;
+    expect(tuneupLines(queued).map((l) => l.status)).toEqual(["waiting", "waiting"]);
   });
 });

@@ -248,6 +248,89 @@
         "title": "Annotation",
         "type": "object"
       },
+      "CalibrationNode": {
+        "additionalProperties": false,
+        "description": "One step of a tune-up as data: the experiment to run, the curated method that reads its record,\nthe rule that turns the estimates into a verdict and the quantities the next node needs. `inputs`\nname the places in `definition` an upstream node's outputs fill before the node runs.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/DecisionRule",
+            "description": "The rule that judges the method's result."
+          },
+          "definition": {
+            "$ref": "#/components/schemas/SweepDefinition",
+            "description": "The experiment, in the stand's logical channel names."
+          },
+          "depends_on": {
+            "default": [],
+            "description": "Node ids whose accepted outcomes this node needs; unique.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "description": "What the node establishes.",
+            "title": "Description",
+            "type": "string"
+          },
+          "inputs": {
+            "default": [],
+            "description": "Values of `definition` filled from upstream outputs before the node runs; unique targets.",
+            "items": {
+              "$ref": "#/components/schemas/InputBinding"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "method": {
+            "$ref": "#/components/schemas/FitModel",
+            "description": "The curated method that reads the record, with every parameter."
+          },
+          "node_id": {
+            "description": "Stable name of the node, e.g. 'charge-lattice'.",
+            "minLength": 1,
+            "title": "Node Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "node_id",
+          "definition",
+          "method",
+          "decision"
+        ],
+        "title": "CalibrationNode",
+        "type": "object"
+      },
       "Call": {
         "additionalProperties": false,
         "description": "Insert the named `Segment` here.",
@@ -559,6 +642,57 @@
           "created_at"
         ],
         "title": "Dataset",
+        "type": "object"
+      },
+      "DecisionRule": {
+        "additionalProperties": false,
+        "description": "A curated decision as data: which rule judges a node's result, with which parameters (the\n`FitModel` of decisions).",
+        "properties": {
+          "name": {
+            "description": "Dotted rule name, e.g. 'qdt_tuning.decisions.virtual_gates'.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Every parameter the rule used, defaults included, so a verdict can be reproduced.",
+            "title": "Parameters",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "version": {
+            "description": "Rule version; bump it whenever the same result could be judged differently.",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "DecisionRule",
         "type": "object"
       },
       "DeviceRecord": {
@@ -1120,6 +1254,43 @@
         "title": "IndexedCoordinate",
         "type": "object"
       },
+      "InputBinding": {
+        "additionalProperties": false,
+        "description": "Where a node's definition takes a value from an upstream node's accepted outputs (ADR 0049).",
+        "properties": {
+          "node_id": {
+            "description": "The upstream node; must be in `depends_on`.",
+            "minLength": 1,
+            "title": "Node Id",
+            "type": "string"
+          },
+          "output": {
+            "description": "The name in that node's `NodeOutcome.outputs`.",
+            "minLength": 1,
+            "title": "Output",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "target": {
+            "description": "Dotted path into this node's `definition` that takes the value, e.g. 'axes.0.couplings.P2' or 'stage.sequence.body.0.level.scale'.",
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "output",
+          "target"
+        ],
+        "title": "InputBinding",
+        "type": "object"
+      },
       "InstrumentConfig": {
         "additionalProperties": false,
         "description": "One instrument of the stand and the capability protocols its driver honours.",
@@ -1536,6 +1707,140 @@
           "applies_to"
         ],
         "title": "MethodSpec",
+        "type": "object"
+      },
+      "NodeOutcome": {
+        "additionalProperties": false,
+        "description": "What running a node produced: the record and result it made (durable, in the registry), the\nrule's verdict and the quantities it decided. The lifecycle state Flight Deck renders and never stores.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. figures the rule checked.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "created_at": {
+            "description": "When the decision was made.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "description": "Human-readable note, e.g. why it was rejected.",
+            "title": "Message",
+            "type": "string"
+          },
+          "node_id": {
+            "description": "The CalibrationNode that ran.",
+            "minLength": 1,
+            "title": "Node Id",
+            "type": "string"
+          },
+          "outcome_id": {
+            "description": "Client-minted UUID4 as 32 lowercase hex digits.",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Outcome Id",
+            "type": "string"
+          },
+          "outputs": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "The decided quantities by name, e.g. a virtual-gate matrix's entries; empty unless accepted.",
+            "title": "Outputs",
+            "type": "object"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MeasurementRecord the experiment produced; None when it failed before recording.",
+            "title": "Record Id"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AnalysisResult the method produced; None when it failed before analysing.",
+            "title": "Result Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SimScenario it ran on; None on a real device.",
+            "title": "Scenario Id"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "description": "accepted: the rule took the result and `outputs` hold the decided quantities. rejected: the result was read but the rule declined it; see `message`. failed: the experiment or the method did not complete.",
+            "enum": [
+              "accepted",
+              "rejected",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tuneup_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The TuneUp this outcome belongs to; None when the node ran on its own (ADR 0050).",
+            "title": "Tuneup Id"
+          }
+        },
+        "required": [
+          "outcome_id",
+          "node_id",
+          "status",
+          "created_at"
+        ],
+        "title": "NodeOutcome",
         "type": "object"
       },
       "ParameterBinding": {
@@ -2544,6 +2849,90 @@
         "title": "SequencerStage",
         "type": "object"
       },
+      "SimScenario": {
+        "additionalProperties": false,
+        "description": "A reproducible simulated situation: which scalar parameters of the simulated device's model are\noverridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the\ntruth a method must recover; this package holds the recipe only (rule 1).",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "description": {
+            "default": "",
+            "description": "What the scenario stands for.",
+            "title": "Description",
+            "type": "string"
+          },
+          "model": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Scalar overrides of the simulated device's default model, by field name (e.g. sensor_width_v). Matrix parameters are not overridable through a scenario yet.",
+            "title": "Model",
+            "type": "object"
+          },
+          "noise": {
+            "default": true,
+            "description": "Whether the device's noise models are on.",
+            "title": "Noise",
+            "type": "boolean"
+          },
+          "scenario_id": {
+            "description": "Stable name of the scenario, e.g. 'default-occupied-window'.",
+            "minLength": 1,
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "default": 0,
+            "description": "Seed of every random draw in the device.",
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "title": "SimScenario",
+        "type": "object"
+      },
       "SourceDescriptor": {
         "additionalProperties": false,
         "description": "What kind of source produced a Dataset. Never identifies an instrument (rule 8).",
@@ -3025,6 +3414,229 @@
         "title": "SymbolBinding",
         "type": "object"
       },
+      "TuneUp": {
+        "additionalProperties": false,
+        "description": "The lifecycle of one tune-up on the server (ADR 0050): its nodes in the order they run, the\noutcomes so far, and where it stands. Rendered by Flight Deck (FINISH_LINE's DAG state), kept in\nthe server's memory like `Run`; the outcomes it produced are durable in the registry.",
+        "properties": {
+          "attrs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Free-form scalar metadata, e.g. the run options.",
+            "title": "Attrs",
+            "type": "object"
+          },
+          "created_at": {
+            "description": "When the tune-up was accepted.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The node running now; None unless `state` is running.",
+            "title": "Current Node"
+          },
+          "device_id": {
+            "description": "Device it runs against.",
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it left `running`.",
+            "title": "Finished At"
+          },
+          "message": {
+            "default": "",
+            "description": "Why it stopped or failed; empty otherwise.",
+            "title": "Message",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable name, e.g. the node ids joined.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "nodes": {
+            "description": "The nodes, in topological order: every dependency before its dependent.",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationNode"
+            },
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "outcomes": {
+            "default": [],
+            "description": "The nodes' outcomes so far, in run order; the last one ends a stopped tune-up.",
+            "items": {
+              "$ref": "#/components/schemas/NodeOutcome"
+            },
+            "title": "Outcomes",
+            "type": "array"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SimScenario the simulated backends were built from, if any.",
+            "title": "Scenario Id"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "stand_id": {
+            "description": "Stand it runs on.",
+            "minLength": 1,
+            "title": "Stand Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When its first node started.",
+            "title": "Started At"
+          },
+          "state": {
+            "description": "queued \u2192 running \u2192 completed (every node accepted) | stopped (a node was rejected or failed, or a stop was requested; see `message`) | failed (the runner itself failed).",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "stopped",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tuneup_id": {
+            "description": "Server-minted UUID4 as 32 lowercase hex digits.",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Tuneup Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tuneup_id",
+          "name",
+          "nodes",
+          "stand_id",
+          "device_id",
+          "state",
+          "created_at"
+        ],
+        "title": "TuneUp",
+        "type": "object"
+      },
+      "TuneUpRequest": {
+        "description": "Start a tune-up (ADR 0050): which node templates (GET /nodes), in any order, on which scenario.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Display name; default: the node ids joined.",
+            "title": "Name"
+          },
+          "node_ids": {
+            "description": "Node ids from GET /nodes; the server orders them by their dependencies.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "options": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Run options for every node's sweep, as in RunRequest.",
+            "title": "Options",
+            "type": "object"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimScenario"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On the simulated stand: the scenario the backends are built from (seed, noise, model overrides become run options) and the outcomes are tagged with; ignored by a real stand."
+          }
+        },
+        "required": [
+          "node_ids"
+        ],
+        "title": "TuneUpRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3151,6 +3763,150 @@
           }
         },
         "summary": "List Methods"
+      }
+    },
+    "/nodes": {
+      "get": {
+        "description": "The calibration nodes this server can run: every template, built for the stand's sequencer.",
+        "operationId": "list_nodes_nodes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalibrationNode"
+                  },
+                  "title": "Response List Nodes Nodes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Nodes"
+      }
+    },
+    "/outcomes": {
+      "get": {
+        "operationId": "list_outcomes_outcomes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tuneup_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tuneup Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NodeOutcome"
+                  },
+                  "title": "Response List Outcomes Outcomes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Outcomes"
+      }
+    },
+    "/outcomes/{outcome_id}": {
+      "get": {
+        "operationId": "get_outcome_outcomes__outcome_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "outcome_id",
+            "required": true,
+            "schema": {
+              "title": "Outcome Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Outcome"
       }
     },
     "/records": {
@@ -3676,6 +4432,142 @@
           }
         },
         "summary": "Compile Sweep Route"
+      }
+    },
+    "/tuneups": {
+      "get": {
+        "operationId": "list_tuneups_tuneups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TuneUp"
+                  },
+                  "title": "Response List Tuneups Tuneups Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tuneups"
+      },
+      "post": {
+        "operationId": "start_tuneup_tuneups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TuneUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuneUp"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Tuneup"
+      }
+    },
+    "/tuneups/{tuneup_id}": {
+      "get": {
+        "operationId": "get_tuneup_tuneups__tuneup_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tuneup_id",
+            "required": true,
+            "schema": {
+              "title": "Tuneup Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuneUp"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tuneup"
+      }
+    },
+    "/tuneups/{tuneup_id}/stop": {
+      "post": {
+        "operationId": "stop_tuneup_tuneups__tuneup_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tuneup_id",
+            "required": true,
+            "schema": {
+              "title": "Tuneup Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TuneUp"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Tuneup"
       }
     }
   }

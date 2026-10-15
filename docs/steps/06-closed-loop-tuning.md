@@ -73,3 +73,11 @@ axis-aligned transitions. The second node, `virtual-lattice`, runs after `charge
 `run_tuneup` (nodes in order, inputs bound, stop at the first non-accepted) and is accepted on both scenarios:
 residual cross ratios −0.008/−0.004 (noisy) and −0.003/+0.007 (quiet), down from 0.21 in real gates. Next:
 a persisted `TuneUp` lifecycle object with a topological sort, `POST /tuneups`, Flight Deck's DAG display.
+Session 4 (2026-10-15): **the persisted tune-up** (ADR 0050). `TuneUp` (control slice) is the lifecycle: nodes in
+topological order (`qdt_tuning.order`), outcomes so far, queued → running → completed | stopped | failed.
+`NodeOutcome` is persisted (`tuning_outcomes`, DDL v3, synced). `TuneUpManager` runs each node's sweep through
+the `RunManager` (live on the stream), then the method, the rule and `add_outcome`; `GET /nodes`, `POST /tuneups`,
+`GET /tuneups[/{id}]`, `POST /tuneups/{id}/stop`, `GET /outcomes`. Flight Deck's Tune-up section lists the
+nodes, starts a tune-up and renders the DAG state (FINISH_LINE). The two-node tune-up completes unattended
+through the API and from the UI on the simulator. Left: a `tuneups` table, parallel branches, resume; the
+third node; click-to-set.

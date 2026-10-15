@@ -177,7 +177,7 @@ def test_a_tuneup_stops_at_the_first_node_that_is_not_accepted(tmp_path):
     )
     assert [o.status for o in outcomes] == ["rejected"]
     assert "cross-capacitance" in outcomes[0].message
-    with pytest.raises(ValueError, match="not run before it"):
+    with pytest.raises(ValueError, match="not in the tune-up"):
         run_tuneup(
             [virtual_lattice(instrument=DEVICE_ID)],
             default_stand(),
@@ -233,3 +233,87 @@ def test_a_stand_that_cannot_run_the_node_is_a_failed_outcome(tmp_path):
     )
     assert outcome.status == "failed" and outcome.record_id is None and result is None
     assert "nope" in outcome.message
+
+
+# --- the tune-up through the API (ADR 0050) ------------------------------------------------------------
+
+
+def wait_tuneup(client, tuneup_id: str, timeout: float = 60.0):
+    import time
+
+    from qdt_schemas.control import TuneUp
+
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < timeout:
+        tuneup = TuneUp.model_validate(client.get(f"/tuneups/{tuneup_id}").json())
+        if tuneup.state not in ("queued", "running"):
+            return tuneup
+        time.sleep(0.1)
+    raise TimeoutError(tuneup_id)
+
+
+def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(client):
+    """GET /nodes offers the templates for the stand's sequencer; POST /tuneups runs them in order on a
+    scenario, each node's sweep a Run on the stream; the TuneUp completes with both accepted; the
+    outcomes are stored and point at their records and results."""
+    nodes = client.get("/nodes").json()
+    assert [n["node_id"] for n in nodes] == ["charge-lattice", "virtual-lattice"]
+    assert all(n["definition"]["stage"]["instrument"] == DEVICE_ID for n in nodes)
+    r = client.post(
+        "/tuneups",
+        json={
+            "node_ids": ["virtual-lattice", "charge-lattice"],  # any order: the server sorts it
+            "scenario": QUIET.model_dump(mode="json"),
+            "options": {"campaign": "tuneup"},
+        },
+    )
+    assert r.status_code == 202, r.text
+    tuneup = wait_tuneup(client, r.json()["tuneup_id"])
+    assert tuneup.state == "completed", tuneup.message
+    assert [n.node_id for n in tuneup.nodes] == ["charge-lattice", "virtual-lattice"]
+    assert tuneup.scenario_id == QUIET.scenario_id and tuneup.attrs["noise"] is False
+    assert tuneup.name == "charge-lattice → virtual-lattice"
+    assert [o.status for o in tuneup.outcomes] == ["accepted", "accepted"]
+    second = tuneup.outcomes[1]
+    assert abs(second.outputs["residual_a"]) < 0.02 and second.tuneup_id == tuneup.tuneup_id
+    # every node's sweep was a run on the server, with the tune-up's options
+    runs = client.get("/runs").json()
+    assert [x["definition_name"] for x in runs] == ["charge lattice", "virtual-gate lattice"]
+    assert all(x["state"] == "completed" and x["attrs"]["campaign"] == "tuneup" for x in runs)
+    # the outcomes are durable and point at durable records and results
+    stored = client.get("/outcomes", params={"tuneup_id": tuneup.tuneup_id}).json()
+    assert [o["outcome_id"] for o in stored] == [o.outcome_id for o in tuneup.outcomes]
+    for o in stored:
+        assert client.get(f"/records/{o['record_id']}").status_code == 200
+        assert client.get(f"/results/{o['result_id']}").json()["status"] == "ok"
+    assert client.get(f"/outcomes/{second.outcome_id}").json()["node_id"] == "virtual-lattice"
+    assert client.get("/outcomes/" + "0" * 32).status_code == 404
+    assert [t["tuneup_id"] for t in client.get("/tuneups").json()] == [tuneup.tuneup_id]
+    assert client.get("/tuneups/" + "0" * 32).status_code == 404
+    assert client.post(f"/tuneups/{tuneup.tuneup_id}/stop").status_code == 409
+
+
+def test_a_tuneup_refuses_unknown_nodes_and_stops_when_asked(client):
+    assert client.post("/tuneups", json={"node_ids": ["nope"]}).status_code == 400
+    assert client.post("/tuneups", json={"node_ids": []}).status_code == 422
+    r = client.post(
+        "/tuneups",
+        json={
+            "node_ids": ["charge-lattice", "virtual-lattice"],
+            "scenario": QUIET.model_dump(mode="json"),
+        },
+    )
+    tuneup_id = r.json()["tuneup_id"]
+    stopped = client.post(f"/tuneups/{tuneup_id}/stop")
+    assert stopped.status_code == 200 and stopped.json()["state"] in (
+        "stopped",
+        "running",
+        "queued",
+    )
+    final = wait_tuneup(client, tuneup_id)
+    assert (
+        final.state == "stopped"
+        and "stopped by request" in final.message
+        or final.state == "stopped"
+    )
+    assert len(final.outcomes) <= 1

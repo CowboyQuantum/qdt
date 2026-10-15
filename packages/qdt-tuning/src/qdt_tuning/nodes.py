@@ -6,6 +6,8 @@ the bench's: both wire `P1` (a DC plunger), `P2_pulse` (its neighbour's pulse li
 value and is an argument.
 """
 
+from collections.abc import Callable
+
 from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, SymbolBinding
 from qdt_schemas.modeling import CalibrationNode, FitModel, InputBinding
 from qdt_schemas.pulse import Affine, Measure, PulseSequence, Step, Symbol
@@ -144,3 +146,10 @@ def virtual_lattice(
             ),
         ),
     )
+
+
+TEMPLATES: dict[str, Callable[[str], CalibrationNode]] = {
+    "charge-lattice": lambda instrument: charge_lattice(instrument=instrument),
+    "virtual-lattice": lambda instrument: virtual_lattice(instrument=instrument),
+}
+"""Node id → constructor taking the stand's sequencer instrument id: what a server offers (ADR 0050)."""

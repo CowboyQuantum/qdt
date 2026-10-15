@@ -201,12 +201,16 @@ METHODS: dict[str, tuple[MethodSpec, Method]] = {
                     description="Change of the variable per unit of the column coordinate, with its standard error.",
                 ),
                 EstimateSpec(
-                    name="offset", unit="z", description="The plane at the origin, with its standard error."
+                    name="offset",
+                    unit="z",
+                    description="The plane at the origin, with its standard error.",
                 ),
                 EstimateSpec(
                     name="residual_rms", unit="z", description="Root mean square of the residual."
                 ),
-                EstimateSpec(name="r2", description="Fraction of the map's variance the plane explains."),
+                EstimateSpec(
+                    name="r2", description="Fraction of the map's variance the plane explains."
+                ),
                 EstimateSpec(
                     name="isoline_slope",
                     unit="col/row",
@@ -273,7 +277,8 @@ METHODS: dict[str, tuple[MethodSpec, Method]] = {
                     name="residual_rms", unit="y", description="Root mean square of the residual."
                 ),
                 EstimateSpec(
-                    name="r2", description="Fraction of the window's variance the exponential explains."
+                    name="r2",
+                    description="Fraction of the window's variance the exponential explains.",
                 ),
             ),
         ),

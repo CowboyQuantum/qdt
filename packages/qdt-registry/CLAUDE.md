@@ -6,7 +6,7 @@ it never defines them (that is `qdt-schemas`) and never produces data (that is `
 ## Layout
 ```
 qdt_registry/
-  tables.py   # SQLAlchemy Core metadata shared by the SQLite cache and Postgres; DDL_VERSION (ADR 0026)
+  tables.py   # SQLAlchemy Core metadata shared by the SQLite cache and Postgres; DDL_VERSION (ADR 0026); tuning_outcomes since v3 (ADR 0050)
   client.py   # Registry: cache-first writes, queries, idempotent sync (ADR 0024)
   ddl.py      # render_ddl → exports/ddl/*.sql (scripts/export_ddl.py; no-diff in check_all)
 ```

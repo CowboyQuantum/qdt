@@ -20,7 +20,7 @@ overrides, seed, noise; the truth is derived from the model by `qdt-sim`, never 
 `CalibrationNode` (one step of a tune-up as data: the experiment, the method that reads it, the
 `DecisionRule` that judges it), `NodeOutcome` (what running a node produced: its record, its result, the
 verdict and the decided quantities) and `SimResult` (a committed outcome of a node on a scenario, with the
-truth, that CI reproduces). None of the four is persisted yet; outcomes point at records and results, which are.
+truth, that CI reproduces). `NodeOutcome` is persisted (`tuning_outcomes`, ADR 0050); it points at its record and result.
 """
 
 from typing import Literal
@@ -240,6 +240,11 @@ class NodeOutcome(QdtModel):
         pattern=r"^[0-9a-f]{32}$", description="Client-minted UUID4 as 32 lowercase hex digits."
     )
     node_id: str = Field(min_length=1, description="The CalibrationNode that ran.")
+    tuneup_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{32}$",
+        description="The TuneUp this outcome belongs to; None when the node ran on its own (ADR 0050).",
+    )
     scenario_id: str | None = Field(
         default=None, description="The SimScenario it ran on; None on a real device."
     )
