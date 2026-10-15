@@ -91,7 +91,8 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
   Z, or terminated per the bias tee's datasheet).
 - **Oracle:** V(t) = A·e^(−t/τ) after the edge. τ is the bias tee's low-frequency time constant,
   1/(2π f_low) from its datasheet.
-- **Fit:** a single exponential (a curated method, new in Step 5) → τ, A.
+- **Fit:** a single exponential (`qdt_analysis.exponential.fit_exponential`, ADR 0046) → `tau`, `amplitude`,
+  `offset` with standard errors; `span` keeps the pulse's falling edge out of the window.
 - **Pass:** τ within the bias tee's specification. This also exercises `WaveformSense` on a real
   waveform.
 

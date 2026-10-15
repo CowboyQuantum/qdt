@@ -82,3 +82,10 @@ squares with standard errors, `failed` below `min_r2`, iso-lines as `line` overl
 residual as the output payload; in the server catalogue. Injection–recovery on a synthetic plane and on a
 plane through the real sweep path (two simulated levels summed by a simulated sense). L2-1's sink is still
 the human's decision; the single exponential (L2-3) is next.
+Session 14 (2026-10-15): the curated **single exponential** (`qdt_analysis.exponential.fit_exponential`,
+ADR 0046): an edge-anchored window (`skip`, `span`), nonlinear least squares with standard errors, `failed`
+below `min_r2`, markers at the edge and one τ later, fitted curve and residual as the output payload; in the
+server catalogue with `applies_to = "trace_1d"`, a value added to the frozen literal. Injection–recovery on a
+sharp-edge decay, a slow-onset approach, a drooping pulse, and the real Probe 03 combiner step (τ = 8.1 ms by
+this method, 7.9 ms by the probe). L2-1's sink and L2-3 on the bench are the human's; the server has no
+waveform-capture activity yet, so L2-3's record comes through `WaveformSense.arm` as Probe 03's did.
