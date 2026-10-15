@@ -149,11 +149,13 @@ def scope_front_panel():
         coupling: str = "DC",
         impedance: str = "ONEMeg",
         trigger_level_v: float | None = None,
+        trigger_coupling: str = "DC",
     ) -> None:
         """Vertical settings for input `number`; with `trigger_level_v`, a rising-edge trigger on that
-        input at that level (sweep stays AUTO so an absent signal cannot hang a capture)."""
+        input at that level (sweep stays AUTO so an absent signal cannot hang a capture).
+        `trigger_coupling="AC"` lets a pulse riding on a stepped DC level keep triggering (L2-1)."""
         rm = pyvisa.ResourceManager("@py")
-        r = rm.open_resource(_address("QDT_SCOPE_ADDRESS"))
+        r = _retry(lambda: rm.open_resource(_address("QDT_SCOPE_ADDRESS")))
         r.timeout = 5000
         sessions.append(r)
         r.write(f":CHANnel{number}:DISPlay 1")
@@ -167,6 +169,7 @@ def scope_front_panel():
             r.write(":TRIGger:MODE EDGE")
             r.write(f":TRIGger:EDGE:SOURce CHANnel{number}")
             r.write(":TRIGger:EDGE:SLOPe POSitive")
+            r.write(f":TRIGger:EDGE:COUPling {trigger_coupling}")
             r.write(f":TRIGger:EDGE:LEVel {trigger_level_v:.6g}")
 
     yield apply

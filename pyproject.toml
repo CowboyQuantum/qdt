@@ -36,7 +36,7 @@ dev = [
 testpaths = ["packages", "docs/tutorials"]
 markers = ["hardware: requires bench instruments; excluded from CI"]
 addopts = "-m 'not hardware' --import-mode=importlib -p bench_report"
-pythonpath = ["scripts"]
+pythonpath = ["scripts", "bench"]
 # scripts/bench_report.py: a run of `hardware` tests appends to bench/reports/<date>-step<N>.md
 bench_step = "5"
 
