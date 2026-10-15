@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 1,
+    "scenario_id": "default-quiet",
+    "description": "the default double dot, noise off",
+    "model": {},
+    "seed": 0,
+    "noise": false,
+    "attrs": {}
+  },
+  "node_id": "virtual-lattice",
+  "outcome": {
+    "schema_version": 1,
+    "outcome_id": "995d5ee6cbfc457492f8d0b2e5d4d02d",
+    "node_id": "virtual-lattice",
+    "scenario_id": "default-quiet",
+    "record_id": "e21b2552c5764394b1b730ed31dfcf78",
+    "result_id": "3bababb9108a489ba0f2bef5537e6138",
+    "status": "accepted",
+    "message": "residual cross ratios -0.003, +0.007",
+    "outputs": {
+      "residual_a": -0.0030909882935812086,
+      "residual_b": 0.0065772574282046475,
+      "l_11": 71.65341112227719,
+      "l_22": 68.50877513879368
+    },
+    "created_at": "2026-10-15T19:45:35.193093Z",
+    "attrs": {
+      "method": "qdt_analysis.transitions.detect_transitions",
+      "rule": "qdt_tuning.decisions.straightened"
+    }
+  },
+  "estimates": [
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_row",
+      "value": 71.65341112227719,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_col",
+      "value": -0.22147985497412037,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_row",
+      "value": 0.45059985017883264,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_col",
+      "value": 68.50877513879368,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_a",
+      "value": -0.0030909882935812086,
+      "stderr": null,
+      "unit": ""
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_b",
+      "value": 0.0065772574282046475,
+      "stderr": null,
+      "unit": ""
+    }
+  ],
+  "truth": {
+    "residual_a": -2.48420723718645e-17,
+    "residual_b": -1.0354642640819852e-17,
+    "l_11": 71.5059843965396,
+    "l_22": 68.52656838001712
+  },
+  "created_at": "2026-10-15T19:45:35.194221Z"
+}

@@ -8,8 +8,9 @@ that holds backends and a `Registry`); the simulator's realization of a scenario
 ## Layout
 ```
 qdt_tuning/
-  nodes.py      # CalibrationNode constructors: the experiment in logical channel names, the method, the rule
+  nodes.py      # CalibrationNode constructors: the experiment in logical channel names, the method, the rule, the inputs
   decisions.py  # RULES: curated decision rules, name → (version, callable); apply(rule, result) → Decision
+  bind.py       # bind(node, outcomes): fill the node's `inputs` paths from upstream accepted outputs (ADR 0049)
 ```
 
 ## Rules
@@ -23,3 +24,6 @@ qdt_tuning/
   server's method catalogue does; a test pins it.
 - Truth for a node comes from `qdt-sim` through the same formula the rule uses (`virtual_gate_matrix`
   is here so both sides agree); the committed `SimResult` fixture lives beside the runner's test.
+- A node that needs an upstream number declares an `InputBinding` (node, output, dotted path into its
+  definition); a node constructor keeps the template value (0) and the binding together, and
+  `test_bind.py` pins each node's bindings. A rule whose outputs another node binds keeps those names.

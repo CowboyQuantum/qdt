@@ -7,10 +7,10 @@ value and is an argument.
 """
 
 from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, SymbolBinding
-from qdt_schemas.modeling import CalibrationNode, FitModel
-from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
+from qdt_schemas.modeling import CalibrationNode, FitModel, InputBinding
+from qdt_schemas.pulse import Affine, Measure, PulseSequence, Step, Symbol
 
-from .decisions import VIRTUAL_GATES_NAME, decision_rule
+from .decisions import STRAIGHTENED_NAME, VIRTUAL_GATES_NAME, decision_rule
 
 TRANSITIONS_METHOD = "qdt_analysis.transitions.detect_transitions"
 TRANSITIONS_VERSION = "1"
@@ -40,24 +40,41 @@ def stability_diagram(
     step_ns: int = 500,
     measure_ns: int = 2000,
     name: str = "stability diagram",
+    virtual: bool = False,
 ) -> SweepDefinition:
     """`P1` stepped by its DC line, `P2` pulsed inside the sequencer stage, the sensor read per pixel:
-    the stability-diagram sweep the simulator's scenarios and the bench's stand both run."""
+    the stability-diagram sweep the simulator's scenarios and the bench's stand both run.
+
+    `virtual=True` makes both axes virtual gates (ADR 0049) with their coefficients left at 0 for
+    `InputBinding`s to fill: the outer axis couples `P2` (the DC line) by `c_21` volts per volt of `P1`,
+    and the inner pulse steps `P1_pulse` by `c_12` × the `P2` pulse level alongside `P2_pulse`.
+    """
+    v_p2 = Symbol(name="v_p2", unit="V")
+    body: tuple = (Step(channel="P2_pulse", level=v_p2, duration=step_ns),)
+    if virtual:
+        body = (
+            Step(channel="P1_pulse", level=Affine(symbol=v_p2, scale=0.0), duration=step_ns),
+            Step(channel="P2_pulse", level=v_p2, duration=step_ns),
+        )
     return SweepDefinition(
         name=name,
         axes=(
-            SweepAxis(name="P1", channel="P1", start=p1[0], stop=p1[1], num=n_outer),
+            SweepAxis(
+                name="P1",
+                channel="P1",
+                start=p1[0],
+                stop=p1[1],
+                num=n_outer,
+                couplings={"P2": 0.0} if virtual else {},
+            ),
             SweepAxis(name="P2", channel="P2_pulse", start=p2[0], stop=p2[1], num=n_inner),
         ),
         stage=SequencerStage(
             instrument=instrument,
             axes=("P2",),
             sequence=PulseSequence(
-                name="read sensor at a P2 pulse level",
-                body=(
-                    Step(channel="P2_pulse", level=Symbol(name="v_p2", unit="V"), duration=step_ns),
-                    Measure(channel="sensor", duration=measure_ns, result="I_sensor"),
-                ),
+                name="read sensor at a P2 pulse level" + (" in virtual gates" if virtual else ""),
+                body=(*body, Measure(channel="sensor", duration=measure_ns, result="I_sensor")),
             ),
             bindings=(SymbolBinding(symbol="v_p2", axis="P2"),),
         ),
@@ -87,4 +104,43 @@ def charge_lattice(
             name=TRANSITIONS_METHOD, version=TRANSITIONS_VERSION, parameters=TRANSITIONS_DEFAULTS
         ),
         decision=decision_rule(VIRTUAL_GATES_NAME, max_cross_ratio=max_cross_ratio),
+    )
+
+
+def virtual_lattice(
+    *,
+    instrument: str,
+    p1: tuple[float, float] = (0.03, 0.18),
+    p2: tuple[float, float] = (0.03, 0.18),
+    n: int = 96,
+    max_residual_ratio: float = 0.05,
+) -> CalibrationNode:
+    """The second node: the same window swept in virtual gates built from `charge-lattice`'s
+    compensation coefficients; the transitions must come out axis-aligned (ADR 0049)."""
+    return CalibrationNode(
+        node_id="virtual-lattice",
+        description=(
+            "The stability diagram in virtual gates: P2's DC line follows P1 by c_21, P1's pulse line "
+            "follows the P2 pulse by c_12; the honeycomb's residual cross ratios must be near zero."
+        ),
+        definition=stability_diagram(
+            instrument=instrument,
+            p1=p1,
+            p2=p2,
+            n_outer=n,
+            n_inner=n,
+            name="virtual-gate lattice",
+            virtual=True,
+        ),
+        method=FitModel(
+            name=TRANSITIONS_METHOD, version=TRANSITIONS_VERSION, parameters=TRANSITIONS_DEFAULTS
+        ),
+        decision=decision_rule(STRAIGHTENED_NAME, max_residual_ratio=max_residual_ratio),
+        depends_on=("charge-lattice",),
+        inputs=(
+            InputBinding(node_id="charge-lattice", output="c_21", target="axes.0.couplings.P2"),
+            InputBinding(
+                node_id="charge-lattice", output="c_12", target="stage.sequence.body.0.level.scale"
+            ),
+        ),
     )

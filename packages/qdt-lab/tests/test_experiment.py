@@ -16,6 +16,7 @@ from qdt_lab.simulated import SimulatedLevelSense, SimulatedLevelSource, Simulat
 from qdt_lab.stream import Source, assemble
 from qdt_schemas.activity import (
     ExecutionPlan,
+    FixedLevel,
     ParameterBinding,
     SensedLevel,
     SequencerParameter,
@@ -494,3 +495,78 @@ def test_capture_needs_the_capability_and_the_protocol():
     plan = compile_sweep(SweepDefinition(name="droop", captured=(capture(),)), scope_stand())
     with pytest.raises(TypeError, match="WaveformSense"):
         Executor(plan, {"scope": SimulatedLevelSource()})
+
+
+# --- virtual gates (ADR 0049) ------------------------------------------------------------------------
+
+
+def test_a_coupled_channel_moves_with_its_axis_from_its_held_level():
+    """`couplings` on a stepped axis: the companion is set with the axis to origin + c · value, the
+    origin its held level (ADR 0038) or 0; it resolves as level_source; settle is the longest."""
+    definition = SweepDefinition(
+        name="virtual",
+        axes=(
+            SweepAxis(
+                name="R",
+                channel="gate_R",
+                start=0.0,
+                stop=0.2,
+                num=3,
+                couplings={"gate_L_dc": -0.5},
+            ),
+        ),
+        sensed=(SensedLevel(name="I", channel="sensor_dc"),),
+        levels=(FixedLevel(channel="gate_L_dc", value=0.1),),
+    )
+    plan = compile_sweep(definition, stand())
+    assert {c.logical: c.role for c in plan.channels} == {
+        "gate_R": "level_source",
+        "gate_L_dc": "level_source",
+        "sensor_dc": "level_sense",
+    }
+    assert [d.name for d in plan.dataset.dims] == ["R"]  # the companion is not a coordinate
+    dac = SpyLevelSource()
+    slept: list[float] = []
+    list(
+        Executor(plan, {"dac": dac, "meter": SimulatedLevelSense()}, sleep=slept.append)
+        .run()
+        .frames()
+    )
+    sets = [(ch, round(v, 6)) for ch, v in dac.calls]
+    assert sets[0] == ("ch01", 0.1)  # the operating point first
+    # at R = 0 the companion's target, 0.1 − 0.5 · 0.0, is the level already applied: no redundant set
+    assert sets[1:] == [
+        ("ch00", 0.0),
+        ("ch00", 0.1),
+        ("ch01", 0.05),
+        ("ch00", 0.2),
+        ("ch01", 0.0),
+    ]
+    assert slept and max(slept) == 0.01  # gate_L_dc's settle_s wins at every point
+
+
+def test_a_coupled_channel_needs_the_capability():
+    bare = stand().model_copy(
+        update={
+            "instruments": tuple(
+                i.model_copy(update={"capabilities": ("level_sense",)}) if i.id == "dac" else i
+                for i in stand().instruments
+            )
+        }
+    )
+    definition = SweepDefinition(
+        name="virtual",
+        axes=(
+            SweepAxis(
+                name="R",
+                channel="gate_R",
+                start=0.0,
+                stop=0.2,
+                num=3,
+                couplings={"gate_L_dc": -0.5},
+            ),
+        ),
+        sensed=(SensedLevel(name="I", channel="sensor_dc"),),
+    )
+    with pytest.raises(ValueError, match="lacks capability 'level_source'"):
+        compile_sweep(definition, bare)

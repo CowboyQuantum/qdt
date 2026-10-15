@@ -173,9 +173,24 @@ class DecisionRule(QdtModel):
     )
 
 
+class InputBinding(QdtModel):
+    """Where a node's definition takes a value from an upstream node's accepted outputs (ADR 0049)."""
+
+    node_id: str = Field(min_length=1, description="The upstream node; must be in `depends_on`.")
+    output: str = Field(min_length=1, description="The name in that node's `NodeOutcome.outputs`.")
+    target: str = Field(
+        min_length=1,
+        description=(
+            "Dotted path into this node's `definition` that takes the value, e.g. "
+            "'axes.0.couplings.P2' or 'stage.sequence.body.0.level.scale'."
+        ),
+    )
+
+
 class CalibrationNode(QdtModel):
     """One step of a tune-up as data: the experiment to run, the curated method that reads its record,
-    the rule that turns the estimates into a verdict and the quantities the next node needs."""
+    the rule that turns the estimates into a verdict and the quantities the next node needs. `inputs`
+    name the places in `definition` an upstream node's outputs fill before the node runs."""
 
     node_id: str = Field(
         min_length=1, description="Stable name of the node, e.g. 'charge-lattice'."
@@ -191,6 +206,10 @@ class CalibrationNode(QdtModel):
     depends_on: tuple[str, ...] = Field(
         default=(), description="Node ids whose accepted outcomes this node needs; unique."
     )
+    inputs: tuple[InputBinding, ...] = Field(
+        default=(),
+        description="Values of `definition` filled from upstream outputs before the node runs; unique targets.",
+    )
     attrs: dict[str, AttrValue] = Field(
         default_factory=dict, description="Free-form scalar metadata."
     )
@@ -201,6 +220,12 @@ class CalibrationNode(QdtModel):
             raise ValueError("depends_on names each node once")
         if self.node_id in self.depends_on:
             raise ValueError("a node does not depend on itself")
+        targets = [b.target for b in self.inputs]
+        if len(set(targets)) != len(targets):
+            raise ValueError("each input target is bound once")
+        unknown = {b.node_id for b in self.inputs} - set(self.depends_on)
+        if unknown:
+            raise ValueError(f"inputs come from {sorted(unknown)}, which are not in depends_on")
         return self
 
 

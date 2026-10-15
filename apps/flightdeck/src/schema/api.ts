@@ -875,6 +875,12 @@ export interface SweepAxis {
    */
   channel: string;
   /**
+   * A virtual gate (ADR 0049): other LevelSource channels moved with this axis, by these volts per volt of the axis value, from their held level (SweepDefinition.levels) or 0. Only a stepped axis couples; a stage axis expresses its couplings in the pulse sequence (Affine).
+   */
+  couplings?: {
+    [k: string]: number;
+  };
+  /**
    * Axis name; the Dataset dimension and coordinate are named after it.
    */
   name: string;

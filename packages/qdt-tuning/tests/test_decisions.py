@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from qdt_schemas.modeling import AnalysisResult, DecisionRule, Estimate, FitModel
-from qdt_tuning import RULES, apply, virtual_gate_matrix, virtual_gates
+from qdt_tuning import RULES, apply, straightened, virtual_gate_matrix, virtual_gates
 from qdt_tuning.decisions import VIRTUAL_GATES_NAME, decision_rule, rule_defaults
 
 
@@ -108,4 +108,25 @@ def test_rules_are_applied_by_their_data_and_every_parameter_is_carried():
             DecisionRule(name=VIRTUAL_GATES_NAME, version="1", parameters={"max_cross_ratio": 0.6}),
             result_with(LATTICE),
         )
-    assert set(RULES) == {VIRTUAL_GATES_NAME}
+
+
+def test_straightened_accepts_axis_aligned_transitions_and_rejects_cross_talk():
+    from qdt_tuning.decisions import STRAIGHTENED_NAME
+
+    aligned = straightened(result_with(((71.5, -0.5), (0.3, 68.0))))
+    assert aligned.status == "accepted"
+    assert aligned.outputs["residual_a"] == pytest.approx(-0.5 / 71.5)
+    assert aligned.outputs["residual_b"] == pytest.approx(0.3 / 68.0)
+    assert aligned.outputs["l_11"] == 71.5 and aligned.outputs["l_22"] == 68.0
+    skewed = straightened(result_with(LATTICE))
+    assert skewed.status == "rejected" and "residual" in skewed.message and skewed.outputs == {}
+    assert straightened(result_with(LATTICE), max_residual_ratio=0.3).status == "accepted"
+    assert straightened(result_with(LATTICE, status="failed", message="x")).status == "failed"
+    assert (
+        apply(decision_rule(STRAIGHTENED_NAME), result_with(((71.5, -0.5), (0.3, 68.0)))).status
+        == "accepted"
+    )
+    d = virtual_gates(result_with(LATTICE))
+    assert d.outputs["c_21"] == pytest.approx(d.outputs["m_21"] / d.outputs["m_11"])
+    assert d.outputs["c_12"] == pytest.approx(d.outputs["m_12"] / d.outputs["m_22"])
+    assert set(RULES) == {VIRTUAL_GATES_NAME, STRAIGHTENED_NAME}

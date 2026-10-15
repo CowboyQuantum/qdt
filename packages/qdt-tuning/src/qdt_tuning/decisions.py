@@ -49,8 +49,10 @@ def virtual_gates(
 
     Accepted when the result is `ok`, both diagonal lever arms are positive, both cross-capacitance
     ratios lie in [0, `max_cross_ratio`] and the lattice's condition number is below `max_condition`.
-    Outputs: `l_11`, `l_12`, `l_21`, `l_22` (the lattice, electrons per volt, [dot, gate]) and `m_11`,
-    `m_12`, `m_21`, `m_22` (the virtual-gate matrix).
+    Outputs: `l_11`, `l_12`, `l_21`, `l_22` (the lattice, electrons per volt, [dot, gate]); `m_11`,
+    `m_12`, `m_21`, `m_22` (the virtual-gate matrix); and the compensation coefficients `c_21 = m_21 /
+    m_11` (volts of gate 2 per volt of virtual gate 1) and `c_12 = m_12 / m_22`, which a coupled axis
+    and an Affine pulse level take directly (ADR 0049).
     """
     if result.status != "ok":
         return Decision("failed", f"the method failed: {result.message}", {})
@@ -92,6 +94,8 @@ def virtual_gates(
         "m_12": float(m[0, 1]),
         "m_21": float(m[1, 0]),
         "m_22": float(m[1, 1]),
+        "c_21": float(m[1, 0] / m[0, 0]),
+        "c_12": float(m[0, 1] / m[1, 1]),
     }
     return Decision(
         "accepted",
@@ -100,9 +104,57 @@ def virtual_gates(
     )
 
 
+STRAIGHTENED_NAME = "qdt_tuning.decisions.straightened"
+STRAIGHTENED_VERSION = "1"
+
+
+def straightened(result: AnalysisResult, *, max_residual_ratio: float = 0.05) -> Decision:
+    """Judge a charge-transitions result taken in virtual gates: accept when the honeycomb is
+    axis-aligned, i.e. both residual cross-capacitance ratios are within `max_residual_ratio` of zero.
+    Outputs: `residual_a`, `residual_b` (the ratios, signed) and `l_11`, `l_22` (the lever arms in the
+    virtual coordinates, electrons per volt)."""
+    if result.status != "ok":
+        return Decision("failed", f"the method failed: {result.message}", {})
+    try:
+        a_row, a_col = (
+            result.estimate("a_per_volt_row").value,
+            result.estimate("a_per_volt_col").value,
+        )
+        b_row, b_col = (
+            result.estimate("b_per_volt_row").value,
+            result.estimate("b_per_volt_col").value,
+        )
+    except KeyError as e:
+        return Decision("failed", f"the result lacks a lattice estimate: {e}", {})
+    if not (a_row > 0 and b_col > 0):
+        return Decision(
+            "rejected", f"a lever arm is not positive: diag {a_row:.3g}, {b_col:.3g}", {}
+        )
+    residual_a, residual_b = a_col / a_row, b_row / b_col
+    if max(abs(residual_a), abs(residual_b)) > max_residual_ratio:
+        return Decision(
+            "rejected",
+            f"residual cross ratios {residual_a:+.3f}, {residual_b:+.3f} exceed ±{max_residual_ratio}",
+            {},
+        )
+    return Decision(
+        "accepted",
+        f"residual cross ratios {residual_a:+.3f}, {residual_b:+.3f}",
+        {
+            "residual_a": float(residual_a),
+            "residual_b": float(residual_b),
+            "l_11": float(a_row),
+            "l_22": float(b_col),
+        },
+    )
+
+
 Rule = Callable[..., Decision]
 
-RULES: dict[str, tuple[str, Rule]] = {VIRTUAL_GATES_NAME: (VIRTUAL_GATES_VERSION, virtual_gates)}
+RULES: dict[str, tuple[str, Rule]] = {
+    VIRTUAL_GATES_NAME: (VIRTUAL_GATES_VERSION, virtual_gates),
+    STRAIGHTENED_NAME: (STRAIGHTENED_VERSION, straightened),
+}
 """Rule name → (version, callable). A rule is applicable through `apply` only if it is here."""
 
 
