@@ -2,11 +2,18 @@
 rule is in RULES, and its experiment compiles on both the simulator's stand and a bench-shaped one."""
 
 from qdt_lab.experiment import SimulatedEmitter, compile_sweep
+from qdt_schemas.activity import FixedLevel
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_server.catalogue import METHODS
 from qdt_sim.scenarios import DEVICE_ID, default_stand
-from qdt_tuning import RULES, charge_lattice, stability_diagram
-from qdt_tuning.nodes import TRANSITIONS_DEFAULTS, TRANSITIONS_METHOD
+from qdt_tuning import RULES, charge_lattice, coulomb_diamonds, stability_diagram
+from qdt_tuning.nodes import (
+    DIAMONDS_DEFAULTS,
+    DIAMONDS_METHOD,
+    TRANSITIONS_DEFAULTS,
+    TRANSITIONS_METHOD,
+    sensor_operating_point,
+)
 
 
 def test_the_nodes_method_is_the_catalogues_with_its_defaults():
@@ -45,3 +52,27 @@ def test_the_experiment_compiles_on_the_simulators_stand_and_on_a_bench_shaped_o
         "P2_pulse": "opx",
         "sensor": "opx",
     }
+
+
+def test_the_sensor_node_uses_the_diamonds_method_with_its_defaults_and_feeds_the_charge_lattice():
+    """ADR 0052: the diamonds method's defaults are the catalogue's; with a sensor gate the charge-lattice
+    node holds it from the sensor node's `sg_operating_v` through `levels`."""
+    spec, _ = METHODS[DIAMONDS_METHOD]
+    assert spec.resolve({}) == DIAMONDS_DEFAULTS
+    sensor = sensor_operating_point()
+    assert sensor.node_id == "sensor-operating-point" and sensor.depends_on == ()
+    assert sensor.method.name == DIAMONDS_METHOD and sensor.method.parameters == DIAMONDS_DEFAULTS
+    assert sensor.decision.name in RULES and sensor.decision.parameters["flank_offset_v"] == 0.02
+    assert [a.channel for a in sensor.definition.axes] == ["SG", "bias"]
+    assert sensor.definition.sensed[0].channel == "sensor"
+    plan = compile_sweep(sensor.definition, default_stand(), {"simulated": SimulatedEmitter()})
+    assert [d.name for d in plan.dataset.dims] == ["SG", "V_sd"]
+    held = charge_lattice(instrument=DEVICE_ID, sensor_gate="SG")
+    assert held.depends_on == ("sensor-operating-point",)
+    assert held.definition.levels == (FixedLevel(channel="SG", value=0.0),)
+    assert [(b.node_id, b.output, b.target) for b in held.inputs] == [
+        ("sensor-operating-point", "sg_operating_v", "levels.0.value")
+    ]
+    alone = charge_lattice(instrument=DEVICE_ID)
+    assert alone.depends_on == () and alone.inputs == () and alone.definition.levels == ()
+    assert coulomb_diamonds(sensor_gate="SG2", bias="b", sensor="s").axes[0].channel == "SG2"

@@ -101,7 +101,9 @@ def test_sensor_bias_opens_coulomb_diamonds():
     assert m.sensor_current(phi, -1.3 * e_c) < m.sensor_background_a - m.sensor_peak_a
     (phi_0, s_up), (_, s_down) = m.diamond_edges(0)
     assert phi_0 == m.sensor_phase_v and s_down == -s_up
-    v_apex = (m.sensor_period_v / 2) * s_up  # where the rising edge of k meets the falling edge of k+1
+    v_apex = (
+        m.sensor_period_v / 2
+    ) * s_up  # where the rising edge of k meets the falling edge of k+1
     assert v_apex == pytest.approx(e_c, rel=1e-12)
     # on an edge the current is half-way between blockade and saturation
     for d in (-0.08, 0.05):

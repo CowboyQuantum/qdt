@@ -224,12 +224,23 @@ class TuneUpManager:
                 return i.id
         return None
 
+    @property
+    def sensor_gate(self) -> str | None:
+        """The stand's sensor-gate channel by convention (`SG`), if it has one; None otherwise."""
+        return next((c.logical for c in self.runs.stand.channels if c.logical == "SG"), None)
+
     def templates(self) -> list[CalibrationNode]:
-        """The nodes this server can offer: every template built for the stand's sequencer."""
+        """The nodes this server can offer: every template built for the stand's sequencer and sensor
+        gate. Without a sensor gate the sensor node is left out (its sweep needs `SG`, `bias`, `sensor`)."""
         seq = self.sequencer
         if seq is None:
             return []
-        return [make(seq) for make in TEMPLATES.values()]
+        gate = self.sensor_gate
+        return [
+            make(seq, gate)
+            for node_id, make in TEMPLATES.items()
+            if gate is not None or node_id != "sensor-operating-point"
+        ]
 
     def nodes_for(self, node_ids: Sequence[str]) -> tuple[CalibrationNode, ...]:
         """The templates named by `node_ids`, in topological order. Raises KeyError for an unknown id,
@@ -237,10 +248,12 @@ class TuneUpManager:
         seq = self.sequencer
         if seq is None:
             raise ValueError("the stand has no sequencer; no node can run on it")
-        unknown = [n for n in node_ids if n not in TEMPLATES]
+        offered = {n.node_id for n in self.templates()}
+        unknown = [n for n in node_ids if n not in offered]
         if unknown:
-            raise KeyError(f"no node templates {unknown}; have {sorted(TEMPLATES)}")
-        return order(TEMPLATES[n](seq) for n in node_ids)
+            raise KeyError(f"no node templates {unknown} on this stand; have {sorted(offered)}")
+        gate = self.sensor_gate
+        return order(TEMPLATES[n](seq, gate) for n in node_ids)
 
     async def start(
         self,

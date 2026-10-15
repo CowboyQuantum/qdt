@@ -43,8 +43,16 @@ def test_order_refuses_cycles_strangers_and_repeats():
         order([node("a"), node("a")])
 
 
-def test_templates_build_every_node_for_a_stands_sequencer():
-    built = {k: make("opx") for k, make in TEMPLATES.items()}
-    assert set(built) == {"charge-lattice", "virtual-lattice"}
-    assert all(n.definition.stage.instrument == "opx" for n in built.values())
-    assert [n.node_id for n in order(built.values())] == ["charge-lattice", "virtual-lattice"]
+def test_templates_build_every_node_for_a_stands_sequencer_and_sensor_gate():
+    built = {k: make("opx", "SG") for k, make in TEMPLATES.items()}
+    assert set(built) == {"sensor-operating-point", "charge-lattice", "virtual-lattice"}
+    assert built["charge-lattice"].definition.stage.instrument == "opx"
+    assert built["charge-lattice"].depends_on == ("sensor-operating-point",)
+    assert [n.node_id for n in order(reversed(list(built.values())))] == [
+        "sensor-operating-point",
+        "charge-lattice",
+        "virtual-lattice",
+    ]
+    # without a sensor gate the charge lattice stands alone (the sensor node is not offered then)
+    alone = TEMPLATES["charge-lattice"]("opx", None)
+    assert alone.depends_on == () and alone.inputs == ()

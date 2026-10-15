@@ -8,11 +8,23 @@ value and is an argument.
 
 from collections.abc import Callable
 
-from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, SymbolBinding
+from qdt_schemas.activity import (
+    FixedLevel,
+    SensedLevel,
+    SequencerStage,
+    SweepAxis,
+    SweepDefinition,
+    SymbolBinding,
+)
 from qdt_schemas.modeling import CalibrationNode, FitModel, InputBinding
 from qdt_schemas.pulse import Affine, Measure, PulseSequence, Step, Symbol
 
-from .decisions import STRAIGHTENED_NAME, VIRTUAL_GATES_NAME, decision_rule
+from .decisions import (
+    SENSOR_OPERATING_POINT_NAME,
+    STRAIGHTENED_NAME,
+    VIRTUAL_GATES_NAME,
+    decision_rule,
+)
 
 TRANSITIONS_METHOD = "qdt_analysis.transitions.detect_transitions"
 TRANSITIONS_VERSION = "1"
@@ -83,6 +95,71 @@ def stability_diagram(
     )
 
 
+DIAMONDS_METHOD = "qdt_analysis.diamonds.detect_diamonds"
+DIAMONDS_VERSION = "1"
+DIAMONDS_DEFAULTS = {
+    "variable": "",
+    "smooth_px": 1.0,
+    "threshold_rel": 0.3,
+    "threshold_noise": 5.0,
+    "min_separation_deg": 15.0,
+    "window_deg": 12.0,
+    "min_segment_px": 6,
+    "max_segments": 200,
+    "point_tolerance_px": 3.0,
+}
+"""The diamonds method's defaults, as its `FitModel` carries them (pinned against the catalogue)."""
+
+
+def coulomb_diamonds(
+    *,
+    sensor_gate: str = "SG",
+    bias: str = "bias",
+    sensor: str = "sensor",
+    sg: tuple[float, float] = (-0.2, 0.2),
+    bias_v: tuple[float, float] = (-1.5e-3, 1.5e-3),
+    n: int = 64,
+    name: str = "sensor diamonds",
+) -> SweepDefinition:
+    """The sensor's Coulomb diamonds (ADR 0030): the sensor gate stepped by its DC line against the
+    source–drain bias on its DC line, the sensor current sensed at every point."""
+    return SweepDefinition(
+        name=name,
+        axes=(
+            SweepAxis(name="SG", channel=sensor_gate, start=sg[0], stop=sg[1], num=n),
+            SweepAxis(name="V_sd", channel=bias, start=bias_v[0], stop=bias_v[1], num=n),
+        ),
+        sensed=(SensedLevel(name="I_sensor", channel=sensor),),
+    )
+
+
+def sensor_operating_point(
+    *,
+    sensor_gate: str = "SG",
+    bias: str = "bias",
+    sensor: str = "sensor",
+    n: int = 64,
+    flank_offset_v: float = 0.02,
+    near_v: float = 0.0,
+) -> CalibrationNode:
+    """The sensor node: the Coulomb diamonds read by `detect_diamonds`, the sensor gate parked on the
+    flank of the peak nearest `near_v` (ADR 0052). Its `sg_operating_v` is what the stability nodes hold."""
+    return CalibrationNode(
+        node_id="sensor-operating-point",
+        description=(
+            "The charge sensor's Coulomb diamonds: period, charging energy, lever arm; the sensor gate "
+            "parked on a peak's flank, where the current changes fastest with charge."
+        ),
+        definition=coulomb_diamonds(sensor_gate=sensor_gate, bias=bias, sensor=sensor, n=n),
+        method=FitModel(
+            name=DIAMONDS_METHOD, version=DIAMONDS_VERSION, parameters=DIAMONDS_DEFAULTS
+        ),
+        decision=decision_rule(
+            SENSOR_OPERATING_POINT_NAME, flank_offset_v=flank_offset_v, near_v=near_v
+        ),
+    )
+
+
 def charge_lattice(
     *,
     instrument: str,
@@ -90,22 +167,40 @@ def charge_lattice(
     p2: tuple[float, float] = (0.03, 0.18),
     n: int = 96,
     max_cross_ratio: float = 0.6,
+    sensor_gate: str | None = None,
 ) -> CalibrationNode:
     """The first node: a stability diagram in a window where both dots are occupied, the charge
-    lattice from its transitions (ADR 0029), the virtual-gate matrix as the decision."""
+    lattice from its transitions (ADR 0029), the virtual-gate matrix as the decision. With
+    `sensor_gate`, the node holds that gate at the operating point `sensor-operating-point` decided
+    (ADR 0052): a held level in the sweep, bound from the upstream outcome."""
+    definition = stability_diagram(
+        instrument=instrument, p1=p1, p2=p2, n_outer=n, n_inner=n, name="charge lattice"
+    )
+    depends_on: tuple[str, ...] = ()
+    inputs: tuple[InputBinding, ...] = ()
+    if sensor_gate is not None:
+        definition = definition.model_copy(
+            update={"levels": (FixedLevel(channel=sensor_gate, value=0.0),)}
+        )
+        depends_on = ("sensor-operating-point",)
+        inputs = (
+            InputBinding(
+                node_id="sensor-operating-point", output="sg_operating_v", target="levels.0.value"
+            ),
+        )
     return CalibrationNode(
         node_id="charge-lattice",
         description=(
             "Electrons per volt on each dot from each plunger, from the honeycomb's lattice; the "
             "virtual-gate matrix that removes the cross-talk."
         ),
-        definition=stability_diagram(
-            instrument=instrument, p1=p1, p2=p2, n_outer=n, n_inner=n, name="charge lattice"
-        ),
+        definition=definition,
         method=FitModel(
             name=TRANSITIONS_METHOD, version=TRANSITIONS_VERSION, parameters=TRANSITIONS_DEFAULTS
         ),
         decision=decision_rule(VIRTUAL_GATES_NAME, max_cross_ratio=max_cross_ratio),
+        depends_on=depends_on,
+        inputs=inputs,
     )
 
 
@@ -148,8 +243,15 @@ def virtual_lattice(
     )
 
 
-TEMPLATES: dict[str, Callable[[str], CalibrationNode]] = {
-    "charge-lattice": lambda instrument: charge_lattice(instrument=instrument),
-    "virtual-lattice": lambda instrument: virtual_lattice(instrument=instrument),
+TEMPLATES: dict[str, Callable[[str, str | None], CalibrationNode]] = {
+    "sensor-operating-point": lambda instrument, sensor_gate: sensor_operating_point(
+        sensor_gate=sensor_gate or "SG"
+    ),
+    "charge-lattice": lambda instrument, sensor_gate: charge_lattice(
+        instrument=instrument, sensor_gate=sensor_gate
+    ),
+    "virtual-lattice": lambda instrument, sensor_gate: virtual_lattice(instrument=instrument),
 }
-"""Node id → constructor taking the stand's sequencer instrument id: what a server offers (ADR 0050)."""
+"""Node id → constructor taking the stand's sequencer instrument id and its sensor-gate channel (None
+when the stand has no `SG`): what a server offers (ADR 0050, 0052). With a sensor gate, `charge-lattice`
+depends on `sensor-operating-point`; the sensor node itself needs `SG`, `bias` and `sensor` channels."""

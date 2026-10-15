@@ -13,8 +13,13 @@ from qdt_registry import Registry
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import CalibrationNode, SimResult, SimScenario
 from qdt_server.tuning import run_node, run_tuneup
-from qdt_sim.scenarios import DEVICE_ID, default_stand, device_for, lattice_truth
-from qdt_tuning import charge_lattice, virtual_gate_matrix, virtual_lattice
+from qdt_sim.scenarios import DEVICE_ID, default_stand, device_for, lattice_truth, sensor_truth
+from qdt_tuning import (
+    charge_lattice,
+    sensor_operating_point_node,
+    virtual_gate_matrix,
+    virtual_lattice,
+)
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -30,8 +35,23 @@ QUIET = SimScenario(
     noise=False,
 )
 
+COLD = SimScenario(
+    scenario_id="cold-sensor",
+    description="a cold sensor (10 mV peaks) so the diamonds resolve (ADR 0030); noise off",
+    model={"sensor_width_v": 0.01},
+    seed=2,
+    noise=False,
+)
+
 NodeBuilders = Sequence[Callable[[], CalibrationNode]]
+THREE_NODES: NodeBuilders = [
+    sensor_operating_point_node,
+    lambda: charge_lattice(instrument=DEVICE_ID, sensor_gate="SG"),
+    lambda: virtual_lattice(instrument=DEVICE_ID),
+]
 SCENARIOS: dict[str, tuple[SimScenario, NodeBuilders]] = {
+    "sensor_operating_point_cold": (COLD, [sensor_operating_point_node]),
+    "virtual_lattice_cold": (COLD, THREE_NODES),
     "charge_lattice_default": (DEFAULT, [lambda: charge_lattice(instrument=DEVICE_ID)]),
     "charge_lattice_quiet": (QUIET, [lambda: charge_lattice(instrument=DEVICE_ID)]),
     "virtual_lattice_default": (
@@ -64,6 +84,9 @@ def truth_for(scenario: SimScenario, node_id: str) -> dict[str, float]:
             | {f"m_{i + 1}{j + 1}": float(M[i, j]) for i in range(2) for j in range(2)}
             | {"c_21": float(M[1, 0] / M[0, 0]), "c_12": float(M[0, 1] / M[1, 1])}
         )
+    if node_id == "sensor-operating-point":
+        t = sensor_truth(scenario)
+        return t | {"sg_operating_v": t["sg_peak_v"] + 0.02}  # the rule's default flank offset
     if node_id == "virtual-lattice":
         # in virtual coordinates the lattice is L · C, diagonal when M is right
         C = np.array([[1.0, M[0, 1] / M[1, 1]], [M[1, 0] / M[0, 0], 1.0]])
@@ -119,6 +142,11 @@ TOLERANCES = {
     "c_12": (0.0, 0.01),
     "residual_a": (0.0, 0.02),
     "residual_b": (0.0, 0.02),
+    "sg_peak_v": (0.0, 0.005),
+    "sg_operating_v": (0.0, 0.005),
+    "period": (0.02, 0.0),
+    "charging_energy": (0.05, 0.0),
+    "lever_arm": (0.07, 0.0),
 }
 
 
@@ -257,28 +285,46 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
     scenario, each node's sweep a Run on the stream; the TuneUp completes with both accepted; the
     outcomes are stored and point at their records and results."""
     nodes = client.get("/nodes").json()
-    assert [n["node_id"] for n in nodes] == ["charge-lattice", "virtual-lattice"]
-    assert all(n["definition"]["stage"]["instrument"] == DEVICE_ID for n in nodes)
+    assert [n["node_id"] for n in nodes] == [
+        "sensor-operating-point",
+        "charge-lattice",
+        "virtual-lattice",
+    ]
+    assert nodes[1]["depends_on"] == ["sensor-operating-point"]
+    assert nodes[1]["definition"]["levels"][0]["channel"] == "SG"
     r = client.post(
         "/tuneups",
         json={
-            "node_ids": ["virtual-lattice", "charge-lattice"],  # any order: the server sorts it
-            "scenario": QUIET.model_dump(mode="json"),
+            "node_ids": [
+                "virtual-lattice",
+                "charge-lattice",
+                "sensor-operating-point",
+            ],  # any order
+            "scenario": COLD.model_dump(mode="json"),
             "options": {"campaign": "tuneup"},
         },
     )
     assert r.status_code == 202, r.text
     tuneup = wait_tuneup(client, r.json()["tuneup_id"])
     assert tuneup.state == "completed", tuneup.message
-    assert [n.node_id for n in tuneup.nodes] == ["charge-lattice", "virtual-lattice"]
-    assert tuneup.scenario_id == QUIET.scenario_id and tuneup.attrs["noise"] is False
-    assert tuneup.name == "charge-lattice → virtual-lattice"
-    assert [o.status for o in tuneup.outcomes] == ["accepted", "accepted"]
-    second = tuneup.outcomes[1]
+    assert [n.node_id for n in tuneup.nodes] == [
+        "sensor-operating-point",
+        "charge-lattice",
+        "virtual-lattice",
+    ]
+    assert tuneup.scenario_id == COLD.scenario_id and tuneup.attrs["sensor_width_v"] == 0.01
+    assert tuneup.name == "sensor-operating-point → charge-lattice → virtual-lattice"
+    assert [o.status for o in tuneup.outcomes] == ["accepted", "accepted", "accepted"]
+    first, _, second = tuneup.outcomes
+    assert first.outputs["sg_peak_v"] == pytest.approx(-0.06, abs=0.005)
     assert abs(second.outputs["residual_a"]) < 0.02 and second.tuneup_id == tuneup.tuneup_id
     # every node's sweep was a run on the server, with the tune-up's options
     runs = client.get("/runs").json()
-    assert [x["definition_name"] for x in runs] == ["charge lattice", "virtual-gate lattice"]
+    assert [x["definition_name"] for x in runs] == [
+        "sensor diamonds",
+        "charge lattice",
+        "virtual-gate lattice",
+    ]
     assert all(x["state"] == "completed" and x["attrs"]["campaign"] == "tuneup" for x in runs)
     # the outcomes are durable and point at durable records and results
     stored = client.get("/outcomes", params={"tuneup_id": tuneup.tuneup_id}).json()
@@ -296,11 +342,17 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
 def test_a_tuneup_refuses_unknown_nodes_and_stops_when_asked(client):
     assert client.post("/tuneups", json={"node_ids": ["nope"]}).status_code == 400
     assert client.post("/tuneups", json={"node_ids": []}).status_code == 422
+    # a dependent without its dependency is a 400, not a run
+    missing = client.post(
+        "/tuneups",
+        json={"node_ids": ["charge-lattice"], "scenario": COLD.model_dump(mode="json")},
+    )
+    assert missing.status_code == 400 and "sensor-operating-point" in missing.json()["detail"]
     r = client.post(
         "/tuneups",
         json={
-            "node_ids": ["charge-lattice", "virtual-lattice"],
-            "scenario": QUIET.model_dump(mode="json"),
+            "node_ids": ["sensor-operating-point", "charge-lattice", "virtual-lattice"],
+            "scenario": COLD.model_dump(mode="json"),
         },
     )
     tuneup_id = r.json()["tuneup_id"]
