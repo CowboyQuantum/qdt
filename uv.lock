@@ -20,6 +20,7 @@ members = [
     "qdt-server",
     "qdt-sim",
     "qdt-telemetry",
+    "qdt-tuning",
     "qdt-workspace",
 ]
 
@@ -1587,6 +1588,7 @@ dependencies = [
     { name = "qdt-registry" },
     { name = "qdt-schemas", extra = ["hdf5"] },
     { name = "qdt-sim" },
+    { name = "qdt-tuning" },
     { name = "uvicorn" },
 ]
 
@@ -1598,6 +1600,7 @@ requires-dist = [
     { name = "qdt-registry", editable = "packages/qdt-registry" },
     { name = "qdt-schemas", extras = ["hdf5"], editable = "packages/qdt-schemas" },
     { name = "qdt-sim", editable = "packages/qdt-sim" },
+    { name = "qdt-tuning", editable = "packages/qdt-tuning" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
 
@@ -1636,6 +1639,22 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "qdt-registry", editable = "packages/qdt-registry" },
+    { name = "qdt-schemas", editable = "packages/qdt-schemas" },
+]
+
+[[package]]
+name = "qdt-tuning"
+version = "0.1.0"
+source = { editable = "packages/qdt-tuning" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "qdt-schemas" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26,<3" },
     { name = "qdt-schemas", editable = "packages/qdt-schemas" },
 ]
 

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 1,
+    "scenario_id": "default-quiet",
+    "description": "the default double dot, noise off",
+    "model": {},
+    "seed": 0,
+    "noise": false,
+    "attrs": {}
+  },
+  "node_id": "charge-lattice",
+  "outcome": {
+    "schema_version": 1,
+    "outcome_id": "166d0cdb16224a659f6f9ccbd9299121",
+    "node_id": "charge-lattice",
+    "scenario_id": "default-quiet",
+    "record_id": "a4374540bdd14b1cb46297d0cd78f124",
+    "result_id": "a1225202cc0c40c88ae2db9a1a1b6b8d",
+    "status": "accepted",
+    "message": "lattice condition 1.54, cross ratios 0.211 and 0.212",
+    "outputs": {
+      "l_11": 74.6150905020661,
+      "l_12": 15.73446690990437,
+      "l_21": 15.263030721602775,
+      "l_22": 71.86710110761163,
+      "m_11": 1.0468851210893797,
+      "m_12": -0.22076203600927027,
+      "m_21": -0.2223359439703865,
+      "m_22": 1.0468851210893797
+    },
+    "created_at": "2026-10-15T19:23:57.750769Z",
+    "attrs": {
+      "method": "qdt_analysis.transitions.detect_transitions",
+      "rule": "qdt_tuning.decisions.virtual_gates"
+    }
+  },
+  "estimates": [
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_row",
+      "value": 74.6150905020661,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_col",
+      "value": 15.73446690990437,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_row",
+      "value": 15.263030721602775,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_col",
+      "value": 71.86710110761163,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_a",
+      "value": 0.21087513000428085,
+      "stderr": null,
+      "unit": ""
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_b",
+      "value": 0.21237854993967786,
+      "stderr": null,
+      "unit": ""
+    }
+  ],
+  "truth": {
+    "l_11": 74.89810889352916,
+    "l_12": 15.603772686151908,
+    "l_21": 15.603772686151908,
+    "l_22": 71.77735435629877,
+    "m_11": 1.047438330170778,
+    "m_12": -0.21821631878557876,
+    "m_21": -0.22770398481973436,
+    "m_22": 1.047438330170778
+  },
+  "created_at": "2026-10-15T19:23:57.751571Z"
+}

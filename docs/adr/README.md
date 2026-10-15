@@ -51,3 +51,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0045 | The curated plane fit: least squares with standard errors, failure below `min_r2`, iso-lines as `line` overlays, fitted plane + residual as output | Accepted |
 | 0046 | The curated single exponential: an edge-anchored window, nonlinear least squares with standard errors, markers on the time axis, fitted curve + residual as output; `MethodSpec.applies_to` gains `trace_1d` additively | Accepted (amends 0036 additively) |
 | 0047 | Waveform capture as an activity: `CapturedWaveform` in the sweep, a `(record, time)` slab per stepped point, a simulated scope on the server's stand, traces drawn as traces | Accepted (amends 0022 additively) |
+| 0048 | Step 6's modeling objects: `SimScenario`, `CalibrationNode` with a `DecisionRule`, `NodeOutcome`, `SimResult`; nodes and rules in `qdt-tuning` (pure), the runner in `qdt-server` | Accepted (adds to 0033 as reserved) |

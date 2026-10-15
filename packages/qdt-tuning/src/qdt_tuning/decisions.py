@@ -1,0 +1,143 @@
+"""Curated decision rules: an `AnalysisResult` in, a `Decision` out (ADR 0048).
+
+A rule is the part of a calibration node that is neither measurement nor analysis: it reads the
+estimates a curated method produced and says whether the node is done, and with which numbers the next
+node proceeds. Rules are small, named, versioned and parameterized like methods, so an outcome is
+reproducible from its `DecisionRule`.
+"""
+
+import inspect
+from collections.abc import Callable
+from typing import NamedTuple
+
+import numpy as np
+
+from qdt_schemas.data import AttrValue
+from qdt_schemas.modeling import AnalysisResult, DecisionRule
+
+
+class Decision(NamedTuple):
+    """A rule's verdict: `accepted` with `outputs`, `rejected` with a reason, or `failed` (the result was)."""
+
+    status: str
+    message: str
+    outputs: dict[str, float]
+
+
+def virtual_gate_matrix(lattice: np.ndarray) -> np.ndarray:
+    """The virtual-gate matrix `M` of a charge lattice `L` (electrons per volt, [dot, gate]).
+
+    Column j of `M` is the real-gate move, in volts, that adds `L[j, j]` electrons' worth of gate charge
+    to dot j and none to the other: `M = L⁻¹ · diag(diag(L))`, so a virtual gate has its own gate's
+    lever arm and no cross-talk. `M` is the identity when `L` is diagonal.
+    """
+    lattice = np.asarray(lattice, dtype=float)
+    if lattice.shape != (2, 2):
+        raise ValueError(f"a two-dot lattice is 2 × 2, got {lattice.shape}")
+    return np.linalg.solve(lattice, np.diag(np.diag(lattice)))
+
+
+VIRTUAL_GATES_NAME = "qdt_tuning.decisions.virtual_gates"
+VIRTUAL_GATES_VERSION = "1"
+
+
+def virtual_gates(
+    result: AnalysisResult, *, max_cross_ratio: float = 0.6, max_condition: float = 10.0
+) -> Decision:
+    """Judge a charge-transitions result (`qdt_analysis.transitions.detect_transitions`): accept when its
+    lattice is a plausible double-dot lattice and decide the virtual-gate matrix from it.
+
+    Accepted when the result is `ok`, both diagonal lever arms are positive, both cross-capacitance
+    ratios lie in [0, `max_cross_ratio`] and the lattice's condition number is below `max_condition`.
+    Outputs: `l_11`, `l_12`, `l_21`, `l_22` (the lattice, electrons per volt, [dot, gate]) and `m_11`,
+    `m_12`, `m_21`, `m_22` (the virtual-gate matrix).
+    """
+    if result.status != "ok":
+        return Decision("failed", f"the method failed: {result.message}", {})
+    try:
+        a_row, a_col = (
+            result.estimate("a_per_volt_row").value,
+            result.estimate("a_per_volt_col").value,
+        )
+        b_row, b_col = (
+            result.estimate("b_per_volt_row").value,
+            result.estimate("b_per_volt_col").value,
+        )
+    except KeyError as e:
+        return Decision("failed", f"the result lacks a lattice estimate: {e}", {})
+    lattice = np.array([[a_row, a_col], [b_row, b_col]])
+    if not (a_row > 0 and b_col > 0):
+        return Decision(
+            "rejected", f"a lever arm is not positive: diag {a_row:.3g}, {b_col:.3g}", {}
+        )
+    ratios = (a_col / a_row, b_row / b_col)
+    if not all(0.0 <= r <= max_cross_ratio for r in ratios):
+        return Decision(
+            "rejected",
+            f"cross-capacitance ratios {ratios[0]:.3f}, {ratios[1]:.3f} outside [0, {max_cross_ratio}]",
+            {},
+        )
+    condition = float(np.linalg.cond(lattice))
+    if not condition < max_condition:
+        return Decision(
+            "rejected", f"the lattice is ill-conditioned ({condition:.1f} ≥ {max_condition})", {}
+        )
+    m = virtual_gate_matrix(lattice)
+    outputs = {
+        "l_11": float(lattice[0, 0]),
+        "l_12": float(lattice[0, 1]),
+        "l_21": float(lattice[1, 0]),
+        "l_22": float(lattice[1, 1]),
+        "m_11": float(m[0, 0]),
+        "m_12": float(m[0, 1]),
+        "m_21": float(m[1, 0]),
+        "m_22": float(m[1, 1]),
+    }
+    return Decision(
+        "accepted",
+        f"lattice condition {condition:.2f}, cross ratios {ratios[0]:.3f} and {ratios[1]:.3f}",
+        outputs,
+    )
+
+
+Rule = Callable[..., Decision]
+
+RULES: dict[str, tuple[str, Rule]] = {VIRTUAL_GATES_NAME: (VIRTUAL_GATES_VERSION, virtual_gates)}
+"""Rule name → (version, callable). A rule is applicable through `apply` only if it is here."""
+
+
+def rule_defaults(name: str) -> dict[str, AttrValue]:
+    """Every keyword parameter of rule `name` with its default: what a `DecisionRule` must carry."""
+    _, fn = RULES[name]
+    return {
+        p.name: p.default
+        for p in inspect.signature(fn).parameters.values()
+        if p.kind is inspect.Parameter.KEYWORD_ONLY
+    }
+
+
+def decision_rule(name: str, **parameters: AttrValue) -> DecisionRule:
+    """A `DecisionRule` for `name` with its defaults filled and `parameters` over them."""
+    if name not in RULES:
+        raise KeyError(f"no rule {name!r}; have {sorted(RULES)}")
+    defaults = rule_defaults(name)
+    unknown = set(parameters) - set(defaults)
+    if unknown:
+        raise ValueError(f"{name} has no parameters {sorted(unknown)}")
+    return DecisionRule(name=name, version=RULES[name][0], parameters={**defaults, **parameters})
+
+
+def apply(rule: DecisionRule, result: AnalysisResult) -> Decision:
+    """Apply `rule` to `result`. Raises KeyError for an unknown rule and ValueError when the rule's
+    version or parameters do not match the callable's (a verdict must be reproducible)."""
+    if rule.name not in RULES:
+        raise KeyError(f"no rule {rule.name!r}; have {sorted(RULES)}")
+    version, fn = RULES[rule.name]
+    if rule.version != version:
+        raise ValueError(f"{rule.name} is version {version}, the rule says {rule.version}")
+    defaults = rule_defaults(rule.name)
+    if set(rule.parameters) != set(defaults):
+        raise ValueError(
+            f"{rule.name} takes {sorted(defaults)}; the rule carries {sorted(rule.parameters)}"
+        )
+    return fn(result, **rule.parameters)

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 1,
+    "scenario_id": "default-occupied-window",
+    "description": "the default double dot with its default noise, seed 1; the charge-lattice node's window",
+    "model": {},
+    "seed": 1,
+    "noise": true,
+    "attrs": {}
+  },
+  "node_id": "charge-lattice",
+  "outcome": {
+    "schema_version": 1,
+    "outcome_id": "5c1b3f7be6cf4247aeba6f59b49f09a5",
+    "node_id": "charge-lattice",
+    "scenario_id": "default-occupied-window",
+    "record_id": "f2961a94d8654ecebae1d38e8374973f",
+    "result_id": "bdefcb9e241442eea90f653af286549c",
+    "status": "accepted",
+    "message": "lattice condition 1.56, cross ratios 0.214 and 0.223",
+    "outputs": {
+      "l_11": 74.45421598528753,
+      "l_12": 15.959055985783607,
+      "l_21": 15.873321562395347,
+      "l_22": 71.33920928189042,
+      "m_11": 1.0500818760755946,
+      "m_12": -0.2250821559018043,
+      "m_21": -0.23364833243284305,
+      "m_22": 1.0500818760755946
+    },
+    "created_at": "2026-10-15T19:23:57.392852Z",
+    "attrs": {
+      "method": "qdt_analysis.transitions.detect_transitions",
+      "rule": "qdt_tuning.decisions.virtual_gates"
+    }
+  },
+  "estimates": [
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_row",
+      "value": 74.45421598528753,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_col",
+      "value": 15.959055985783607,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_row",
+      "value": 15.873321562395347,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_col",
+      "value": 71.33920928189042,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_a",
+      "value": 0.2143472438006356,
+      "stderr": null,
+      "unit": ""
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_b",
+      "value": 0.22250487105447658,
+      "stderr": null,
+      "unit": ""
+    }
+  ],
+  "truth": {
+    "l_11": 74.89810889352916,
+    "l_12": 15.603772686151908,
+    "l_21": 15.603772686151908,
+    "l_22": 71.77735435629877,
+    "m_11": 1.047438330170778,
+    "m_12": -0.21821631878557876,
+    "m_21": -0.22770398481973436,
+    "m_22": 1.047438330170778
+  },
+  "created_at": "2026-10-15T19:23:57.393698Z"
+}
