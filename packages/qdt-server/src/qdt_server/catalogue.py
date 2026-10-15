@@ -6,7 +6,7 @@ pins that, so a method that changes its signature changes its spec in the same c
 
 from collections.abc import Callable
 
-from qdt_analysis import diamonds, transitions
+from qdt_analysis import diamonds, plane, transitions
 from qdt_analysis.transitions import Analysis
 from qdt_schemas.control import EstimateSpec, MethodSpec, ParameterSpec
 from qdt_schemas.data import AttrValue
@@ -15,13 +15,15 @@ from qdt_schemas.payload_hdf5 import Payload
 
 Method = Callable[..., Analysis]
 
+_VARIABLE = ParameterSpec(
+    name="variable",
+    kind="str",
+    default="",
+    description="Data variable; default: the first 2-D one.",
+)
+
 _DETECTION = (
-    ParameterSpec(
-        name="variable",
-        kind="str",
-        default="",
-        description="Data variable; default: the first 2-D one.",
-    ),
+    _VARIABLE,
     ParameterSpec(
         name="smooth_px",
         kind="float",
@@ -161,6 +163,58 @@ METHODS: dict[str, tuple[MethodSpec, Method]] = {
             ),
         ),
         diamonds.detect_diamonds,
+    ),
+    plane.NAME: (
+        MethodSpec(
+            name=plane.NAME,
+            version=plane.VERSION,
+            title="Plane",
+            description="A least-squares plane z = slope_row·x + slope_col·y + offset through a map, with iso-lines; the DC + pulse oracle of the L2 bench runs.",
+            applies_to="map_2d",
+            parameters=(
+                _VARIABLE,
+                ParameterSpec(
+                    name="n_isolines",
+                    kind="int",
+                    default=8,
+                    minimum=0,
+                    description="Iso-lines drawn, at evenly spaced levels between the plane's extremes over the window.",
+                ),
+                ParameterSpec(
+                    name="min_r2",
+                    kind="float",
+                    default=0.5,
+                    minimum=0.0,
+                    maximum=1.0,
+                    description="The plane must explain at least this fraction of the map's variance, or the fit fails.",
+                ),
+            ),
+            estimates=(
+                EstimateSpec(
+                    name="slope_row",
+                    unit="z/row",
+                    description="Change of the variable per unit of the row coordinate, with its standard error.",
+                ),
+                EstimateSpec(
+                    name="slope_col",
+                    unit="z/col",
+                    description="Change of the variable per unit of the column coordinate, with its standard error.",
+                ),
+                EstimateSpec(
+                    name="offset", unit="z", description="The plane at the origin, with its standard error."
+                ),
+                EstimateSpec(
+                    name="residual_rms", unit="z", description="Root mean square of the residual."
+                ),
+                EstimateSpec(name="r2", description="Fraction of the map's variance the plane explains."),
+                EstimateSpec(
+                    name="isoline_slope",
+                    unit="col/row",
+                    description="Slope of the iso-lines, −slope_row/slope_col; absent when slope_col is 0.",
+                ),
+            ),
+        ),
+        plane.fit_plane,
     ),
 }
 
