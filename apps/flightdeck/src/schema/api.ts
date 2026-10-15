@@ -1393,9 +1393,9 @@ export interface MethodRequest {
  */
 export interface MethodSpec {
   /**
-   * Dataset shape the method accepts; map_2d: a variable over two linear coordinates.
+   * Dataset shape the method accepts; map_2d: a variable over two linear coordinates; trace_1d: a variable over one linear coordinate (time), any leading dims uncoordinated (records, shots). trace_1d was added without a version bump (ADR 0046).
    */
-  applies_to: "map_2d";
+  applies_to: "map_2d" | "trace_1d";
   /**
    * What the method does, for the UI.
    */

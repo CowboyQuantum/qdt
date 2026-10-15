@@ -6,7 +6,7 @@ pins that, so a method that changes its signature changes its spec in the same c
 
 from collections.abc import Callable
 
-from qdt_analysis import diamonds, plane, transitions
+from qdt_analysis import diamonds, exponential, plane, transitions
 from qdt_analysis.transitions import Analysis
 from qdt_schemas.control import EstimateSpec, MethodSpec, ParameterSpec
 from qdt_schemas.data import AttrValue
@@ -215,6 +215,69 @@ METHODS: dict[str, tuple[MethodSpec, Method]] = {
             ),
         ),
         plane.fit_plane,
+    ),
+    exponential.NAME: (
+        MethodSpec(
+            name=exponential.NAME,
+            version=exponential.VERSION,
+            title="Single exponential",
+            description="y = offset + amplitude·exp(−(t − t_start)/tau) on a trace after its edge; the droop oracle of the L2 bench runs.",
+            applies_to="trace_1d",
+            parameters=(
+                ParameterSpec(
+                    name="variable",
+                    kind="str",
+                    default="",
+                    description="Data variable; default: the first trace (time on its last dim).",
+                ),
+                ParameterSpec(
+                    name="skip",
+                    kind="float",
+                    default=0.0,
+                    unit="t",
+                    minimum=0.0,
+                    description="Time after the detected edge where the fit window starts, in the time coordinate's unit.",
+                ),
+                ParameterSpec(
+                    name="span",
+                    kind="float",
+                    default=0.0,
+                    unit="t",
+                    minimum=0.0,
+                    description="Length of the fit window in the time coordinate's unit; 0: to the end of the record.",
+                ),
+                ParameterSpec(
+                    name="min_r2",
+                    kind="float",
+                    default=0.5,
+                    minimum=0.0,
+                    maximum=1.0,
+                    description="The exponential must explain at least this fraction of the window's variance, or the fit fails.",
+                ),
+            ),
+            estimates=(
+                EstimateSpec(
+                    name="tau",
+                    unit="t",
+                    description="Time constant in the time coordinate's unit, with its standard error.",
+                ),
+                EstimateSpec(
+                    name="amplitude",
+                    unit="y",
+                    description="The exponential term at the window's start (negative for an approach), with its standard error.",
+                ),
+                EstimateSpec(
+                    name="offset", unit="y", description="The asymptote, with its standard error."
+                ),
+                EstimateSpec(
+                    name="residual_rms", unit="y", description="Root mean square of the residual."
+                ),
+                EstimateSpec(
+                    name="r2", description="Fraction of the window's variance the exponential explains."
+                ),
+            ),
+        ),
+        exponential.fit_exponential,
     ),
 }
 

@@ -4,17 +4,20 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 5 — Instrument drivers → `docs/steps/05-instrument-drivers-last-mile.md` (IN PROGRESS).
-**Branch:** `step-5/plane-fit` (PR against `main`; the human merges). PRs #25–#36 merged 2026-10-14.
-**Last session:** 2026-10-14, session 13 of Step 5, not at the bench. **The curated plane fit is written**
-(`qdt_analysis.plane.fit_plane`, ADR 0045): ordinary least squares over the finite points with standard
-errors, `slope_row`, `slope_col`, `offset`, `isoline_slope`, `residual_rms`, `r2`; `failed` when the plane
-explains less than `min_r2` (0.5) of the variance or the map is constant; `n_isolines` (8) iso-lines as
-`line` annotations clipped to the window and labelled with their level; the fitted plane and residual as
-the output payload. In the server catalogue, so Flight Deck's method list offers it. Thirteen L0 tests:
-a synthetic plane with Probe 03's coefficients recovered within standard errors, a plane through the real
-sweep path (two simulated levels summed by a simulated sense: the L0 model of L2-1), iso-line geometry in
-every orientation, leading dims and missing points, noise and constant maps fail. L2-1's sink decision
-is still open. Bench:
+**Branch:** `step-5/single-exponential` (PR against `main`; the human merges). PRs #25–#37 merged 2026-10-14/15.
+**Last session:** 2026-10-15, session 14 of Step 5, not at the bench. **The curated single exponential is
+written** (`qdt_analysis.exponential.fit_exponential`, ADR 0046): `y = offset + amplitude·exp(−(t − t_start)/tau)`
+by nonlinear least squares over a window anchored on a detected edge (the centre of the strongest part of the
+first half-maximum run of the smoothed slope), moved by `skip` and clipped by `span`; `tau`, `amplitude`,
+`offset` with standard errors, `residual_rms`, `r2`; `failed` below `min_r2` (0.5), with no edge, or with
+fewer than four points after it; two `marker` overlays on the time coordinate (the edge, one τ later); the
+fitted curve and residual over the record's time axis as the output payload. In the server catalogue with
+`applies_to = "trace_1d"`, a value added to the frozen `MethodSpec` literal without a version bump (ADR 0037's
+precedent). Thirteen L0 tests: a sharp-edge decay and a slow-onset approach recovered within standard errors,
+a drooping pulse where the first edge wins and `span` keeps the falling edge out, `skip`, averaged records
+with missing samples, a `WaveformSense`-shaped record through `assemble`, and **the real Probe 03 combiner
+step** (`bench/fixtures/probe03/step_qdac.npz`): τ = 8.1 ms by this method, 7.9 ms by the probe's 10–90 % fit.
+Both Step 5 fits now exist; both L2 runs that use them wait on the bench. Bench:
 - QDAC-II (Ethernet, fixed address; USB serial also works, ADR 0043);
 - Keithley 2450 and InfiniiVision HD304MSO on self-assigned addresses (mDNS finds them);
 - OPX1000 with LF-FEMs;
@@ -24,13 +27,13 @@ is still open. Bench:
 | Criterion | State |
 |---|---|
 | conformance suite passes on all four real instruments under `-m hardware` | ✔ OPX1000 7/7, Keithley 2450 5/5 (+2 skips), QDAC-II 3/3, HD304MSO 6/6 (2026-10-14) |
-| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ◐ definition → hardware → Flight Deck → registry works (OPX loopback, session 11); the plane fit for the overlay is written (session 13). L2-1's sink must be high-impedance: **a buffer before the OPX input, or the scope as the sink** (human decision) |
+| one end-to-end L2 run (L2-1): definition → hardware → Flight Deck → registry → overlay | ◐ definition → hardware → Flight Deck → registry works on an OPX-only stand (session 11); the plane fit (session 13) has not yet run on a hardware record. L2-1's sink must be high-impedance: **a buffer before the OPX input, or the scope as the sink** (human decision) |
 | bench report committed | ✔ `bench/reports/2026-10-14-step5.md` (conformance; L1 rows 1–3); Probes 02 and 03 in their docs and fixtures |
 
 ## Done
-- Steps 0–4b DONE. ADR 0001–0045. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+- Steps 0–4b DONE. ADR 0001–0046. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037 and 0038), identity/envelope/`qdt-hdf5-v1`
-  (0028), modeling (0033), control (0036).
+  (0028), modeling (0033), control (0036; amended additively by 0046).
 - **Drivers (ADR 0041),** all four proven on hardware; OPX input constants measured (ADR 0044); OPX
   resolves logical channel names; `play` on a non-sticky twin element; `open_visa` retries a connect;
   `build_backends` closes partial builds and names the failing instrument.
@@ -40,13 +43,13 @@ is still open. Bench:
 - **Probe 02 (session 10):** OPX input calibration. **Probe 03 (session 12):** the combiner board;
   `bench/probes/probe03/combiner_probe.py`, fixtures in `bench/fixtures/probe03/`.
 - **Curated methods** (`qdt_server.catalogue`): charge transitions (0029), Coulomb diamonds (0030),
-  **plane fit (0045, session 13)**.
+  plane fit (0045, session 13), **single exponential (0046, session 14)**.
 - **Bench reports (ADR 0042):** `scripts/bench_report.py`.
-- 333 Python tests (+5 Postgres-parametrized), 4 skipped, 23 hardware-only in `packages/`, 11
+- 347 Python tests (+5 Postgres-parametrized), 4 skipped, 23 hardware-only in `packages/`, 11
   hardware-only in `bench/`; Flight Deck 68 unit tests and 4 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-5/plane-fit` awaits the human.
+- Nothing uncommitted. PR for `step-5/single-exponential` awaits the human.
 
 ## Known broken / not yet real
 - **L2-1's sink:** the combiner's ≈ 25 kΩ output cannot drive the OPX's 50 Ω input (0.5 mV per volt
@@ -55,10 +58,17 @@ is still open. Bench:
   board (fast, but a different board). Human decision.
 - **DC sweeps through the combiner must settle ≥ 50 ms per step** (20 Hz low-pass); set
   `ChannelMap.settle_s` on the QDAC channel in the stand file for L2-1.
-- **The plane fit is ordinary least squares, not robust** (ADR 0045): a map that is half plane, half
-  structure can pass `min_r2` with a biased plane; look at the residual output. The L2-1 bench test that
-  calls it is not written.
-- **Single exponential not written** (L2-3; the combiner's own droop, τ = 7.9 ms, is the real exponential).
+- **No waveform-capture activity in `SweepDefinition`:** the server cannot run a scope capture, so
+  L2-3's record cannot come through the control path yet. The L2-3 bench test calls `WaveformSense.arm`
+  directly and builds the record as Probe 03 did (`combiner_probe.record`), or Step 5 grows the activity.
+- **Flight Deck offers every method on every record** (`applies_to` is not read): the exponential on a
+  map, or the plane on a trace, fails with a 400 naming the shape. Filtering belongs with the time-series
+  view (tabled), which is also what will draw the exponential's markers and output curve.
+- **The exponential's edge detector is a heuristic** (ADR 0046): fixed smoothing width, first half-max
+  run; a glitch steeper than the edge or an edge in the last three samples fails it. `amplitude` is
+  referenced to the window's start (`attrs.t_start`), not to the physical onset (`attrs.t_edge`).
+- **The plane fit is ordinary least squares, not robust** (ADR 0045); look at the residual output. The
+  L2-1 bench test that calls it is not written.
 - **No hardware `WaveformSense` row for the OPX input** in the conformance suite (ADR 0044); a looped-
   waveform row for `WaveformSource` on hardware would also have caught the sticky bug.
 - **OPX input offset** −1.7 mV at 0 V in, not applied.
@@ -79,18 +89,24 @@ is still open. Bench:
   via `corepack pnpm`.
 
 ## Next action
-**Human:**
+**Human (at the bench):**
 1. Merge the PR.
 2. Decide L2-1's sink: a buffer at the combiner output into the OPX input (the step as written), or the
    scope (then L2-1 is restated: the OPX plays, the scope reads, the plane fit runs on the scope's
    record). Say which; a session wires the stand file and the sweep accordingly.
 3. If a buffer: put it in, keep QDAC ch01 and OPX ao1 on the board, board out → buffer → OPX ai1.
 
-**Then (sessions):** the L2-1 sweep through the server with `settle_s = 0.05` on the QDAC channel, the
-plane fit run on its record from Flight Deck, the overlay drawn, the bench test in `bench/` asserting
-`slope_row` and `slope_col` against Probe 03's division and pulse-side gain; the single exponential and
-L2-3; a hardware `WaveformSource`/`WaveformSense` row for the OPX in the conformance suite; the Flight
-Deck time-series view; close Step 5.
+**Then (bench sessions):**
+- **L2-1:** the sweep through the server with `settle_s = 0.05` on the QDAC channel, the plane fit run
+  on its record from Flight Deck, the overlay drawn, the bench test in `bench/` asserting `slope_row`
+  and `slope_col` against Probe 03's division and pulse-side gain.
+- **L2-3:** a long OPX pulse into the combiner's pulse input, the output on the scope at 1 MΩ, captured
+  through `WaveformSense.arm` on a `(record, t)` Dataset, `fit_exponential` with `span` shorter than the
+  pulse, `tau` asserted against Probe 03 (the DC side's 7.9 ms is the oracle if the QDAC steps; the pulse
+  side is multi-exponential and will show it in the residual). The bench report records both.
+- Then: a hardware `WaveformSource`/`WaveformSense` row for the OPX in the conformance suite; the Flight
+  Deck time-series view (draws scope records, the exponential's markers and output curve; filters methods
+  by `applies_to`); close Step 5.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -101,13 +117,17 @@ Deck time-series view; close Step 5.
   themselves (0042); USB serial counts for the QDAC-II (0043); drivers are recreated here rather than
   adapted from QCoDeS (discussion, no ADR); the OPX input constants are measured, not assumed (0044);
   the combiner board stands in for the bias tee and is characterised by a probe before it is used
-  (Probe 03, no ADR: BENCH.md records the part); the plane fit is written in this session on the human's
-  word, ahead of the sink decision (session 13).
+  (Probe 03, no ADR: BENCH.md records the part); the plane fit is written ahead of the sink decision
+  (session 13).
 - **2026-10-14, tabled for later:** Flight Deck should also visualise time-series data (scope records
   first, then any instrument with a time series). A renderer, not a schema change.
+- **2026-10-15:** the single exponential is written off the bench (session 14); the human continues the
+  bench tests (L2-1 sink, L2-3) at the lab.
 
 ## Decisions pending
 - L2-1's sink: buffer before the OPX input, or the scope.
+- Whether L2-3's record comes through a new waveform-capture activity in `SweepDefinition` (the control
+  path) or directly through `WaveformSense.arm` in the bench test (as Probe 03 did).
 - A default operating point per device (not in ADR 0038).
 - Whether to fix the dot model's zero-clipping (ADR 0020 amendment).
 - Whether the diamond estimator should survive warm edges.

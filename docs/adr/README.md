@@ -49,3 +49,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0043 | The QDAC-II is also reachable over its USB serial port; `open_visa` takes a baud rate; pyserial in `[qdac]` | Accepted |
 | 0044 | OPX1000 LF-FEM input constants are measured (Probe 02): inverted, 1.155 × 2⁻¹², 180 ns of flight | Accepted |
 | 0045 | The curated plane fit: least squares with standard errors, failure below `min_r2`, iso-lines as `line` overlays, fitted plane + residual as output | Accepted |
+| 0046 | The curated single exponential: an edge-anchored window, nonlinear least squares with standard errors, markers on the time axis, fitted curve + residual as output; `MethodSpec.applies_to` gains `trace_1d` additively | Accepted (amends 0036 additively) |
