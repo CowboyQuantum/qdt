@@ -34,7 +34,7 @@ Four `SimResult` fixtures reproduced in CI (`charge_lattice_*`, `virtual_lattice
   `qdt-sim`; `scripts/make_tuning_fixtures.py`.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `apps/flightdeck`.
-- 378 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
+- 379 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
   hardware-only in `bench/`; Flight Deck 71 unit tests and 5 e2e.
 
 ## In flight
