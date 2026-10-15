@@ -64,3 +64,12 @@ curated decision rules with `RULES`/`apply`); `qdt-sim` realizes a scenario (`de
 scenario: lattice within 0.6 % (diagonal) and 2.3 % (cross terms) of the model, virtual-gate matrix within
 0.007; two `SimResult` fixtures committed and reproduced in CI. Next: the DAG runner over `depends_on`, a second
 node that consumes the first's outputs, outcomes persisted, Flight Deck's DAG state display.
+Session 3 (2026-10-15): **the DAG edge** (ADR 0049; the human chose the virtual-gate node over the diamonds).
+`SweepAxis.couplings` makes a stepped axis a virtual gate (companions move from their held level or 0; compile
+resolves them, the executor sets them with the axis); the inner pulse axis uses `Affine.scale`. `InputBinding`
+on `CalibrationNode.inputs` and `qdt_tuning.bind` carry an upstream node's outputs into a definition by path.
+`virtual_gates` also outputs the compensation coefficients `c_21`, `c_12`; the new rule `straightened` accepts
+axis-aligned transitions. The second node, `virtual-lattice`, runs after `charge-lattice` through
+`run_tuneup` (nodes in order, inputs bound, stop at the first non-accepted) and is accepted on both scenarios:
+residual cross ratios −0.008/−0.004 (noisy) and −0.003/+0.007 (quiet), down from 0.21 in real gates. Next:
+a persisted `TuneUp` lifecycle object with a topological sort, `POST /tuneups`, Flight Deck's DAG display.
