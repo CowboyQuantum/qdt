@@ -9,7 +9,10 @@ nav:
   - Finish line (Flight Deck): FINISH_LINE.md
   - Bench: BENCH.md
   - ADRs: adr/README.md
-  - Analyses: analysis/0001-stream-budget.md
+  - Analyses:
+      - analysis/0001-stream-budget.md
+      - analysis/0002-renderer-benchmark.md
+      - analysis/0003-registry-deployment-requirements.md
   - Probes: probes/01-stream-semantics.md
   - Tutorials: tutorials/README.md
   - API: api.md

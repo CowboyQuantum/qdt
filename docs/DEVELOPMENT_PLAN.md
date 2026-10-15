@@ -158,6 +158,8 @@ Prior Flight Deck / gatepick work is reference material for what the UI felt lik
 
 Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licensing); firewall inbound 5432/8100 (+9000/9001) scoped to lab subnet; VLAN reachability; DHCP reservation / DNS name `qdt-db`; Bluefors log access mode; backup landing location; declared prototype→VM trajectory; Windows Update policy.
 
+**Note (2026-10-15):** Analysis 0003 (`docs/analysis/0003-registry-deployment-requirements.md`) revises this list — no Docker required (native Postgres service, not WSL), inbound 5432 plus one payload-transport port, DNS name; 9000/9001 were MinIO defaults and are retired. The Step 7 ADR supersedes this paragraph.
+
 ## 10. Out of scope — a *general* pulse compiler (waveform algebra, phase-tracked frames, branching, real-time feedback); rewriting arbok; public PyPI; Diraq-identifying content in the public repo; hardening Windows/WSL beyond unbroken-record minimum. **In scope since ADR 0018:** a minimal backend-neutral `PulseSequence` (`pulse.py`) with per-backend emitters, so a sweep takes its per-shot sequence as data and the same sequence runs on any sequencer with an emitter (OPX/QUA, other AWGs, custom ISAs).
 
 ## 11. Claude Code handoff

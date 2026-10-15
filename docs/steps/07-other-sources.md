@@ -28,6 +28,7 @@ Telemetry, cooldown history, CI register, and the internal extension package rid
 
 ## Open decisions
 - #5 manager sign-off (gates this step only)
+- payload transport off-box, raw-trace retention, DB roles — inputs in `docs/analysis/0003-registry-deployment-requirements.md`
 - #6, #7 lab PC OS and log access mode
 
 ## Status
