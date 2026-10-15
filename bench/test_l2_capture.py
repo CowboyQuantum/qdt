@@ -46,7 +46,10 @@ OPX_SETTLE_S = 2.0
 SCOPE = ScopeChannel(number=1, volts_per_div=0.2)
 """±0.8 V full scale: the DC levels (±0.39 V through the board) plus the pulse (≈ 0.2 V)."""
 TRIGGER_LEVEL_V = 0.1
-"""Rising-edge trigger, AC-coupled so the DC level under the pulse does not move it."""
+"""Rising-edge trigger for the full-amplitude pulse, AC-coupled so the DC level under it does not move it."""
+OFFSET_TERM_V = 0.1 * SCOPE.volts_per_div + 1e-3
+"""The scope's DC offset accuracy at this range (0.1 div + 1 mV): the error that does not cancel between
+two plateau levels read at the same range."""
 
 DC_LEVELS = (-1.0, 1.0, 9)
 RECORD_AT_REST = {"start_s": 0.0, "stop_s": 1e-3, "num": 500}
@@ -160,18 +163,21 @@ def test_l2_1_dc_plus_pulse_plateau_is_a_plane_in_dc_level_and_pulse_amplitude(
     if not os.environ.get("QDT_OPX_ADDRESS"):
         pytest.skip("QDT_OPX_ADDRESS not set: the OPX plays the pulse train")
     opx = request.getfixturevalue("opx")
-    scope_front_panel(
-        SCOPE.number,
-        SCOPE.volts_per_div,
-        SCOPE.offset_v,
-        SCOPE.coupling,
-        SCOPE.impedance,
-        trigger_level_v=TRIGGER_LEVEL_V,
-        trigger_coupling="AC",
-    )
     offsets: dict[float, float] = {}
     try:
         for amplitude in (PULSE_V, PULSE_V / 2):
+            # the trigger follows the pulse, at 40 % of its early height through the board (0.8 ×
+            # amplitude), AC-coupled so the stepped DC level under it does not move the trigger point;
+            # a level at the pulse's height triggered marginally and the AUTO sweep free-ran
+            scope_front_panel(
+                SCOPE.number,
+                SCOPE.volts_per_div,
+                SCOPE.offset_v,
+                SCOPE.coupling,
+                SCOPE.impedance,
+                trigger_level_v=0.4 * 0.8 * amplitude,
+                trigger_coupling="AC",
+            )
             opx.play("ao1", pulse_train(amplitude), SAMPLE_RATE)
             time.sleep(OPX_SETTLE_S)
             record = run_capture(api, stepped(f"l2-1 dc + {amplitude:.3g} V pulse", RECORD_PLATEAU))
@@ -188,9 +194,11 @@ def test_l2_1_dc_plus_pulse_plateau_is_a_plane_in_dc_level_and_pulse_amplitude(
     # Probe 03's record of the same pulse gives directly (the side droops, so it is a window mean)
     gain = (offsets[PULSE_V] - offsets[PULSE_V / 2]) / (PULSE_V / 2)
     expected = probe_03_plateau_gain()
-    assert abs(gain - expected) <= 0.1 * expected + dc_measurement_tolerance(SCOPE) / (
-        PULSE_V / 2
-    ), f"pulse-side gain over the plateau {gain:.3f} vs Probe 03's record {expected:.3f}"
+    # 10 % for the droop over the window, plus the scope's offset term on a difference of two levels
+    # read at the same range (the gain term cancels between them)
+    assert abs(gain - expected) <= 0.1 * expected + 2 * OFFSET_TERM_V / (PULSE_V / 2), (
+        f"pulse-side gain over the plateau {gain:.3f} vs Probe 03's record {expected:.3f}"
+    )
 
 
 def probe_03_plateau_gain() -> float:
@@ -211,9 +219,11 @@ def test_l2_3_the_boards_step_response_is_the_exponential_probe_03_recorded(
     from qdt_analysis.exponential import detect_edge, fit
 
     opx = request.getfixturevalue("opx")
+    # ±0.4 V so the pulse's early plateau (≈ 0.8 × 0.25 V) does not clip; and a sweep leaves its last
+    # level on the QDAC (ADR 0038 holds levels, never zeroes them), so the DC input is held at 0 here
     scope_front_panel(
         SCOPE.number,
-        0.05,
+        0.1,
         0.0,
         SCOPE.coupling,
         SCOPE.impedance,
@@ -227,6 +237,7 @@ def test_l2_3_the_boards_step_response_is_the_exponential_probe_03_recorded(
             api,
             {
                 "name": "l2-3 step",
+                "levels": [{"channel": "P1", "value": 0.0}],
                 "captured": [{"name": "trace", "channel": "scope1", **RECORD_STEP}],
             },
         )
