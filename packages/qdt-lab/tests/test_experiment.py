@@ -362,3 +362,135 @@ def test_build_backends_closes_what_it_built_when_a_later_factory_fails():
     with pytest.raises(RuntimeError, match="instrument 'scope' \\(bad\\) could not be built"):
         build_backends(stand, {"good": lambda i, c: Backend(), "bad": bad})
     assert closed == ["dac"], "the backend built before the failure is closed"
+
+
+# --- captured waveforms (ADR 0047) ------------------------------------------------------------------
+
+
+def scope_stand() -> StandConfig:
+    return StandConfig(
+        stand_id="scope",
+        instruments=(
+            InstrumentConfig(id="dac", backend="simulated", capabilities=("level_source",)),
+            InstrumentConfig(id="meter", backend="simulated", capabilities=("level_sense",)),
+            InstrumentConfig(id="scope", backend="simulated", capabilities=("waveform_sense",)),
+        ),
+        channels=(
+            ChannelMap(logical="V", instrument="dac", channel="ch00", quantity="voltage"),
+            ChannelMap(logical="I", instrument="meter", channel="ch00", quantity="current"),
+            ChannelMap(logical="scope1", instrument="scope", channel="1", quantity="voltage"),
+            ChannelMap(logical="scope2", instrument="scope", channel="2", quantity="voltage"),
+        ),
+    )
+
+
+def capture(name="trace", channel="scope1", records=1, num=200):
+    from qdt_schemas.activity import CapturedWaveform
+
+    return CapturedWaveform(
+        name=name, channel=channel, start_s=-1e-3, stop_s=9e-3, num=num, records=records
+    )
+
+
+def test_a_capture_alone_is_one_record_on_its_time_axis():
+    from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
+
+    plan = compile_sweep(SweepDefinition(name="droop", captured=(capture(),)), scope_stand())
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [("time", 200)]
+    (coord,) = plan.dataset.coords
+    assert (coord.name, coord.unit, coord.start, coord.stop, coord.num) == (
+        "time",
+        "s",
+        -1e-3,
+        9e-3,
+        200,
+    )
+    assert [(v.name, v.dims, v.unit) for v in plan.dataset.data_vars] == [("trace", ("time",), "V")]
+    assert [(c.logical, c.role) for c in plan.channels] == [("scope1", "waveform_sense")]
+    assert plan.dataset.attrs["records"] == 1
+    scope = SimulatedWaveformSense(noise=0.0, response=exponential_decay(2e-3, 0.2))
+    frames = list(Executor(plan, {"scope": scope}).run().frames())
+    assert len(frames) == 1 and frames[0].chunk.final
+    assert [(s.dim, s.start, s.stop) for s in frames[0].chunk.region] == [("time", 0, 200)]
+    out = assemble(plan.dataset, frames)
+    t = np.linspace(-1e-3, 9e-3, 200)
+    np.testing.assert_allclose(out["trace"].values, np.where(t >= 0, 0.2 * np.exp(-t / 2e-3), 0.0))
+
+
+def test_captures_at_every_stepped_point_with_records_and_a_sensed_level():
+    """Per stepped point: the level is set and settled, the level sensed, then each capture armed on
+    its own (record, time) slab and re-keyed; `record` is a dimension only when records > 1."""
+    from qdt_lab.experiment.execute import capture_slab
+    from qdt_lab.simulated import SimulatedWaveformSense, low_pass_step
+
+    definition = SweepDefinition(
+        name="stepped droop",
+        axes=(SweepAxis(name="V", channel="V", start=0.0, stop=1.0, num=3),),
+        sensed=(SensedLevel(name="I", channel="I"),),
+        captured=(capture(records=2), capture("ref", "scope2", records=2, num=50)),
+    )
+    plan = compile_sweep(definition, scope_stand())
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [
+        ("V", 3),
+        ("record", 2),
+        ("trace_time", 200),
+        ("ref_time", 50),
+    ]
+    dims = {v.name: v.dims for v in plan.dataset.data_vars}
+    assert dims == {
+        "I": ("V",),
+        "trace": ("V", "record", "trace_time"),
+        "ref": ("V", "record", "ref_time"),
+    }
+    slab = capture_slab(plan, definition.capture("ref"))
+    assert [(d.name, d.size) for d in slab.dims] == [("record", 2), ("ref_time", 50)]
+    assert slab.data_vars[0].dims == ("record", "ref_time") and slab.coords[0].dim == "ref_time"
+
+    class SpyScope(SimulatedWaveformSense):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.armed: list[tuple[str, tuple[int | None, ...]]] = []
+
+        def arm(self, channel, dataset, variable):
+            self.armed.append((channel, tuple(d.size for d in dataset.dims)))
+            return super().arm(channel, dataset, variable)
+
+    dac, meter = SimulatedLevelSource(), SimulatedLevelSense()
+    scope = SpyScope(noise=0.0, response=low_pass_step(3e-3, 1.0))
+    frames = list(Executor(plan, {"dac": dac, "meter": meter, "scope": scope}).run().frames())
+    assert scope.armed == [("1", (2, 200)), ("2", (2, 50))] * 3
+    # per point: two records of each capture, in order; the sensed line is flushed once, at the last
+    # point of the innermost stepped axis, before that point's captures
+    kinds = [f.chunk.variables for f in frames]
+    point = [("trace",), ("trace",), ("ref",), ("ref",)]
+    assert kinds == point * 2 + [("I",)] + point
+    assert frames[-1].chunk.final and not any(f.chunk.final for f in frames[:-1])
+    assert [(s.dim, s.start, s.stop) for s in frames[1].chunk.region] == [
+        ("V", 0, 1),
+        ("record", 1, 2),
+        ("trace_time", 0, 200),
+    ]
+    assert frames[1].arrays["trace"].shape == (1, 1, 200)
+    out = assemble(plan.dataset, frames)
+    assert out["trace"].shape == (3, 2, 200) and out["ref"].shape == (3, 2, 50)
+    assert not np.isnan(out["trace"].values).any() and not np.isnan(out["ref"].values).any()
+    t = np.linspace(-1e-3, 9e-3, 200)
+    np.testing.assert_allclose(
+        out["trace"].values[2, 1], np.where(t >= 0, 1 - np.exp(-np.clip(t, 0, None) / 3e-3), 0.0)
+    )
+
+
+def test_capture_needs_the_capability_and_the_protocol():
+    bare = scope_stand().model_copy(
+        update={
+            "instruments": tuple(
+                i.model_copy(update={"capabilities": ("level_source",)}) if i.id == "scope" else i
+                for i in scope_stand().instruments
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="lacks capability 'waveform_sense'"):
+        compile_sweep(SweepDefinition(name="droop", captured=(capture(),)), bare)
+    plan = compile_sweep(SweepDefinition(name="droop", captured=(capture(),)), scope_stand())
+    with pytest.raises(TypeError, match="WaveformSense"):
+        Executor(plan, {"scope": SimulatedLevelSource()})

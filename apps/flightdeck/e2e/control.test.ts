@@ -179,3 +179,51 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   await page.waitForFunction(() => /· trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
   await page.close();
 });
+
+it("captures a record on the simulated scope, draws it as a trace, and marks the exponential's edge and τ on it", async () => {
+  // ADR 0047: the L2-3 shape through the UI. The simulated scope records a droop; the single exponential
+  // reads τ from the stored record; its markers are rules on the trace.
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page.on("pageerror", (e) => console.error("page error:", e));
+  await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
+  await page.waitForFunction(() => document.querySelectorAll("#sweep select[name=outer_channel] option").length > 0);
+  await page.selectOption("#sweep select[name=kind]", "capture");
+  expect(await page.isHidden("#sweep select[name=sensor]")).toBe(true);
+  expect(await page.inputValue("#sweep select[name=capture_channel]")).toBe("scope1");
+  await page.selectOption("#sweep select[name=outer_channel]", "");
+  await page.fill("#sweep input[name=name]", "e2e droop");
+  await page.fill("#sweep input[name=options]", '{"seed": 2, "noise": true, "tau_s": 0.0015}');
+  await page.click("#sweep button[type=submit]");
+  await page.waitForFunction(() => /e2e droop · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.waitForFunction(() => /· trace · trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
+
+  await page.locator("#records li", { hasText: "e2e droop" }).first().getByRole("button", { name: "analyse" }).click();
+  await page.selectOption("#method", { label: "Single exponential" });
+  await page.getByRole("button", { name: "run analysis" }).click();
+  await page.waitForFunction(() => /^(ok|failed)/.test(document.querySelector("#estimates")?.textContent ?? ""), null, { timeout: 60_000 });
+  const estimates = (await page.textContent("#estimates")) ?? "";
+  expect(estimates).toMatch(/^ok/);
+  expect(estimates).toMatch(/tau\s+0\.001[45]/);
+
+  await page.getByRole("button", { name: "show overlays" }).click();
+  await page.waitForFunction(() => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
+  // the markers are red rules on the trace canvas (the 2-D overlay; the trace itself is teal). A heatmap
+  // was shown on this page before, so the WebGL map canvas is hidden and the trace is really drawn.
+  await page.waitForFunction(
+    () => {
+      const c = document.getElementById("overlay") as HTMLCanvasElement;
+      const d = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data;
+      if (!d) return false;
+      let red = 0;
+      let teal = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i]! > 200 && d[i + 1]! < 120 && d[i + 2]! < 120) red++;
+        else if (d[i + 1]! > 150 && d[i]! < 120) teal++;
+      }
+      return red > 50 && teal > 50 && (document.getElementById("plot") as HTMLElement).style.visibility === "hidden";
+    },
+    null,
+    { timeout: 20_000 },
+  );
+  await page.close();
+});

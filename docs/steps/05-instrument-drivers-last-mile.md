@@ -89,3 +89,10 @@ server catalogue with `applies_to = "trace_1d"`, a value added to the frozen lit
 sharp-edge decay, a slow-onset approach, a drooping pulse, and the real Probe 03 combiner step (τ = 8.1 ms by
 this method, 7.9 ms by the probe). L2-1's sink and L2-3 on the bench are the human's; the server has no
 waveform-capture activity yet, so L2-3's record comes through `WaveformSense.arm` as Probe 03's did.
+Session 15 (2026-10-15): the human decided **the scope is L2-1's sink** (L2-1 restated: QDAC DC × OPX pulse through
+the combiner, read by the scope; the plane fit on its record) and asked for **waveform capture in the server**
+(ADR 0047): `SweepDefinition.captured` (`CapturedWaveform`), compiled to a time axis per capture and executed as
+a `(record, time)` slab per stepped point through `WaveformSense.arm`; a simulated scope on the server's stand
+recording a droop; Flight Deck's capture kind, record traces drawn as traces (and a latent blank-trace-after-
+heatmap bug fixed), the exponential's markers as rules on the trace. The L0 model of L2-3 is an API test and an
+e2e test. Left for the bench: the stand file's scope entry, L2-1 and L2-3 as capture definitions, the report.

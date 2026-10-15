@@ -4,8 +4,10 @@
 (runtime parameters, result streams) around an opaque, backend-specific body. `SweepDefinition`
 (ADR 0019) is the experiment as data: stepped axes, sensed levels, an optional sequencer `stage` whose
 per-shot `PulseSequence` (ADR 0018) is bound to the innermost axes, shots innermost, repeats outermost.
-`ExecutionPlan` is its compiled, resolved form: the `Dataset` to fill, the channel bindings, and the
-emitted program with how each integer parameter is computed. Probe 01 (ADR 0015) fixed the constraints
+`CapturedWaveform` (ADR 0047, added to the frozen slice without a version bump) is a time-resolved record
+a `WaveformSense` fills at every stepped point. `ExecutionPlan` is its compiled, resolved form: the
+`Dataset` to fill, the channel bindings, and the emitted program with how each integer parameter is
+computed. Probe 01 (ADR 0015) fixed the constraints
 the envelope encodes: one compiled program, integer runtime parameters (fractional values as scaled
 integers), positional results with no in-band coordinates.
 """
@@ -203,6 +205,40 @@ class FixedLevel(QdtModel):
     value: float = Field(description="Level in the channel's quantity unit, set before the scan.")
 
 
+class CapturedWaveform(QdtModel):
+    """A time-resolved record captured at every stepped point by a `WaveformSense` channel (ADR 0047).
+
+    Becomes a data variable over the stepped axes, a `record` dimension when `records > 1`, and a time
+    axis in seconds: `time` when every capture of the sweep declares the same grid, else `<name>_time`.
+    """
+
+    name: str = Field(min_length=1, description="Data variable name.")
+    channel: str = Field(
+        min_length=1, description="Logical WaveformSense channel (ChannelMap.logical)."
+    )
+    start_s: float = Field(
+        description="Time of the first sample relative to the capture's trigger, in seconds."
+    )
+    stop_s: float = Field(
+        description="Time of the last sample (inclusive), in seconds; greater than `start_s`."
+    )
+    num: int = Field(
+        ge=2,
+        description="Samples per record: the declared time grid the backend fills exactly (ADR 0015).",
+    )
+    records: int = Field(
+        default=1,
+        ge=1,
+        description="Records captured per stepped point; adds a 'record' dimension when more than 1.",
+    )
+
+    @model_validator(mode="after")
+    def _window(self) -> "CapturedWaveform":
+        if not self.stop_s > self.start_s:
+            raise ValueError(f"capture {self.name!r} needs stop_s > start_s")
+        return self
+
+
 class SymbolBinding(QdtModel):
     """What a `PulseSequence` Symbol takes: an axis's current value, or a constant. Exactly one."""
 
@@ -347,6 +383,14 @@ class SweepDefinition(QdtModel):
             "sweep does not step. Pulses on a gate's pulse line add to its level here."
         ),
     )
+    captured: tuple[CapturedWaveform, ...] = Field(
+        default=(),
+        exclude_if=lambda v: not v,  # existing definitions keep their content hash (ADR 0047)
+        description=(
+            "Time-resolved records captured at every stepped point by WaveformSense channels, after "
+            "the stage and the sensed levels; each becomes a data variable with its own time axis."
+        ),
+    )
     stage: SequencerStage | None = Field(default=None, description="Sequencer-run inner part.")
     repeats: int | None = Field(
         default=1,
@@ -365,8 +409,8 @@ class SweepDefinition(QdtModel):
         names = [a.name for a in self.axes]
         if len(set(names)) != len(names):
             raise ValueError("axis names must be unique")
-        if not self.sensed and self.stage is None:
-            raise ValueError("a sweep senses something or runs a stage")
+        if not self.sensed and not self.captured and self.stage is None:
+            raise ValueError("a sweep senses something, captures something or runs a stage")
         stage_axes = self.stage.axes if self.stage else ()
         if stage_axes and tuple(names[len(names) - len(stage_axes) :]) != tuple(stage_axes):
             raise ValueError(f"stage axes {stage_axes} must be the innermost axes, in order")
@@ -375,24 +419,44 @@ class SweepDefinition(QdtModel):
             raise ValueError(
                 "sensed levels need a stepped axis or repeats != 1 to be laid out over"
             )
-        reserved = {"repeat", "shot"}
-        var_names = [s.name for s in self.sensed] + list(self.stage.results() if self.stage else ())
+        reserved = {"repeat", "shot", "record", "time"}
+        var_names = (
+            [s.name for s in self.sensed]
+            + [c.name for c in self.captured]
+            + list(self.stage.results() if self.stage else ())
+        )
         clash = reserved & (set(var_names) | set(names))
         if clash:
             raise ValueError(f"{sorted(clash)} are reserved dimension names")
         if len(set(var_names)) != len(var_names) or set(var_names) & set(names):
-            raise ValueError("sensed and result names must be unique and distinct from axis names")
+            raise ValueError(
+                "sensed, captured and result names must be unique and distinct from axis names"
+            )
+        time_dims = {f"{c.name}_time" for c in self.captured}
+        if time_dims & (set(names) | set(var_names)):
+            raise ValueError("a capture's '<name>_time' axis clashes with an axis or variable name")
+        if len({c.records for c in self.captured}) > 1:
+            raise ValueError("every capture of a sweep takes the same number of records")
+        captured_channels = [c.channel for c in self.captured]
+        if len(set(captured_channels)) != len(captured_channels):
+            raise ValueError("a channel is captured once per sweep")
         axis_channels = {a.channel for a in stepped}
         if axis_channels & {s.channel for s in self.sensed}:
             raise ValueError("a channel is a stepped axis or a sensed level, not both (ADR 0016)")
+        if set(captured_channels) & (axis_channels | {s.channel for s in self.sensed}):
+            raise ValueError("a captured channel is neither stepped nor sensed (ADR 0016)")
         held = [lv.channel for lv in self.levels]
         if len(set(held)) != len(held):
             raise ValueError("each operating-point channel is given one level")
-        both = set(held) & ({a.channel for a in self.axes} | {s.channel for s in self.sensed})
+        both = set(held) & (
+            {a.channel for a in self.axes}
+            | {s.channel for s in self.sensed}
+            | {c.channel for c in self.captured}
+        )
         if both:
             raise ValueError(
-                f"{sorted(both)} are swept or sensed; an operating-point level holds a channel the "
-                "sweep does not touch"
+                f"{sorted(both)} are swept, sensed or captured; an operating-point level holds a "
+                "channel the sweep does not touch"
             )
         if self.stage:
             for b in self.stage.bindings:
@@ -421,6 +485,18 @@ class SweepDefinition(QdtModel):
     def stepped_axes(self) -> tuple[SweepAxis, ...]:
         inner = set(self.stage.axes) if self.stage else set()
         return tuple(a for a in self.axes if a.name not in inner)
+
+    def capture(self, name: str) -> CapturedWaveform:
+        for c in self.captured:
+            if c.name == name:
+                return c
+        raise KeyError(f"unknown capture {name!r}")
+
+    def capture_time_dim(self, name: str) -> str:
+        """The time dimension (and coordinate) of capture `name`: 'time' when every capture declares
+        the same grid, else '<name>_time'."""
+        grids = {(c.start_s, c.stop_s, c.num) for c in self.captured}
+        return "time" if len(grids) == 1 else f"{self.capture(name).name}_time"
 
 
 class ResolvedChannel(QdtModel):

@@ -386,3 +386,51 @@ def test_a_restarted_server_reuses_its_registered_device(tmp_path):
     )
     with pytest.raises(ValueError, match="registered as"), TestClient(create_app(other_kind)):
         pass
+
+
+def test_a_capture_runs_through_the_server_and_the_exponential_reads_its_droop(client):
+    """ADR 0047: the L0 model of L2-3. The simulated scope records a droop (a step of `droop_v` at
+    t = 0 decaying with `tau_s`); the capture streams, is recorded, and the single exponential recovers
+    τ from the stored record through the same API Flight Deck uses."""
+    stand = client.get("/stand").json()
+    scope = next(i for i in stand["instruments"] if "waveform_sense" in i["capabilities"])
+    assert any(c["instrument"] == scope["id"] for c in stand["channels"])
+    definition = {
+        "name": "api droop",
+        "captured": [
+            {
+                "name": "trace",
+                "channel": "scope1",
+                "start_s": -1e-3,
+                "stop_s": 9e-3,
+                "num": 1000,
+                "records": 2,
+            }
+        ],
+    }
+    plan = client.post("/sweeps/compile", json=definition)
+    assert plan.status_code == 200, plan.text
+    assert [d["name"] for d in plan.json()["dataset"]["dims"]] == ["record", "time"]
+    options = {"seed": 3, "tau_s": 1.5e-3, "droop_v": 0.3, "scope_noise_v": 1e-3}
+    run = Run.model_validate(
+        client.post("/runs", json={"definition": definition, "options": options}).json()
+    )
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed", run.error
+    r = client.post(
+        f"/records/{run.record_id}/results",
+        json={"method": "qdt_analysis.exponential.fit_exponential", "parameters": {}},
+    )
+    assert r.status_code == 201, r.text
+    result = AnalysisResult.model_validate(r.json())
+    assert result.status == "ok", result.message
+    tau = result.estimate("tau")
+    assert tau.value == pytest.approx(1.5e-3, rel=0.02) and tau.unit == "s"
+    assert result.estimate("offset").value == pytest.approx(0.0, abs=2e-3)
+    assert {a.kind for a in result.annotations} == {"marker"}
+    assert result.output is not None
+    # the plane fit does not apply to a trace and says so
+    bad = client.post(
+        f"/records/{run.record_id}/results", json={"method": "qdt_analysis.plane.fit_plane"}
+    )
+    assert bad.status_code == 400 and "linear coordinates" in bad.json()["detail"]

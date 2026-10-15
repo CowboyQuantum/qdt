@@ -8,17 +8,22 @@ export type ViewKind =
   | { kind: "heatmap"; variable: string; rowDim: string; colDim: string; stackDim: string | null }
   | { kind: "trace"; variable: string; xDim: string; latestAlong: string | null };
 
-/** The view for `variable` (default: the first data variable), chosen from its dims and their sizes. */
+/** The view for `variable` (default: the first data variable), chosen from its dims, their sizes and
+ * whether they carry a coordinate. A 2-D variable whose leading dim has no coordinate (records, shots)
+ * over a coordinated one (time) is a trace showing the latest record, bounded or not (ADR 0047); two
+ * coordinated dims are a heatmap. */
 export function chooseView(dataset: Dataset, variable?: string): ViewKind | null {
   const v = dataset.data_vars.find((x) => x.name === variable) ?? dataset.data_vars[0];
   if (!v) return null;
   const size = (d: string) => dataset.dims.find((x) => x.name === d)!.size;
+  const coordinated = (d: string) => dataset.coords.some((c) => c.dim === d);
   if (v.dims.length === 1) return { kind: "trace", variable: v.name, xDim: v.dims[0], latestAlong: null };
   if (v.dims.length === 2) {
     const [a, b] = v.dims as [string, string];
+    if (size(b) != null && (size(a) == null || (!coordinated(a) && coordinated(b))))
+      return { kind: "trace", variable: v.name, xDim: b, latestAlong: a };
     if (size(a) != null && size(b) != null)
       return { kind: "heatmap", variable: v.name, rowDim: a, colDim: b, stackDim: null };
-    if (size(a) == null && size(b) != null) return { kind: "trace", variable: v.name, xDim: b, latestAlong: a };
   }
   if (v.dims.length === 3) {
     const [s, a, b] = v.dims as [string, string, string];

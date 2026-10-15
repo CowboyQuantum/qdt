@@ -6,6 +6,7 @@ export interface QdtControlApi {
   AnalysisResult?: AnalysisResult;
   Annotation?: Annotation;
   Call?: Call;
+  CapturedWaveform?: CapturedWaveform;
   ChannelMap?: ChannelMap;
   DataVariable?: DataVariable;
   Dataset?: Dataset;
@@ -302,6 +303,45 @@ export interface Call {
    * Name of a Segment of this sequence.
    */
   segment: string;
+}
+/**
+ * A time-resolved record captured at every stepped point by a `WaveformSense` channel (ADR 0047).
+ *
+ * Becomes a data variable over the stepped axes, a `record` dimension when `records > 1`, and a time
+ * axis in seconds: `time` when every capture of the sweep declares the same grid, else `<name>_time`.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "CapturedWaveform".
+ */
+export interface CapturedWaveform {
+  /**
+   * Logical WaveformSense channel (ChannelMap.logical).
+   */
+  channel: string;
+  /**
+   * Data variable name.
+   */
+  name: string;
+  /**
+   * Samples per record: the declared time grid the backend fills exactly (ADR 0015).
+   */
+  num: number;
+  /**
+   * Records captured per stepped point; adds a 'record' dimension when more than 1.
+   */
+  records?: number;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * Time of the first sample relative to the capture's trigger, in seconds.
+   */
+  start_s: number;
+  /**
+   * Time of the last sample (inclusive), in seconds; greater than `start_s`.
+   */
+  stop_s: number;
 }
 /**
  * Maps a logical channel name to a physical instrument channel.
@@ -794,6 +834,10 @@ export interface SweepDefinition {
    * Swept axes, outer to inner.
    */
   axes?: SweepAxis[];
+  /**
+   * Time-resolved records captured at every stepped point by WaveformSense channels, after the stage and the sensed levels; each becomes a data variable with its own time axis.
+   */
+  captured?: CapturedWaveform[];
   /**
    * Operating point: DC levels set once before the scan and held throughout, on channels the sweep does not step. Pulses on a gate's pulse line add to its level here.
    */
@@ -1556,7 +1600,7 @@ export interface Run {
 export interface RunRequest {
   definition: SweepDefinition;
   /**
-   * Backend and recording options: seed (int), noise (bool), campaign (str), and any scalar field of the simulated model, e.g. sensor_width_v (float) for a colder sensor.
+   * Backend and recording options: seed (int), noise (bool), campaign (str), any scalar field of the simulated model, e.g. sensor_width_v (float) for a colder sensor, and the simulated scope's tau_s, droop_v and scope_noise_v (floats).
    */
   options?: {
     [k: string]: string | number | boolean;
