@@ -80,7 +80,7 @@ def test_the_node_reproduces_its_committed_outcome_and_the_models_truth(name, tm
         {e.name: e.value for e in fixture.estimates}, rel=1e-6
     )
     # and they agree with the model: lever arms within 1 %, cross terms within 4 %, the matrix within 0.01
-    assert fixture.truth == truth
+    assert fixture.truth == pytest.approx(truth, rel=1e-9)  # the model's arithmetic, across platforms
     for k in ("l_11", "l_22"):
         assert outcome.outputs[k] == pytest.approx(truth[k], rel=0.01), k
     for k in ("l_12", "l_21"):
