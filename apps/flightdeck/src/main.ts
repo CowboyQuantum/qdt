@@ -11,7 +11,7 @@ import { ApiClient, apiBase } from "./api/client";
 import { ControlPanel } from "./control/panel";
 import { finiteRange, type Range } from "./render/cpu";
 import { createMapRenderer, defaultMapRenderer, type MapRenderer, RENDERERS, type RendererName } from "./render/map";
-import { drawTrace } from "./render/trace";
+import { drawTrace, type TraceMark } from "./render/trace";
 import { ReplaySource } from "./sources/replay";
 import { consume, type Source } from "./sources/source";
 import { WebSocketSource } from "./sources/websocket";
@@ -147,7 +147,10 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     return;
   }
   if (view.kind === "heatmap" && !renderer) renderer = makeRenderer();
-  const state: BenchState = { renderer: renderer?.name ?? "trace", samples: [], frames: 0, complete: false, error: null };
+  // the map renderer owns `plot` (a WebGL context refuses a 2-D one afterwards), so a trace draws on the
+  // 2-D overlay canvas and the map canvas is hidden under it
+  plot.style.visibility = view.kind === "heatmap" ? "" : "hidden";
+  const state: BenchState = { renderer: view.kind === "heatmap" ? (renderer?.name ?? "cpu") : "trace", samples: [], frames: 0, complete: false, error: null };
   if (bench) window.__flightdeck = state;
   if (renderer) window.__flightdeckRenderer = renderer;
 
@@ -192,6 +195,20 @@ function show(store: DatasetStore, signal: AbortSignal): void {
   }, { once: true });
   shown = options();
 
+  /** The latest record of a trace view, with every 1-coordinate marker on its x axis as a rule. */
+  const drawTraceView = (data: ReturnType<typeof displayed>) => {
+    if (view.kind !== "trace") return;
+    const x = axis(store, view.xDim);
+    const n = view.latestAlong ? data.shape[1]! : data.values.length;
+    const last = view.latestAlong ? data.shape[0]! - 1 : 0;
+    if (last < 0) return;
+    const marks: TraceMark[] = [];
+    for (const ann of store.annotations.values()) {
+      if (ann.kind === "marker" && ann.coords.length === 1 && ann.coords[0] === x.name) marks.push({ x: ann.points[0]![0]!, label: ann.label ?? "" });
+    }
+    drawTrace(overlay, x.values as never, data.values.subarray(last * n, (last + 1) * n), marks);
+  };
+
   const frame = () => {
     if (signal.aborted) return;
     if (dirty) {
@@ -235,10 +252,7 @@ function show(store: DatasetStore, signal: AbortSignal): void {
         if (bench) r2.finish();
         drawOverlay(store, view, shown);
       } else if (view.kind === "trace") {
-        const x = axis(store, view.xDim).values;
-        const n = view.latestAlong ? data.shape[1]! : data.values.length;
-        const last = view.latestAlong ? data.shape[0]! - 1 : 0;
-        if (last >= 0) drawTrace(plot, x as never, data.values.subarray(last * n, (last + 1) * n));
+        drawTraceView(data);
       }
       const drawn = Date.now();
       // age of the newest chunk: glass-to-glass latency while live; data age for history on late join
@@ -252,12 +266,15 @@ function show(store: DatasetStore, signal: AbortSignal): void {
     } else if (overlaysDirty && view.kind === "heatmap" && renderer) {
       drawOverlay(store, view, shown); // overlays that arrived after the last chunk
       overlaysDirty = false;
+    } else if (overlaysDirty && view.kind === "trace") {
+      drawTraceView(displayed());
+      overlaysDirty = false;
     }
     const now = performance.now();
     while (recent.length && recent[0]![0] < now - 1000) recent.shift();
     const rate = recent.reduce((a, [, n]) => a + n, 0);
     status.textContent =
-      `${store.dataset.name} · ${view.variable}${minus ? ` − ${minus}` : ""} · ${view.kind}${renderer ? ` (${renderer.name})` : ""}` +
+      `${store.dataset.name} · ${view.variable}${minus ? ` − ${minus}` : ""} · ${view.kind}${renderer && view.kind === "heatmap" ? ` (${renderer.name})` : ""}` +
       (view.kind === "heatmap" && view.stackDim
         ? ` · mean over ${store.get(view.variable).shape[0]} ${view.stackDim}`
         : "") +

@@ -136,3 +136,26 @@ describe("variables and the difference view (ADR 0037)", () => {
     expect(difference(a, b, null).values).not.toBe(out);
   });
 });
+
+describe("chooseView on records (ADR 0047)", () => {
+  const records = (recordSize: number | null): Dataset =>
+    ({
+      dataset_id: "d",
+      name: "d",
+      dims: [{ name: "record", size: recordSize }, { name: "time", size: 100 }],
+      coords: [{ kind: "linear", name: "time", dim: "time", unit: "s", start: 0, stop: 1, num: 100 }],
+      data_vars: [{ name: "trace", dims: ["record", "time"], unit: "V", dtype: "float64" }],
+    }) as unknown as Dataset;
+
+  it("shows a bounded (record, time) variable as a trace of the latest record, like an unbounded one", () => {
+    for (const size of [4, null]) {
+      expect(chooseView(records(size))).toEqual({ kind: "trace", variable: "trace", xDim: "time", latestAlong: "record" });
+    }
+  });
+
+  it("keeps a map over two coordinated dims a heatmap, even one whose inner axis is time", () => {
+    const ds = records(4);
+    (ds.coords as unknown[]).push({ kind: "linear", name: "record", dim: "record", unit: "V", start: 0, stop: 1, num: 4 });
+    expect(chooseView(ds)).toMatchObject({ kind: "heatmap", rowDim: "record", colDim: "time" });
+  });
+});

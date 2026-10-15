@@ -1,8 +1,9 @@
-// Sweep builders (Step 4b): turn a small form into a `SweepDefinition` the server compiles. Two shapes
-// cover the Step 4 demos: a *stage* sweep (outer gate stepped by its DC line, inner gate swept by pulses
-// in the sequencer, the pulse sequence run per pixel) and a *DC* sweep (both axes stepped, a level sensed
-// at every point). Either may drop the outer axis for a 1-D sweep. Pure functions: no DOM, no network.
-import type { ChannelMap, FixedLevel, StandConfig, SweepDefinition } from "../schema/api";
+// Sweep builders (Step 4b): turn a small form into a `SweepDefinition` the server compiles. Three shapes:
+// a *stage* sweep (outer gate stepped by its DC line, inner gate swept by pulses in the sequencer, the
+// pulse sequence run per pixel), a *DC* sweep (both axes stepped, a level sensed at every point), and a
+// *capture* (a time-resolved record from a WaveformSense channel, optionally at every point of a stepped
+// axis; ADR 0047). The first two may drop the outer axis for a 1-D sweep. Pure functions: no DOM, no network.
+import type { CapturedWaveform, ChannelMap, FixedLevel, StandConfig, SweepDefinition } from "../schema/api";
 import { buildBindings, buildSequence, templateRows, unusedStageAxes, type BindingRow, type OpRow } from "./sequence";
 
 export interface AxisForm {
@@ -164,6 +165,52 @@ export function dcSweep(f: DcSweepForm): SweepDefinition {
   } as SweepDefinition;
 }
 
+export interface CaptureForm {
+  name: string;
+  /** Operating point (ADR 0038): DC levels held for the whole capture. */
+  levels?: readonly FixedLevel[];
+  /** Stepped by its DC line, one record set per point; absent for a single capture. */
+  outer?: AxisForm | null;
+  /** WaveformSense channel that is armed. */
+  channel: string;
+  /** Time window relative to the trigger, seconds. */
+  startS: number;
+  stopS: number;
+  /** Samples per record. */
+  num: number;
+  /** Records per point (a `record` dimension when > 1). */
+  records: number;
+  /** Data variable name for the record. */
+  result: string;
+}
+
+/** One WaveformSense channel armed per point of an optional stepped axis (ADR 0047): the shape of L2-3. */
+export function captureSweep(f: CaptureForm): SweepDefinition {
+  const errors = f.outer ? checkAxis(f.outer) : [];
+  if (f.outer && RESERVED_CAPTURE.has(axisName(f.outer))) errors.push(`"${axisName(f.outer)}" is a reserved dimension name`);
+  if (!f.channel) errors.push("a capture needs a WaveformSense channel");
+  if (f.outer && f.outer.channel === f.channel) errors.push("a channel is a stepped axis or the captured one, not both");
+  if (!Number.isFinite(f.startS) || !Number.isFinite(f.stopS)) errors.push("start and stop must be numbers (s)");
+  else if (!(f.stopS > f.startS)) errors.push("stop must be after start");
+  if (!Number.isInteger(f.num) || f.num < 2) errors.push("samples must be an integer of at least 2");
+  if (!Number.isInteger(f.records) || f.records < 1) errors.push("records must be a positive integer");
+  const axes = f.outer ? [axis(f.outer)] : [];
+  if (RESERVED_CAPTURE.has(f.result) || axes.some((a) => a.name === f.result || a.name === `${f.result}_time`)) errors.push(`"${f.result}" clashes with a dimension name`);
+  if (errors.length) throw new Error(errors.join("; "));
+  const captured: CapturedWaveform = { name: f.result, channel: f.channel, start_s: f.startS, stop_s: f.stopS, num: f.num, records: f.records };
+  return {
+    name: f.name || "capture",
+    axes,
+    ...(f.levels?.length ? { levels: [...f.levels] } : {}),
+    sensed: [],
+    captured: [captured],
+    stage: null,
+    repeats: 1,
+  } as SweepDefinition;
+}
+
+const RESERVED_CAPTURE = new Set([...RESERVED, "record", "time"]);
+
 export interface StandChannels {
   /** Voltage channels stepped by a level source (DC lines). */
   dc: ChannelMap[];
@@ -171,16 +218,24 @@ export interface StandChannels {
   pulse: ChannelMap[];
   /** Current channels: sensors. */
   sensors: ChannelMap[];
+  /** Channels a WaveformSense instrument can capture a record on (ADR 0047). */
+  waveforms: ChannelMap[];
 }
 
-/** Classify a stand's channels for the form's selects. */
+/** Classify a stand's channels for the form's selects. A channel on an instrument that only captures
+ * (a scope) is a waveform, not a DC line; a pulse line stays a pulse line. */
 export function standChannels(stand: StandConfig): StandChannels {
-  const sequencers = new Set(stand.instruments.filter((i) => i.capabilities.includes("sequencer")).map((i) => i.id));
-  const out: StandChannels = { dc: [], pulse: [], sensors: [] };
+  const having = (cap: string) => new Set(stand.instruments.filter((i) => i.capabilities.includes(cap as never)).map((i) => i.id));
+  const sequencers = having("sequencer");
+  const capturing = having("waveform_sense");
+  const setting = having("level_source");
+  const out: StandChannels = { dc: [], pulse: [], sensors: [], waveforms: [] };
   for (const c of stand.channels) {
+    const pulse = c.logical.endsWith("_pulse") && sequencers.has(c.instrument);
+    if (capturing.has(c.instrument) && !pulse) out.waveforms.push(c);
     if (c.quantity === "current") out.sensors.push(c);
-    else if (c.logical.endsWith("_pulse") && sequencers.has(c.instrument)) out.pulse.push(c);
-    else out.dc.push(c);
+    else if (pulse) out.pulse.push(c);
+    else if (setting.has(c.instrument) || !capturing.has(c.instrument)) out.dc.push(c);
   }
   return out;
 }

@@ -22,7 +22,7 @@ import {
   type OpKind,
   type OpRow,
 } from "./sequence";
-import { axisName, buildLevels, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels } from "./sweeps";
+import { axisName, buildLevels, captureSweep, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels } from "./sweeps";
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { text?: string } = {}, ...children: (Node | string)[]) => {
   const el = document.createElement(tag);
@@ -42,7 +42,7 @@ export interface ControlHost {
 }
 
 export class ControlPanel {
-  private stand: StandChannels = { dc: [], pulse: [], sensors: [] };
+  private stand: StandChannels = { dc: [], pulse: [], sensors: [], waveforms: [] };
   private channels: ChannelMap[] = [];
   /** The stage's pulse sequence as the editor holds it; follows the template until edited. */
   private rows: OpRow[] = [];
@@ -69,6 +69,9 @@ export class ControlPanel {
     sequenceErrors: HTMLUListElement;
     levels: HTMLDivElement;
     levelErrors: HTMLUListElement;
+    capture: HTMLFieldSetElement;
+    /** Parts of the form a capture does not use (the inner axis, the sensor, the shots). */
+    sweepOnly: HTMLElement[];
   };
 
   constructor(
@@ -90,6 +93,8 @@ export class ControlPanel {
       sequenceErrors: h("ul", { id: "sequence-errors" }),
       levels: h("div", { id: "levels" }),
       levelErrors: h("ul", { id: "level-errors" }),
+      capture: h("fieldset", { id: "capture" }),
+      sweepOnly: [],
     };
     this.build();
   }
@@ -122,16 +127,30 @@ export class ControlPanel {
         num(`${prefix}_stop`, a.stop),
         num(`${prefix}_num`, a.num, "1"),
       );
+    const sweepOnly = (el: HTMLElement) => {
+      this.els.sweepOnly.push(el);
+      return el;
+    };
     f.append(
       h("h3", { text: "Sweep" }),
-      field("kind", h("select", { name: "kind" }, h("option", { value: "stage", text: "stage: inner axis pulsed" }), h("option", { value: "dc", text: "DC: both axes stepped, sensed" }))),
+      field(
+        "kind",
+        h(
+          "select",
+          { name: "kind" },
+          h("option", { value: "stage", text: "stage: inner axis pulsed" }),
+          h("option", { value: "dc", text: "DC: both axes stepped, sensed" }),
+          h("option", { value: "capture", text: "capture: a time-resolved record" }),
+        ),
+      ),
       field("name", h("input", { name: "name", value: "stability" })),
       h("div", { className: "axis head" }, ...["channel", "start", "stop", "num"].map((t) => h("span", { text: t }))),
       h("div", {}, "outer", axisRow("outer", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
-      h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
-      field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" })),
-      field("sensor", h("select", { name: "sensor" })),
-      field("shots", num("shots", 1, "1")),
+      sweepOnly(h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 }))),
+      sweepOnly(field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" }))),
+      sweepOnly(field("sensor", h("select", { name: "sensor" }))),
+      sweepOnly(field("shots", num("shots", 1, "1"))),
+      this.buildCapture(),
       this.buildOperatingPoint(),
       this.buildSequenceEditor(),
       field("options", h("input", { name: "options", value: '{"seed": 1, "noise": true}' })),
@@ -143,7 +162,7 @@ export class ControlPanel {
     });
     (f.elements.namedItem("kind") as HTMLSelectElement).addEventListener("change", () => this.fillSelects());
     // the template follows the inner axis and the sensor until the sequence is edited; axis names feed the bindings
-    for (const name of ["inner_channel", "inner_name", "sensor", "outer_channel"]) {
+    for (const name of ["inner_channel", "inner_name", "sensor", "outer_channel", "capture_channel"]) {
       (f.elements.namedItem(name) as HTMLElement).addEventListener("change", () => {
         this.followTemplate();
         this.validateLevels(); // a newly swept channel may clash with a held one
@@ -192,10 +211,35 @@ export class ControlPanel {
     if (none) none.textContent = "— none (1-D)";
     fill("inner_channel", kind === "stage" ? this.stand.pulse : this.stand.dc, ["P2_pulse", "bias"]);
     fill("sensor", this.stand.sensors, ["sensor"]);
+    fill("capture_channel", this.stand.waveforms, ["scope1"]);
     this.els.sequence.hidden = kind !== "stage";
+    this.els.capture.hidden = kind !== "capture";
+    for (const el of this.els.sweepOnly) {
+      // the stylesheet gives labels a display, which beats the UA's [hidden] rule: set both
+      el.hidden = kind === "capture";
+      el.style.display = kind === "capture" ? "none" : "";
+    }
     this.followTemplate();
     this.els.method.replaceChildren(...this.methods.map((m) => h("option", { value: m.name, text: m.title })));
     this.fillParams();
+  }
+
+  // --- capture (ADR 0047): a WaveformSense record per point of the (optional) outer axis -------------
+
+  private buildCapture(): HTMLFieldSetElement {
+    const field = (label: string, input: HTMLElement) => h("label", {}, label, input);
+    const num = (name: string, value: number, step = "any") => h("input", { name, type: "number", value: String(value), step });
+    this.els.capture.append(
+      h("legend", { text: "capture (a WaveformSense record; the outer axis above steps it, or leave it at none)" }),
+      field("channel", h("select", { name: "capture_channel" })),
+      field("start (s)", num("capture_start", -0.001)),
+      field("stop (s)", num("capture_stop", 0.009)),
+      field("samples", num("capture_num", 1000, "1")),
+      field("records per point", num("capture_records", 1, "1")),
+      field("variable", h("input", { name: "capture_result", value: "trace" })),
+      h("div", { className: "hint", text: "times are relative to the instrument's trigger; one record per frame lands on the declared grid" }),
+    );
+    return this.els.capture;
   }
 
   // --- operating point (ADR 0038): DC levels set before the scan, held throughout -------------------
@@ -221,6 +265,7 @@ export class ControlPanel {
   /** Channels the sweep itself steps or senses: not available to the operating point. */
   private touchedChannels(): string[] {
     const kind = this.value("kind");
+    if (kind === "capture") return [this.value("outer_channel"), this.value("capture_channel")].filter(Boolean);
     const out = [this.value("inner_channel"), this.value("outer_channel")];
     if (kind === "dc") out.push(this.value("sensor"));
     return out.filter(Boolean);
@@ -441,6 +486,22 @@ export class ControlPanel {
     const held = this.validateLevels();
     if (held.errors.length) throw new Error(held.errors.join("; "));
     const levels = held.levels;
+    if (v("kind") === "capture") {
+      return {
+        definition: captureSweep({
+          name: v("name"),
+          levels,
+          outer,
+          channel: v("capture_channel"),
+          startS: Number(v("capture_start")),
+          stopS: Number(v("capture_stop")),
+          num: Number(v("capture_num")),
+          records: Number(v("capture_records")),
+          result: v("capture_result").trim() || "trace",
+        }),
+        options,
+      };
+    }
     if (v("kind") === "stage") {
       const inner = this.stand.pulse.find((c) => c.logical === v("inner_channel"));
       if (!inner) throw new Error("a stage sweep needs a pulse channel for its inner axis");

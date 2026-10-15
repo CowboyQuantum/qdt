@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { ApiClient, ApiError, apiBase, describeDetail } from "../src/api/client";
 import { check, defaults, overrides, parse } from "../src/control/methods";
-import { dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
+import { captureSweep, dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
 import type { MethodSpec, StandConfig } from "../src/schema/api";
 
 const stand: StandConfig = {
   stand_id: "simulated-double-dot",
-  instruments: [{ id: "dot", backend: "simulated", capabilities: ["level_source", "level_sense", "sequencer"] }],
+  instruments: [
+    { id: "dot", backend: "simulated", capabilities: ["level_source", "level_sense", "sequencer"] },
+    { id: "scope", backend: "simulated", capabilities: ["waveform_sense"] },
+  ],
   channels: [
     { logical: "P1", instrument: "dot", channel: "P1", quantity: "voltage" },
     { logical: "P2", instrument: "dot", channel: "P2", quantity: "voltage" },
@@ -14,6 +17,7 @@ const stand: StandConfig = {
     { logical: "P2_pulse", instrument: "dot", channel: "P2_pulse", quantity: "voltage" },
     { logical: "bias", instrument: "dot", channel: "bias", quantity: "voltage" },
     { logical: "sensor", instrument: "dot", channel: "sensor", quantity: "current" },
+    { logical: "scope1", instrument: "scope", channel: "1", quantity: "voltage" },
   ],
 } as StandConfig;
 
@@ -67,6 +71,24 @@ describe("sweep builders", () => {
     expect(c.dc.map((x) => x.logical)).toEqual(["P1", "P2", "SG", "bias"]);
     expect(c.pulse.map((x) => x.logical)).toEqual(["P2_pulse"]);
     expect(c.sensors.map((x) => x.logical)).toEqual(["sensor"]);
+    expect(c.waveforms.map((x) => x.logical)).toEqual(["scope1"]); // a scope channel is not a DC line
+  });
+
+  it("builds a capture, alone or at every point of a stepped axis (ADR 0047)", () => {
+    const alone = captureSweep({ name: "droop", channel: "scope1", startS: -1e-3, stopS: 9e-3, num: 1000, records: 2, result: "trace" });
+    expect(alone.axes).toEqual([]);
+    expect(alone.captured).toEqual([{ name: "trace", channel: "scope1", start_s: -1e-3, stop_s: 9e-3, num: 1000, records: 2 }]);
+    expect(alone.sensed).toEqual([]);
+    expect(alone.stage).toBeNull();
+    const stepped = captureSweep({ name: "stepped", outer: { channel: "P1", start: 0, stop: 1, num: 3 }, channel: "scope1", startS: 0, stopS: 1e-3, num: 100, records: 1, result: "trace" });
+    expect(stepped.axes!.map((a) => a.name)).toEqual(["P1"]);
+    const base = { name: "x", channel: "scope1", startS: 0, stopS: 1e-3, num: 100, records: 1, result: "trace" };
+    expect(() => captureSweep({ ...base, stopS: 0 })).toThrow(/stop must be after start/);
+    expect(() => captureSweep({ ...base, num: 1 })).toThrow(/at least 2/);
+    expect(() => captureSweep({ ...base, records: 0 })).toThrow(/records/);
+    expect(() => captureSweep({ ...base, channel: "" })).toThrow(/WaveformSense channel/);
+    expect(() => captureSweep({ ...base, result: "time" })).toThrow(/dimension name/);
+    expect(() => captureSweep({ ...base, outer: { channel: "scope1", start: 0, stop: 1, num: 3 } })).toThrow(/not both/);
   });
 });
 
