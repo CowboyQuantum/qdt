@@ -1,7 +1,7 @@
 """Walk an `ExecutionPlan` against backend objects and stream the Dataset (ADR 0019).
 
-Loop order: repeats (outermost, executor) → stepped axes row-major (executor: set levels, settle,
-then the stage, the sensed levels, the captures) → the stage (sequencer: its axes and shots). Sensed
+Loop order: repeats (outermost, executor) → stepped axes row-major (executor: set levels and their
+coupled companions, settle, then the stage, the sensed levels, the captures) → the stage (sequencer: its axes and shots). Sensed
 levels are chunked one innermost stepped line per frame; stage frames and capture frames are re-keyed
 into the full index space. A capture arms its `WaveformSense` on a (record, time) slab per stepped
 point and passes every record it yields (ADR 0047). The executor holds no data and never averages
@@ -148,6 +148,7 @@ class Executor:
         seq = 0
         # the operating point (ADR 0038): set once, settled once, held for the whole scan
         settle = 0.0
+        held = {lv.channel: lv.value for lv in definition.levels}
         for lv in definition.levels:
             ch = plan.channel(lv.channel)
             self._backends[ch.instrument].set(ch.channel, lv.value)
@@ -155,17 +156,29 @@ class Executor:
             settle = max(settle, ch.settle_s)
         if settle > 0:
             self._sleep(settle)
+
+        def set_level(logical: str, value: float) -> float:
+            """Set `logical` to `value` if it is not there already; the channel's settle time if set."""
+            ch = plan.channel(logical)
+            if applied.get(logical) == value:
+                return 0.0
+            self._backends[ch.instrument].set(ch.channel, value)
+            applied[logical] = value
+            return ch.settle_s
+
         for k in repeats:
             buffers: dict[str, list[float]] = {s.name: [] for s in definition.sensed}
             for idx in itertools.product(*(range(a.num) for a in stepped)):
                 settle = 0.0
                 for a, i in zip(stepped, idx, strict=True):
                     current[a.name] = a.value(i)
-                    ch = plan.channel(a.channel)
-                    if applied.get(a.channel) != current[a.name]:
-                        self._backends[ch.instrument].set(ch.channel, current[a.name])
-                        applied[a.channel] = current[a.name]
-                        settle = max(settle, ch.settle_s)
+                    settle = max(settle, set_level(a.channel, current[a.name]))
+                    # a virtual gate (ADR 0049): companions move from their held level, or 0
+                    for companion, per_volt in a.couplings.items():
+                        settle = max(
+                            settle,
+                            set_level(companion, held.get(companion, 0.0) + per_volt * current[a.name]),
+                        )
                 if settle > 0:
                     self._sleep(settle)
                 prefix = (

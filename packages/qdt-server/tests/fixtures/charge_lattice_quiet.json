@@ -12,11 +12,11 @@
   "node_id": "charge-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "166d0cdb16224a659f6f9ccbd9299121",
+    "outcome_id": "74733b50890e4a3bbe0b4aeeab533496",
     "node_id": "charge-lattice",
     "scenario_id": "default-quiet",
-    "record_id": "a4374540bdd14b1cb46297d0cd78f124",
-    "result_id": "a1225202cc0c40c88ae2db9a1a1b6b8d",
+    "record_id": "de08599213724106a4b874ce7a9b2f1f",
+    "result_id": "42fa572683274548befe9f1ff04c7b8e",
     "status": "accepted",
     "message": "lattice condition 1.54, cross ratios 0.211 and 0.212",
     "outputs": {
@@ -27,9 +27,11 @@
       "m_11": 1.0468851210893797,
       "m_12": -0.22076203600927027,
       "m_21": -0.2223359439703865,
-      "m_22": 1.0468851210893797
+      "m_22": 1.0468851210893797,
+      "c_21": -0.21237854993967784,
+      "c_12": -0.21087513000428088
     },
-    "created_at": "2026-10-15T19:23:57.750769Z",
+    "created_at": "2026-10-15T19:45:33.480968Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.virtual_gates"
@@ -87,7 +89,9 @@
     "m_11": 1.047438330170778,
     "m_12": -0.21821631878557876,
     "m_21": -0.22770398481973436,
-    "m_22": 1.047438330170778
+    "m_22": 1.047438330170778,
+    "c_21": -0.2173913043478261,
+    "c_12": -0.20833333333333337
   },
-  "created_at": "2026-10-15T19:23:57.751571Z"
+  "created_at": "2026-10-15T19:45:33.482213Z"
 }

@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from qdt_schemas.activity import (
+    FixedLevel,
     ParameterBinding,
     SensedLevel,
     SequencerParameter,
@@ -228,4 +229,53 @@ def test_captured_waveforms_are_an_additive_activity():
     with pytest.raises(ValidationError, match="senses something, captures something"):
         SweepDefinition(
             name="bad", axes=(SweepAxis(name="g", channel="gate_R", start=0, stop=1, num=3),)
+        )
+
+
+def test_a_stepped_axis_may_couple_other_channels_as_a_virtual_gate():
+    """ADR 0049: `couplings` move LevelSource channels with the axis; absent from the serialized form
+    when empty, so existing definitions keep their hash; never on a stage axis."""
+    base = stability()
+    assert "couplings" not in base.model_dump()["axes"][0]
+    virtual = SweepDefinition.model_validate(
+        base.model_dump()
+        | {
+            "axes": [
+                base.axes[0].model_dump() | {"couplings": {"gate_L_dc": -0.2}},
+                base.axes[1].model_dump(),
+            ]
+        }
+    )
+    assert virtual.axes[0].couplings == {"gate_L_dc": -0.2}
+    assert virtual.coupled_channels() == ("gate_L_dc",)
+    assert "couplings" in virtual.model_dump()["axes"][0]
+    held = virtual.model_copy(update={"levels": (FixedLevel(channel="gate_L_dc", value=0.05),)})
+    assert SweepDefinition.model_validate(held.model_dump()).levels[0].channel == "gate_L_dc"
+    for axes, match in [
+        (
+            [base.axes[0], base.axes[1].model_copy(update={"couplings": {"gate_L_dc": 1.0}})],
+            "stage axis",
+        ),
+        (
+            [base.axes[0].model_copy(update={"couplings": {"gate_L_p": 1.0}}), base.axes[1]],
+            "another axis",
+        ),
+        (
+            [base.axes[0].model_copy(update={"couplings": {"gate_R": 1.0}}), base.axes[1]],
+            "another axis",
+        ),
+    ]:
+        with pytest.raises(ValidationError, match=match):
+            SweepDefinition.model_validate(
+                base.model_dump() | {"axes": [a.model_dump() for a in axes]}
+            )
+    with pytest.raises(ValidationError, match="sensed or captured"):
+        SweepDefinition(
+            name="dc",
+            axes=(
+                SweepAxis(
+                    name="g", channel="gate_R", start=0, stop=1, num=3, couplings={"sensor": 0.1}
+                ),
+            ),
+            sensed=(SensedLevel(name="I", channel="sensor"),),
         )

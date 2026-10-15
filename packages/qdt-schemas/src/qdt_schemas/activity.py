@@ -178,6 +178,15 @@ class SweepAxis(QdtModel):
     start: float = Field(description="Value at index 0, in the channel's quantity unit.")
     stop: float = Field(description="Value at the last index (inclusive).")
     num: int = Field(ge=1, description="Number of points.")
+    couplings: dict[str, float] = Field(
+        default_factory=dict,
+        exclude_if=lambda v: not v,  # existing definitions keep their content hash (ADR 0049)
+        description=(
+            "A virtual gate (ADR 0049): other LevelSource channels moved with this axis, by these volts "
+            "per volt of the axis value, from their held level (SweepDefinition.levels) or 0. Only a "
+            "stepped axis couples; a stage axis expresses its couplings in the pulse sequence (Affine)."
+        ),
+    )
 
     @property
     def step(self) -> float:
@@ -443,6 +452,23 @@ class SweepDefinition(QdtModel):
         axis_channels = {a.channel for a in stepped}
         if axis_channels & {s.channel for s in self.sensed}:
             raise ValueError("a channel is a stepped axis or a sensed level, not both (ADR 0016)")
+        all_axis_channels = {a.channel for a in self.axes}
+        for a in self.axes:
+            if not a.couplings:
+                continue
+            if a.name in stage_axes:
+                raise ValueError(
+                    f"stage axis {a.name!r} couples channels; a stage axis expresses its couplings in the "
+                    "pulse sequence (Affine values)"
+                )
+            moved = set(a.couplings)
+            if moved & all_axis_channels:
+                raise ValueError(
+                    f"axis {a.name!r} couples {sorted(moved & all_axis_channels)}, which another axis "
+                    "sweeps (or it sweeps itself)"
+                )
+            if moved & ({s.channel for s in self.sensed} | {c.channel for c in self.captured}):
+                raise ValueError(f"axis {a.name!r} couples a sensed or captured channel")
         if set(captured_channels) & (axis_channels | {s.channel for s in self.sensed}):
             raise ValueError("a captured channel is neither stepped nor sensed (ADR 0016)")
         held = [lv.channel for lv in self.levels]
@@ -452,7 +478,7 @@ class SweepDefinition(QdtModel):
             {a.channel for a in self.axes}
             | {s.channel for s in self.sensed}
             | {c.channel for c in self.captured}
-        )
+        )  # a held level on a *coupled* channel is allowed: it is the coupling's origin (ADR 0049)
         if both:
             raise ValueError(
                 f"{sorted(both)} are swept, sensed or captured; an operating-point level holds a "
@@ -485,6 +511,13 @@ class SweepDefinition(QdtModel):
     def stepped_axes(self) -> tuple[SweepAxis, ...]:
         inner = set(self.stage.axes) if self.stage else set()
         return tuple(a for a in self.axes if a.name not in inner)
+
+    def coupled_channels(self) -> tuple[str, ...]:
+        """Channels moved by an axis's couplings (ADR 0049), in axis order, each once."""
+        out: list[str] = []
+        for a in self.axes:
+            out.extend(ch for ch in a.couplings if ch not in out)
+        return tuple(out)
 
     def capture(self, name: str) -> CapturedWaveform:
         for c in self.captured:

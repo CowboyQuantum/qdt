@@ -38,6 +38,7 @@ PERSISTED: dict[str, type[QdtModel]] = {
 }
 """Types the registry or a payload stores; each must have a fixture per version."""
 
+
 def _dataset_1_to_2(data: dict[str, Any]) -> dict[str, Any]:
     """v2 only widens `source.kind` (adds 'analysis', ADR 0031): every v1 Dataset is a v2 Dataset."""
     return data

@@ -1,4 +1,5 @@
-"""Run one calibration node (ADR 0048): experiment → record → curated method → result → rule → outcome.
+"""Run calibration nodes (ADR 0048, 0049): experiment → record → curated method → result → rule → outcome;
+`run_tuneup` chains nodes, binding each one's inputs from the accepted outcomes before it.
 
 The server is the one process that holds backends and a `Registry`, so the runner lives here. It uses
 the same path a user's run takes (compile, execute, record, ingest; `catalogue.run_method`;
@@ -7,7 +8,7 @@ and the result are durable; the `NodeOutcome` points at them. A DAG over nodes i
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitt
 from qdt_registry import Registry
 from qdt_schemas.modeling import AnalysisResult, CalibrationNode, NodeOutcome
 from qdt_schemas.stand import StandConfig
-from qdt_tuning import apply
+from qdt_tuning import apply, bind
 
 from . import catalogue
 
@@ -88,3 +89,59 @@ def run_node(
         ),
         result,
     )
+
+
+def run_tuneup(
+    nodes: Sequence[CalibrationNode],
+    stand: StandConfig,
+    backends: Mapping[str, Any],
+    registry: Registry,
+    outbox: str | Path,
+    *,
+    device_id: str,
+    scenario_id: str | None = None,
+    campaign: str | None = None,
+) -> list[NodeOutcome]:
+    """Run `nodes` in order (ADR 0049): each node's `inputs` are bound from the accepted outcomes before
+    it, then it runs; the tune-up stops at the first outcome that is not `accepted` and returns the
+    outcomes so far, that one last. Raises ValueError for a node whose dependencies are not earlier in
+    the list (the order is the caller's statement of the DAG)."""
+    seen: set[str] = set()
+    for node in nodes:
+        missing = set(node.depends_on) - seen
+        if missing:
+            raise ValueError(
+                f"node {node.node_id!r} depends on {sorted(missing)}, not run before it"
+            )
+        seen.add(node.node_id)
+    outcomes: dict[str, NodeOutcome] = {}
+    out: list[NodeOutcome] = []
+    for node in nodes:
+        try:
+            bound = bind(node, outcomes)
+        except (KeyError, ValueError) as e:
+            outcome = NodeOutcome(
+                outcome_id=uuid.uuid4().hex,
+                node_id=node.node_id,
+                scenario_id=scenario_id,
+                status="failed",
+                message=f"binding inputs: {e}",
+                created_at=datetime.now(UTC),
+            )
+            out.append(outcome)
+            return out
+        outcome, _ = run_node(
+            bound,
+            stand,
+            backends,
+            registry,
+            outbox,
+            device_id=device_id,
+            scenario_id=scenario_id,
+            campaign=campaign,
+        )
+        out.append(outcome)
+        if outcome.status != "accepted":
+            return out
+        outcomes[node.node_id] = outcome
+    return out

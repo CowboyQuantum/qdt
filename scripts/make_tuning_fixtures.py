@@ -2,7 +2,8 @@
 
 Run only when a node, its method, its rule or the simulator changes:
 `uv run python scripts/make_tuning_fixtures.py`. `test_tuning.py` reproduces each fixture's decided
-quantities within tolerance and checks them against the model's truth.
+quantities within tolerance and checks them against the model's truth. A fixture is the last node of
+its tune-up (`SCENARIOS` lists the nodes in order; earlier nodes feed later ones, ADR 0049).
 """
 
 import pathlib
@@ -17,9 +18,10 @@ from qdt_schemas.modeling import SimResult
 
 if __name__ == "__main__":
     FIXTURES.mkdir(parents=True, exist_ok=True)
-    for name, (scenario, node_builder) in SCENARIOS.items():
+    for name, (scenario, builders) in SCENARIOS.items():
         with tempfile.TemporaryDirectory() as tmp:
-            outcome, result, truth = run_scenario(scenario, node_builder, pathlib.Path(tmp))
+            outcomes, result, truth = run_scenario(scenario, builders, pathlib.Path(tmp))
+        outcome = outcomes[-1]  # the tune-up's last node is the fixture's
         fixture = SimResult(
             scenario=scenario,
             node_id=outcome.node_id,
