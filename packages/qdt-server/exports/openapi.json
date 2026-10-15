@@ -1416,8 +1416,11 @@
         "description": "A curated analysis method as the UI sees it: what it is called, what it takes, what it gives.",
         "properties": {
           "applies_to": {
-            "const": "map_2d",
-            "description": "Dataset shape the method accepts; map_2d: a variable over two linear coordinates.",
+            "description": "Dataset shape the method accepts; map_2d: a variable over two linear coordinates; trace_1d: a variable over one linear coordinate (time), any leading dims uncoordinated (records, shots). trace_1d was added without a version bump (ADR 0046).",
+            "enum": [
+              "map_2d",
+              "trace_1d"
+            ],
             "title": "Applies To",
             "type": "string"
           },

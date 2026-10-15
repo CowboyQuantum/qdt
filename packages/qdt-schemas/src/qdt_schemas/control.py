@@ -82,8 +82,12 @@ class MethodSpec(QdtModel):
     version: str = Field(min_length=1, description="Method version, equal to `FitModel.version`.")
     title: str = Field(min_length=1, description="Short display name, e.g. 'Charge transitions'.")
     description: str = Field(default="", description="What the method does, for the UI.")
-    applies_to: Literal["map_2d"] = Field(
-        description="Dataset shape the method accepts; map_2d: a variable over two linear coordinates."
+    applies_to: Literal["map_2d", "trace_1d"] = Field(
+        description=(
+            "Dataset shape the method accepts; map_2d: a variable over two linear coordinates; "
+            "trace_1d: a variable over one linear coordinate (time), any leading dims uncoordinated "
+            "(records, shots). trace_1d was added without a version bump (ADR 0046)."
+        )
     )
     parameters: tuple[ParameterSpec, ...] = Field(
         default=(), description="Parameters a caller may set; unique names."
