@@ -77,3 +77,8 @@ Session 12 (2026-10-14, bench): Probe 03 characterised the combiner board that r
 division 2.525, a 20 Hz low-pass on the DC side, pulse side 0.81 above 200 kHz and 0.59 at DC with a 2 ns
 edge, output impedance ≈ 25 kΩ (so the sink must be high-impedance: the scope, or a buffer before the OPX
 input). Two OPX driver bugs fixed: looped waveforms on the sticky element railed; settle after `play`.
+Session 13 (2026-10-14): the curated **plane fit** (`qdt_analysis.plane.fit_plane`, ADR 0045): least
+squares with standard errors, `failed` below `min_r2`, iso-lines as `line` overlays, fitted plane and
+residual as the output payload; in the server catalogue. Injection–recovery on a synthetic plane and on a
+plane through the real sweep path (two simulated levels summed by a simulated sense). L2-1's sink is still
+the human's decision; the single exponential (L2-3) is next.
