@@ -63,7 +63,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.waitForFunction(() => document.querySelectorAll("#sweep select[name=outer_channel] option").length > 0);
   expect(await page.inputValue("#sweep select[name=outer_channel]")).toBe("P1");
   expect(await page.inputValue("#sweep select[name=inner_channel]")).toBe("P2_pulse");
-  expect((await page.locator("#method option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds"]);
+  expect((await page.locator("#method option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane"]);
 
   // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region)
   await page.fill("#sweep input[name=name]", "e2e stability");
