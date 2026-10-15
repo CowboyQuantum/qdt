@@ -36,7 +36,14 @@ None new. `InstrumentConfig` gains vendor address fields only if required (minor
 - #10 surrogate DUT design — closed by ADR 0040 (no board)
 
 ## Status
-IN PROGRESS (opened 2026-10-14, ADR 0041). Session 1: drivers for the QDAC-II, Keithley 2400-series,
+DONE (2026-10-15, ADR 0040–0047; closed by the human after session 16). Every exit criterion met: the
+conformance suite passes on all four instruments in every capability (OPX 18/18, 2450 5/5, QDAC-II 3/3, HD304MSO
+6/6); L2-1, L2-2 and L2-3 pass on the bench through the control path and the drivers; reports for 2026-10-14 and
+2026-10-15 are committed; Probes 02–04 are in `docs/probes/`. Carried into Step 6 (its Open decisions): a
+`PlayedWaveform` activity, sub-ms stepping on the sequencer (Probe 04), how a sense range is declared, a rest
+level at a sweep's end, the Flight Deck time-series view's remainder. QDAC-II findings for QDevil in BENCH.md.
+
+History — opened 2026-10-14 (ADR 0041). Session 1: drivers for the QDAC-II, Keithley 2400-series,
 InfiniiVision X and OPX1000. Each SCPI driver passes the conformance suite on its emulator in CI. The OPX's
 QUA programs and config are validated offline by qm-qua. `qdt-server --stand` runs on a real stand, and a
 CI test runs a sweep through the server on the real drivers over emulators. Remaining: the first
