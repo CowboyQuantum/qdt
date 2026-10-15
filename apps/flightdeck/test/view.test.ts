@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Dataset } from "../src/schema/data";
-import { annotationPath, chooseView, difference, meanAlongLeading, partners, transformMap, transpose } from "../src/view";
+import { annotationPath, chooseView, difference, meanAlongLeading, partners, pointAt, transformMap, transpose } from "../src/view";
 import { DatasetStore } from "../src/stream/store";
 
 const dataset = (dims: [string, number | null][], varDims: string[]): Dataset =>
@@ -157,5 +157,30 @@ describe("chooseView on records (ADR 0047)", () => {
     const ds = records(4);
     (ds.coords as unknown[]).push({ kind: "linear", name: "record", dim: "record", unit: "V", start: 0, stop: 1, num: 4 });
     expect(chooseView(ds)).toMatchObject({ kind: "heatmap", rowDim: "record", colDim: "time" });
+  });
+});
+
+describe("pointAt (click-to-set, ADR 0053)", () => {
+  it("returns each axis's value at the cell under a fraction, the inverse of annotationPath", () => {
+    const ds = {
+      dataset_id: "d",
+      name: "d",
+      dims: [{ name: "y", size: 4 }, { name: "x", size: 5 }],
+      coords: [
+        { kind: "linear", name: "y", dim: "y", unit: "V", start: 0, stop: 3, num: 4 },
+        { kind: "linear", name: "x", dim: "x", unit: "V", start: 10, stop: 14, num: 5 },
+      ],
+      data_vars: [{ name: "I", dims: ["y", "x"], unit: "A", dtype: "float64" }],
+    } as unknown as Dataset;
+    const store = new DatasetStore(ds);
+    const view = chooseView(ds) as Extract<ReturnType<typeof chooseView>, { kind: "heatmap" }>;
+    expect(pointAt(store, view, 0.0, 0.0)).toEqual([
+      { name: "x", unit: "V", value: 10 },
+      { name: "y", unit: "V", value: 0 },
+    ]);
+    expect(pointAt(store, view, 0.99, 0.99).map((p) => p.value)).toEqual([14, 3]);
+    expect(pointAt(store, view, 0.5, 0.5).map((p) => p.value)).toEqual([12, 2]);
+    expect(pointAt(store, view, 0.5, 0.5, true).map((p) => p.name)).toEqual(["y", "x"]);
+    expect(pointAt(store, view, -1, 2).map((p) => p.value)).toEqual([10, 3]); // clamped
   });
 });

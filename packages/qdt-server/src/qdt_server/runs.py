@@ -1,12 +1,13 @@
 """Run lifecycle (ADR 0034): accept a definition, compile it, execute it on a backend in the stream
-server's worker thread, record it, ingest it. `Run` objects are the only state; records are durable.
+server's worker thread, record it, ingest it. `Run` objects and the held operating point (ADR 0053) are
+the only state; records are durable and carry the operating point they ran at.
 A run may be aborted: queued, it never starts; running, it stops between frames and what it streamed
 is recorded with outcome `aborted`."""
 
 import asyncio
 import threading
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ from typing import Any
 from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitter, compile_sweep
 from qdt_lab.stream import Frame, Source, StreamServer
 from qdt_registry import Registry
-from qdt_schemas.activity import ExecutionPlan, SweepDefinition
+from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
 from qdt_schemas.control import Run
 from qdt_schemas.data import AttrValue, Dataset
 from qdt_schemas.stand import StandConfig
@@ -65,11 +66,63 @@ class RunManager:
         self.runs: dict[str, Run] = {}
         self._stops: dict[str, threading.Event] = {}
         self._lock = asyncio.Lock()
+        self._levels: dict[str, float] = {}
+
+    # --- the stand's operating point (ADR 0053) ---------------------------------------------------
+
+    def levels(self) -> list[FixedLevel]:
+        """The operating point the server holds for the stand: DC levels every sweep inherits unless
+        it sets, sweeps, couples, senses or captures the channel itself."""
+        return [FixedLevel(channel=c, value=v) for c, v in sorted(self._levels.items())]
+
+    def set_levels(self, levels: Sequence[FixedLevel]) -> list[FixedLevel]:
+        """Hold `levels` (merged over the current ones) and apply them on the stand now. Raises KeyError
+        for a channel the stand lacks, ValueError for one whose instrument is not a LevelSource."""
+        for lv in levels:
+            channel = self.stand.channel(lv.channel)  # KeyError for an unknown channel
+            if "level_source" not in self.stand.instrument(channel.instrument).capabilities:
+                raise ValueError(
+                    f"channel {lv.channel!r} is on {channel.instrument!r}, which is not a LevelSource"
+                )
+        backends = self._backends({})
+        for lv in levels:
+            channel = self.stand.channel(lv.channel)
+            backends[channel.instrument].set(channel.channel, lv.value)
+            self._levels[lv.channel] = lv.value
+        return self.levels()
+
+    def clear_levels(self) -> list[FixedLevel]:
+        """Forget the held operating point (the stand keeps whatever it is at)."""
+        self._levels.clear()
+        return []
+
+    def with_operating_point(self, definition: SweepDefinition) -> SweepDefinition:
+        """`definition` with the held levels added for every channel it does not touch itself."""
+        if not self._levels:
+            return definition
+        touched = (
+            {a.channel for a in definition.axes}
+            | set(definition.coupled_channels())
+            | {s.channel for s in definition.sensed}
+            | {c.channel for c in definition.captured}
+            | {lv.channel for lv in definition.levels}
+        )
+        extra = tuple(
+            FixedLevel(channel=c, value=v)
+            for c, v in sorted(self._levels.items())
+            if c not in touched
+        )
+        if not extra:
+            return definition
+        return definition.model_copy(update={"levels": (*definition.levels, *extra)})
 
     def compile(self, definition: SweepDefinition) -> ExecutionPlan:
-        """Raises ValueError for a definition the stand cannot run."""
+        """Raises ValueError for a definition the stand cannot run. The held operating point is merged
+        in first (ADR 0053), so the plan and the record carry it."""
         return compile_sweep(
-            definition, self.stand, {"simulated": SimulatedEmitter(), "qua": QuaEmitter()}
+            self.with_operating_point(definition),
+            self.stand,
+            {"simulated": SimulatedEmitter(), "qua": QuaEmitter()},
         )
 
     async def start(
@@ -77,6 +130,7 @@ class RunManager:
     ) -> Run:
         """Compile now (errors raise), then execute in the background; returns the queued run."""
         options = dict(options or {})
+        definition = self.with_operating_point(definition)
         plan = self.compile(definition)
         run = Run(
             run_id=uuid.uuid4().hex,

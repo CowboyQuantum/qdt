@@ -6,6 +6,7 @@ import type {
   CalibrationNode,
   DeviceRecord,
   ExecutionPlan,
+  FixedLevel,
   MeasurementRecord,
   MethodRequest,
   MethodSpec,
@@ -111,6 +112,17 @@ export class ApiClient {
   }
   replay(request: ReplayRequest): Promise<StreamInfo> {
     return this.call("POST", "/stream/replay", request);
+  }
+  /** The DC levels the server holds for the stand; every sweep inherits them (ADR 0038, 0053). */
+  levels(): Promise<FixedLevel[]> {
+    return this.call("GET", "/levels");
+  }
+  /** Set these channels on the stand now and hold them: click-to-set lands here (ADR 0053). */
+  setLevels(levels: FixedLevel[]): Promise<FixedLevel[]> {
+    return this.call("POST", "/levels", levels);
+  }
+  clearLevels(): Promise<FixedLevel[]> {
+    return this.call("DELETE", "/levels");
   }
   /** The calibration nodes this server offers, built for its stand's sequencer (ADR 0050). */
   nodes(): Promise<CalibrationNode[]> {

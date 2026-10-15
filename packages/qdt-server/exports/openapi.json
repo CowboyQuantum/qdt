@@ -3743,6 +3743,95 @@
         "summary": "Get Devices"
       }
     },
+    "/levels": {
+      "delete": {
+        "description": "Forget the held operating point; the stand stays where it is.",
+        "operationId": "clear_levels_levels_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedLevel"
+                  },
+                  "title": "Response Clear Levels Levels Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Clear Levels"
+      },
+      "get": {
+        "description": "The DC levels the server holds for the stand; every sweep inherits them (ADR 0038, 0053).",
+        "operationId": "get_levels_levels_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedLevel"
+                  },
+                  "title": "Response Get Levels Levels Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Levels"
+      },
+      "post": {
+        "description": "Set these channels now and hold them; returns the whole operating point.",
+        "operationId": "set_levels_levels_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/FixedLevel"
+                },
+                "title": "Body",
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedLevel"
+                  },
+                  "title": "Response Set Levels Levels Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Levels"
+      }
+    },
     "/methods": {
       "get": {
         "operationId": "list_methods_methods_get",
