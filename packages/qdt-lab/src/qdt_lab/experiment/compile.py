@@ -1,4 +1,9 @@
-"""`SweepDefinition` + `StandConfig` → `ExecutionPlan` (ADR 0019)."""
+"""`SweepDefinition` + `StandConfig` → `ExecutionPlan` (ADR 0019; captures by ADR 0047).
+
+Dataset layout, outer to inner: `repeat` (when repeats != 1), the axes, `shot` (kept shots), then for
+captured waveforms `record` (when records > 1) and each capture's time axis. A sensed level is laid over
+the stepped axes; a stage result over every axis; a capture over the stepped axes plus its own time.
+"""
 
 import uuid
 from collections.abc import Mapping
@@ -24,6 +29,7 @@ from .emit import Emitter
 
 REPEAT_DIM = "repeat"
 SHOT_DIM = "shot"
+RECORD_DIM = "record"
 
 
 def compile_sweep(
@@ -59,6 +65,8 @@ def compile_sweep(
         resolve(lv.channel, "level_source")
     for s in definition.sensed:
         resolve(s.channel, "level_sense")
+    for c in definition.captured:  # time-resolved records (ADR 0047)
+        resolve(c.channel, "waveform_sense")
 
     program: SequencerProgram | None = None
     bindings: tuple[ParameterBinding, ...] = ()
@@ -177,6 +185,31 @@ def _declare_dataset(
             else:
                 attrs[f"{r.name}.reduced"] = f"shot:{reduction}" if stage.shots > 1 else "none"
             variables.append(DataVariable(name=r.name, dims=vdims, unit=r.unit, dtype=r.dtype))
+    captured = definition.captured
+    if captured:
+        records = captured[0].records  # the schema holds every capture to one count
+        if records > 1:
+            dims.append(Dimension(name=RECORD_DIM, size=records))
+        declared: set[str] = set()
+        for c in captured:
+            tdim = definition.capture_time_dim(c.name)
+            if tdim not in declared:
+                dims.append(Dimension(name=tdim, size=c.num))
+                coords.append(
+                    LinearCoordinate(
+                        name=tdim, dim=tdim, unit="s", start=c.start_s, stop=c.stop_s, num=c.num
+                    )
+                )
+                declared.add(tdim)
+            variables.append(
+                DataVariable(
+                    name=c.name,
+                    dims=(*outer, *stepped_names, *((RECORD_DIM,) if records > 1 else ()), tdim),
+                    unit=QUANTITY_UNIT[stand.channel(c.channel).quantity],
+                    dtype="float64",
+                )
+            )
+        attrs["records"] = records
     simulated = all(i.backend == "simulated" for i in stand.instruments)
     return Dataset(
         dataset_id=plan_id,

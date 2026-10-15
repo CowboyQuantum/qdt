@@ -164,8 +164,68 @@ def test_operating_point_levels_hold_untouched_channels():
     assert "levels" not in base.model_dump() and "levels" in d.model_dump()
     axis = base.axes[0].channel
     for levels, match in [
-        ((FixedLevel(channel=axis, value=0.0),), "swept or sensed"),
+        ((FixedLevel(channel=axis, value=0.0),), "swept, sensed or captured"),
         ((FixedLevel(channel="g", value=0.0), FixedLevel(channel="g", value=0.1)), "one level"),
     ]:
         with pytest.raises(ValidationError, match=match):
-            SweepDefinition.model_validate(base.model_dump() | {"levels": [lv.model_dump() for lv in levels]})
+            SweepDefinition.model_validate(
+                base.model_dump() | {"levels": [lv.model_dump() for lv in levels]}
+            )
+
+
+def test_captured_waveforms_are_an_additive_activity():
+    """ADR 0047: a `WaveformSense` record per stepped point; the field is absent from the serialized
+    form when empty, so existing definitions keep their content hash."""
+    from qdt_schemas.activity import CapturedWaveform
+
+    base = stability()
+    assert "captured" not in base.model_dump()
+    cap = CapturedWaveform(name="trace", channel="scope1", start_s=-1e-3, stop_s=9e-3, num=1000)
+    assert cap.records == 1
+    alone = SweepDefinition(name="droop", captured=(cap,))  # no axis, no stage, no sensed level
+    assert "captured" in alone.model_dump() and alone.stepped_axes() == ()
+    assert alone.capture("trace") == cap and alone.capture_time_dim("trace") == "time"
+    two = SweepDefinition(
+        name="two",
+        captured=(
+            cap,
+            CapturedWaveform(name="ref", channel="scope2", start_s=0.0, stop_s=1e-3, num=100),
+        ),
+    )
+    assert (
+        two.capture_time_dim("trace") == "trace_time" and two.capture_time_dim("ref") == "ref_time"
+    )
+    with_axis = SweepDefinition(
+        name="stepped droop",
+        axes=(SweepAxis(name="gate_R", channel="gate_R", start=-0.5, stop=0.5, num=3),),
+        captured=(cap.model_copy(update={"records": 4}),),
+    )
+    assert with_axis.captured[0].records == 4
+
+    with pytest.raises(ValidationError, match="stop_s > start_s"):
+        CapturedWaveform(name="t", channel="scope1", start_s=1.0, stop_s=1.0, num=10)
+    with pytest.raises(ValidationError, match="num"):
+        CapturedWaveform(name="t", channel="scope1", start_s=0.0, stop_s=1.0, num=1)
+    for captured, match in [
+        ((cap, cap.model_copy(update={"name": "again"})), "captured once"),
+        ((cap, cap.model_copy(update={"name": "ref", "records": 2})), "same number of records"),
+        ((cap.model_copy(update={"name": "time"}),), "reserved"),
+        ((cap.model_copy(update={"name": "gate_R"}),), "distinct from axis names"),
+        ((cap.model_copy(update={"channel": "gate_R"}),), "neither stepped nor sensed"),
+    ]:
+        with pytest.raises(ValidationError, match=match):
+            SweepDefinition(
+                name="bad",
+                axes=(SweepAxis(name="gate_R", channel="gate_R", start=-0.5, stop=0.5, num=3),),
+                captured=captured,
+            )
+    with pytest.raises(ValidationError, match="_time"):
+        SweepDefinition(
+            name="bad",
+            axes=(SweepAxis(name="trace_time", channel="gate_R", start=-0.5, stop=0.5, num=3),),
+            captured=(cap,),
+        )
+    with pytest.raises(ValidationError, match="senses something, captures something"):
+        SweepDefinition(
+            name="bad", axes=(SweepAxis(name="g", channel="gate_R", start=0, stop=1, num=3),)
+        )

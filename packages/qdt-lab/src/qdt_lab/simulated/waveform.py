@@ -1,7 +1,7 @@
 """Simulated waveform terminals."""
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 
 import numpy as np
@@ -29,11 +29,40 @@ class SimulatedWaveformSource:
         self.playing.pop(channel, None)
 
 
+Response = Callable[[np.ndarray], np.ndarray]
+"""The clean record as a function of the declared time axis (absolute times, seconds)."""
+
+
+def ring_down(t: np.ndarray) -> np.ndarray:
+    """The default record: a damped ring-down from the start of the axis, eight cycles over its span."""
+    t = t - t[0]
+    span = t[-1] if t[-1] > 0 else 1.0
+    return np.exp(-t / (span / 4)) * np.cos(2 * np.pi * 8 * t / span)
+
+
+def exponential_decay(tau: float, amplitude: float = 1.0, t0: float = 0.0) -> Response:
+    """A bias tee's droop (L2-3, ADR 0047): zero before `t0`, a step to `amplitude` at `t0`, then
+    `amplitude · exp(−(t − t0)/tau)` back toward zero."""
+    if not tau > 0:
+        raise ValueError(f"tau must be positive, got {tau}")
+    return lambda t: np.where(t >= t0, amplitude * np.exp(-np.clip(t - t0, 0, None) / tau), 0.0)
+
+
+def low_pass_step(tau: float, amplitude: float = 1.0, t0: float = 0.0) -> Response:
+    """A first-order low-pass's step response (Probe 03's combiner): zero before `t0`, then
+    `amplitude · (1 − exp(−(t − t0)/tau))`."""
+    if not tau > 0:
+        raise ValueError(f"tau must be positive, got {tau}")
+    return lambda t: np.where(
+        t >= t0, amplitude * (1.0 - np.exp(-np.clip(t - t0, 0, None) / tau)), 0.0
+    )
+
+
 class SimulatedWaveformSense:
-    """Fills records on the declared time grid: a damped ring-down after the start of the record plus
-    Gaussian noise, deterministic in (seed, record index). One whole record per frame, exactly on the
-    declared `LinearCoordinate` (ADR 0015: alignment is the producer's job). An unbounded record
-    dimension yields `max_records` records."""
+    """Fills records on the declared time grid: `response(times)` (default `ring_down`) plus Gaussian
+    noise, deterministic in (seed, record index). One whole record per frame, exactly on the declared
+    `LinearCoordinate` (ADR 0015: alignment is the producer's job). An unbounded record dimension
+    yields `max_records` records."""
 
     def __init__(
         self,
@@ -41,9 +70,11 @@ class SimulatedWaveformSense:
         seed: int = 0,
         max_records: int = 8,
         records_per_second: float | None = None,
+        response: Response | None = None,
     ) -> None:
         self.noise, self.seed = noise, seed
         self.max_records, self.records_per_second = max_records, records_per_second
+        self.response = response or ring_down
 
     def arm(self, channel: str, dataset: Dataset, variable: str) -> "_RecordSource":
         v = next((v for v in dataset.data_vars if v.name == variable), None)
@@ -82,12 +113,12 @@ class _RecordSource:
         self._times = times
 
     def record(self, k: int) -> np.ndarray:
-        """Record `k`: ring-down from the start of the declared axis, deterministic in (seed, k)."""
-        t = self._times - self._times[0]
-        span = t[-1] if t[-1] > 0 else 1.0
-        clean = np.exp(-t / (span / 4)) * np.cos(2 * np.pi * 8 * t / span)
+        """Record `k`: the response on the declared axis plus noise, deterministic in (seed, k)."""
+        clean = np.asarray(self._sense.response(self._times), dtype=np.float64)
+        if clean.shape != self._times.shape:
+            raise ValueError(f"response returned shape {clean.shape}, axis has {self._times.shape}")
         rng = np.random.default_rng([self._sense.seed, k])
-        return clean + rng.normal(0.0, self._sense.noise, t.size)
+        return clean + rng.normal(0.0, self._sense.noise, self._times.size)
 
     def frames(self) -> Iterator[Frame]:
         t0 = time.perf_counter()

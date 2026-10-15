@@ -292,6 +292,64 @@
       "title": "Call",
       "type": "object"
     },
+    "CapturedWaveform": {
+      "additionalProperties": false,
+      "description": "A time-resolved record captured at every stepped point by a `WaveformSense` channel (ADR 0047).\n\nBecomes a data variable over the stepped axes, a `record` dimension when `records > 1`, and a time\naxis in seconds: `time` when every capture of the sweep declares the same grid, else `<name>_time`.",
+      "properties": {
+        "channel": {
+          "description": "Logical WaveformSense channel (ChannelMap.logical).",
+          "minLength": 1,
+          "title": "Channel",
+          "type": "string"
+        },
+        "name": {
+          "description": "Data variable name.",
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "num": {
+          "description": "Samples per record: the declared time grid the backend fills exactly (ADR 0015).",
+          "minimum": 2,
+          "title": "Num",
+          "type": "integer"
+        },
+        "records": {
+          "default": 1,
+          "description": "Records captured per stepped point; adds a 'record' dimension when more than 1.",
+          "minimum": 1,
+          "title": "Records",
+          "type": "integer"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "start_s": {
+          "description": "Time of the first sample relative to the capture's trigger, in seconds.",
+          "title": "Start S",
+          "type": "number"
+        },
+        "stop_s": {
+          "description": "Time of the last sample (inclusive), in seconds; greater than `start_s`.",
+          "title": "Stop S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "channel",
+        "start_s",
+        "stop_s",
+        "num",
+        "records"
+      ],
+      "title": "CapturedWaveform",
+      "type": "object"
+    },
     "ChannelMap": {
       "additionalProperties": false,
       "description": "Maps a logical channel name to a physical instrument channel.",
@@ -2440,6 +2498,15 @@
             "$ref": "#/$defs/SweepAxis"
           },
           "title": "Axes",
+          "type": "array"
+        },
+        "captured": {
+          "default": [],
+          "description": "Time-resolved records captured at every stepped point by WaveformSense channels, after the stage and the sensed levels; each becomes a data variable with its own time axis.",
+          "items": {
+            "$ref": "#/$defs/CapturedWaveform"
+          },
+          "title": "Captured",
           "type": "array"
         },
         "levels": {

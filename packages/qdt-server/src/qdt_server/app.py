@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
 from qdt_lab.stream import PayloadSource, StreamServer
 from qdt_registry import Registry
 from qdt_schemas.activity import ExecutionPlan, SweepDefinition
@@ -26,7 +27,7 @@ from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import AnalysisResult
-from qdt_schemas.stand import StandConfig
+from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_sim.dot import DoubleDotModel
 from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
 
@@ -40,14 +41,50 @@ MODEL_OPTIONS = {
 cold sensor a diamond measurement wants (ADR 0030)."""
 
 
+SCOPE_ID = "scope"
+"""The simulated stand's `WaveformSense` instrument (ADR 0047): one channel, `scope1`."""
+SCOPE_OPTIONS = {"tau_s": 2e-3, "droop_v": 0.2, "scope_noise_v": 2e-3}
+"""Run options for the simulated scope: what it records is a bias tee's droop (L2-3), a step of
+`droop_v` at t = 0 decaying with `tau_s`, under `scope_noise_v` of noise (0 when `noise` is false)."""
+
+
+def simulated_stand() -> StandConfig:
+    """`qdt_sim`'s default stand plus a simulated scope: the Step 5 bench's shape in software, so a
+    capture (ADR 0047) runs through the server before it runs on hardware."""
+    base = default_stand()
+    return base.model_copy(
+        update={
+            "instruments": (
+                *base.instruments,
+                InstrumentConfig(
+                    id=SCOPE_ID, backend="simulated", capabilities=("waveform_sense",)
+                ),
+            ),
+            "channels": (
+                *base.channels,
+                ChannelMap(logical="scope1", instrument=SCOPE_ID, channel="1", quantity="voltage"),
+            ),
+        }
+    )
+
+
 def simulated_backends(options: dict[str, AttrValue]) -> Mapping[str, Any]:
     """The Step 4b backend: the default simulated double dot, seeded and noisy by option, with any
-    `MODEL_OPTIONS` applied to its model."""
+    `MODEL_OPTIONS` applied to its model; and the simulated scope, recording a droop per
+    `SCOPE_OPTIONS`."""
     seed = int(options.get("seed", 0))
     noise = bool(options.get("noise", True))
     overrides = {k: v for k, v in options.items() if k in MODEL_OPTIONS}
     model = dataclasses.replace(default_model(), **overrides) if overrides else None
-    return {DEVICE_ID: default_device(seed=seed, noise=noise, model=model)}
+    scope = {k: float(options.get(k, v)) for k, v in SCOPE_OPTIONS.items()}
+    return {
+        DEVICE_ID: default_device(seed=seed, noise=noise, model=model),
+        SCOPE_ID: SimulatedWaveformSense(
+            noise=scope["scope_noise_v"] if noise else 0.0,
+            seed=seed,
+            response=exponential_decay(scope["tau_s"], scope["droop_v"]),
+        ),
+    }
 
 
 def stand_backends(stand: StandConfig) -> BackendFactory:
@@ -73,7 +110,7 @@ class Settings:
     root: Path
     stream_host: str = "127.0.0.1"
     stream_port: int = 8765
-    stand: StandConfig = field(default_factory=default_stand)
+    stand: StandConfig = field(default_factory=simulated_stand)
     device: DeviceRecord = field(
         default_factory=lambda: DeviceRecord(
             device_id=DEVICE_ID,
@@ -94,8 +131,9 @@ class RunRequest(BaseModel):
     options: dict[str, AttrValue] = Field(
         default_factory=dict,
         description=(
-            "Backend and recording options: seed (int), noise (bool), campaign (str), and any scalar "
-            "field of the simulated model, e.g. sensor_width_v (float) for a colder sensor."
+            "Backend and recording options: seed (int), noise (bool), campaign (str), any scalar "
+            "field of the simulated model, e.g. sensor_width_v (float) for a colder sensor, and the "
+            "simulated scope's tau_s, droop_v and scope_noise_v (floats)."
         ),
     )
 

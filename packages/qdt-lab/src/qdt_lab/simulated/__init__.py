@@ -2,7 +2,13 @@
 
 from .level import SimulatedLevelSense, SimulatedLevelSource
 from .sequencer import CompiledSimulatedProgram, SimulatedSequencer
-from .waveform import SimulatedWaveformSense, SimulatedWaveformSource
+from .waveform import (
+    SimulatedWaveformSense,
+    SimulatedWaveformSource,
+    exponential_decay,
+    low_pass_step,
+    ring_down,
+)
 
 __all__ = [
     "CompiledSimulatedProgram",
@@ -11,4 +17,7 @@ __all__ = [
     "SimulatedSequencer",
     "SimulatedWaveformSense",
     "SimulatedWaveformSource",
+    "exponential_decay",
+    "low_pass_step",
+    "ring_down",
 ]

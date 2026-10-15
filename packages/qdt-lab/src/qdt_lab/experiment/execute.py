@@ -1,9 +1,11 @@
 """Walk an `ExecutionPlan` against backend objects and stream the Dataset (ADR 0019).
 
 Loop order: repeats (outermost, executor) → stepped axes row-major (executor: set levels, settle,
-sense) → the stage (sequencer: its axes and shots). Sensed levels are chunked one innermost stepped
-line per frame; stage frames are re-keyed into the full index space. The executor holds no data and
-never averages (ADR 0018).
+then the stage, the sensed levels, the captures) → the stage (sequencer: its axes and shots). Sensed
+levels are chunked one innermost stepped line per frame; stage frames and capture frames are re-keyed
+into the full index space. A capture arms its `WaveformSense` on a (record, time) slab per stepped
+point and passes every record it yields (ADR 0047). The executor holds no data and never averages
+(ADR 0018).
 """
 
 import contextlib
@@ -15,19 +17,25 @@ from datetime import UTC, datetime
 
 import numpy as np
 
-from qdt_schemas.activity import ExecutionPlan, ParameterBinding, SequencerProgram
+from qdt_schemas.activity import (
+    CapturedWaveform,
+    ExecutionPlan,
+    ParameterBinding,
+    SequencerProgram,
+)
 from qdt_schemas.data import (
     Dataset,
     DatasetChunk,
     DataVariable,
+    Dimension,
     IndexSlice,
     LinearCoordinate,
 )
 from qdt_schemas.stand import StandConfig
 
-from ..protocols import BackendFactory, LevelSense, LevelSource, Sequencer
+from ..protocols import BackendFactory, LevelSense, LevelSource, Sequencer, WaveformSense
 from ..stream.frame import Frame
-from .compile import REPEAT_DIM, SHOT_DIM
+from .compile import RECORD_DIM, REPEAT_DIM, SHOT_DIM
 
 
 def resolve_parameters(
@@ -105,7 +113,12 @@ class Executor:
         self, plan: ExecutionPlan, backends: Mapping[str, object], sleep=time.sleep
     ) -> None:
         self.plan, self._backends, self._sleep = plan, dict(backends), sleep
-        needs = {"level_source": LevelSource, "level_sense": LevelSense, "sequencer": Sequencer}
+        needs = {
+            "level_source": LevelSource,
+            "level_sense": LevelSense,
+            "sequencer": Sequencer,
+            "waveform_sense": WaveformSense,
+        }
         for c in plan.channels:
             if c.instrument not in self._backends:
                 raise ValueError(f"no backend for instrument {c.instrument!r}")
@@ -215,6 +228,31 @@ class Executor:
                             arrays,
                         )
                         seq += 1
+                for c in definition.captured:  # ADR 0047: one slab per stepped point
+                    ch = plan.channel(c.channel)
+                    slab = capture_slab(plan, c)
+                    keep_record = c.records > 1
+                    for f in self._backends[ch.instrument].arm(ch.channel, slab, c.name).frames():
+                        record = next(s for s in f.chunk.region if s.dim == RECORD_DIM)
+                        time_slice = next(s for s in f.chunk.region if s.dim != RECORD_DIM)
+                        yield Frame(
+                            DatasetChunk(
+                                dataset_id=plan.dataset.dataset_id,
+                                seq=seq,
+                                region=(*prefix, *((record,) if keep_record else ()), time_slice),
+                                variables=f.chunk.variables,
+                                produced_at=f.chunk.produced_at,
+                            ),
+                            {
+                                name: np.asarray(a).reshape(
+                                    (1,) * len(prefix)
+                                    + ((a.shape[0],) if keep_record else ())
+                                    + (a.shape[1],)
+                                )
+                                for name, a in f.arrays.items()
+                            },
+                        )
+                        seq += 1
 
 
 def stage_slab(plan: ExecutionPlan) -> Dataset:
@@ -241,6 +279,30 @@ def stage_slab(plan: ExecutionPlan) -> Dataset:
             )
             for v in plan.dataset.data_vars
             if v.name in results
+        ),
+        source=plan.dataset.source,
+        created_at=plan.dataset.created_at,
+    )
+
+
+def capture_slab(plan: ExecutionPlan, capture: CapturedWaveform) -> Dataset:
+    """The (record, time) Dataset a `WaveformSense` fills for `capture` at one stepped point: the
+    capture's records and its time coordinate, one variable (ADR 0047)."""
+    tdim = plan.definition.capture_time_dim(capture.name)
+    var = next(v for v in plan.dataset.data_vars if v.name == capture.name)
+    coord = next(c for c in plan.dataset.coords if c.dim == tdim)
+    return Dataset(
+        dataset_id=f"{plan.dataset.dataset_id}:{capture.name}",
+        name=f"{plan.dataset.name} ({capture.name})",
+        dims=(
+            Dimension(name=RECORD_DIM, size=capture.records),
+            Dimension(name=tdim, size=capture.num),
+        ),
+        coords=(coord,),
+        data_vars=(
+            DataVariable(
+                name=capture.name, dims=(RECORD_DIM, tdim), unit=var.unit, dtype=var.dtype
+            ),
         ),
         source=plan.dataset.source,
         created_at=plan.dataset.created_at,

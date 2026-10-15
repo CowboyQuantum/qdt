@@ -21,7 +21,9 @@ qdt_server/
   (that is `qdt-analysis`): it compiles, executes, stores, serves.
 - Runs live in memory; records are the durable thing. A server restart forgets runs, never records.
 - Step 4b wires the `simulated` backend only. Real drivers (Step 5) enter through `build_backends` with
-  their factories; the API does not change.
+  their factories; the API does not change. The simulated stand is `qdt_sim`'s double dot plus a
+  simulated scope (`scope`, channel `scope1`, ADR 0047) whose record is a droop set by the run options
+  `tau_s`, `droop_v`, `scope_noise_v`.
 - A method is callable from the API only if it is in `catalogue.METHODS` with a `MethodSpec` whose
   parameters match the function's keyword arguments (the test pins this).
 - No authentication in Step 4b (single machine). Multi-user and deployment are Step 7.
