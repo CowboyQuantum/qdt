@@ -26,7 +26,7 @@ completes unattended through the API and from the UI on the simulator** (an e2e 
 | first L3 contact as confirmation, not discovery | not started (needs a fridge; the bench can confirm the same tune-up once a second OPX pulse line is cabled) |
 
 ## Done
-- **Steps 0–5 DONE.** ADR 0001–0050. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+- **Steps 0–5 DONE.** ADR 0001–0051 (0051 is a Step 7 decision taken ahead of its step). Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037, 0038, 0047, 0049), identity/envelope/`qdt-hdf5-v1`
   (0028), modeling (0033; Step 6 objects beside it by 0048–0050), control (0036; amended additively by
   0046; `TuneUp` beside it by 0050). Registry DDL v3 (0026, 0029, 0050).
@@ -99,7 +99,9 @@ parallel branches when a DAG needs them.
   QDAC can be stepped matters for untriggered sweeps (Probe 04); finish the OPX conformance rows and L2-2
   before closing Step 5; Step 5 closes and Step 6 opens; the schema slice and the first node first (ADR
   0048); the second node is the virtual-gate stability diagram (ADR 0049); **"start the next step"**: the
-  persisted tune-up before a third node (ADR 0050).
+  persisted tune-up before a third node (ADR 0050); **`qdt-telemetry` ingests cryo context from the lab's
+  existing fridge monitoring and does not collect** (ADR 0051, decided in a separate chat and applied from
+  its patch; Analyses 0003 and 0004 arrived the same way).
 
 ## Decisions pending
 - Next: the third node, click-to-set, or a bench confirmation of the tune-up.

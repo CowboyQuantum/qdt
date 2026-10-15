@@ -3,21 +3,21 @@
 > Fixed headings. Agents read this file for the current step; the narrative is in `DEVELOPMENT_PLAN.md`.
 
 ## Goal
-Telemetry, cooldown history, CI register, and the internal extension package ride the same envelope. Lab PC deployment and IT engagement. Substrate pilot demonstration.
+Cryo context (cooldown history, per-measurement fridge state), CI register, and the internal extension package ride the same envelope. Lab PC deployment and IT engagement. Substrate pilot demonstration.
 
 ## Schema slice
-`cryo.py`: `CooldownRecord`, `FridgeEvent`, `TelemetryChannel`, `TelemetrySample`.
+`cryo.py`: `CooldownRecord`, `FridgeEvent`. (`TelemetryChannel`, `TelemetrySample` deferred until a consumer needs them — ADR 0051.)
 
 ## Deliverables
-- `qdt-telemetry` parsers against fixture logs
+- `qdt-telemetry` ingest adapter against the lab's existing fridge logs/monitoring store (ADR 0051): produces `CooldownRecord`s and attaches cryo context to `MeasurementRecord`s; raw logs optionally retained as payload files. No daemon, no time series, no dashboards.
 - internal extension package: adapters, seeds, compose bundle, runbook (separate repo)
 - IT checklist (plan §9) sent; lab PC deployment; graduation per plan §5
 
 ## L0 tests (CI)
-- golden-file parser tests; adapter contract tests
+- golden-file ingest tests (fixture log corpus → expected `CooldownRecord`s and cryo context); adapter contract tests
 
 ## L1 tests (bench loopback)
-- live fridge logs ingested; remote query from an office desktop
+- one real cooldown ingested from the lab's monitoring store; a measurement's cryo context visible in Flight Deck and by query; remote query from an office desktop
 
 ## L2 tests (instrument-on-instrument)
 - none
