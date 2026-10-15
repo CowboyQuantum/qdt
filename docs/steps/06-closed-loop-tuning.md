@@ -10,7 +10,7 @@ Calibration DAG nodes (experiment + analysis + decision) run unattended against 
 
 ## Deliverables
 - DAG runner; nodes verified against sim before any L3 contact
-- DAPS forward model + bias study as sim scenarios + analysis routines
+- ~~DAPS forward model + bias study as sim scenarios + analysis routines~~ — **struck 2026-10-15 by the human ("let's strike the DAPS development for now")**; not a Step 6 deliverable; revisit by its own decision when wanted
 - Flight Deck click-to-set (the one 'up' edge)
 
 ## L0 tests (CI)
@@ -94,3 +94,6 @@ or runs for the channels the sweep does not touch, so records carry it; tune-up 
 click on the map yields the point under it (`pointAt`), the panel offers it as levels for the stand's DC channels
 (`setpointFor`), shows what is held, releases it. e2e: click, set, held, released. Closes the pending default
 operating point decision. Left: axis → channel from the record's definition for axes not named after gates.
+Session 7 (2026-10-15): the human struck the DAPS forward model and bias study from this step. With that, every
+listed deliverable is done (DAG runner, three nodes verified against the sim, click-to-set) and the first exit
+criterion is met; the second (an L3 confirmation) waits for a fridge. Whether the step closes now is the human's.

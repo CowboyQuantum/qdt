@@ -4,7 +4,7 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 6 — Closed-loop tuning → `docs/steps/06-closed-loop-tuning.md` (IN PROGRESS, opened 2026-10-15).
-**Branch:** `step-6/click-to-set` (PR against `main`; the human merges). PRs #25–#47 merged 2026-10-14/15.
+**Branch:** `step-6/strike-daps` (PR against `main`; the human merges). PRs #25–#48 merged 2026-10-14/15.
 **Last session:** 2026-10-15, Step 6 session 6 (not at the bench). **Click-to-set** (ADR 0053), the listed
 deliverable and FINISH_LINE's one "up" edge. The server holds the stand's operating point: `POST /levels`
 validates the channels (on the stand, on a `LevelSource`), sets them on the backends now and holds them;
@@ -24,8 +24,8 @@ held, release. This closes the pending default-operating-point decision: the ser
 | first L3 contact as confirmation, not discovery | not started (needs a fridge) |
 
 **Deliverables (step file):** DAG runner ✔ (ADR 0050); nodes verified against sim ✔ (three, ADR 0048, 0049,
-0052); Flight Deck click-to-set ✔ (ADR 0053); DAPS forward model + bias study as sim scenarios + analysis
-routines — not started (the one deliverable left; it needs the physics decisions in the step's Open list).
+0052); Flight Deck click-to-set ✔ (ADR 0053); DAPS forward model + bias study — **struck by the human on
+2026-10-15** (not a Step 6 deliverable; revisit by its own decision). Every remaining deliverable is done.
 
 ## Done
 - **Steps 0–5 DONE.** ADR 0001–0053 (0051 is a Step 7 decision taken ahead of its step). Frozen: `Dataset`
@@ -42,7 +42,7 @@ routines — not started (the one deliverable left; it needs the physics decisio
   hardware-only in `bench/`; Flight Deck 74 unit tests and 6 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6/click-to-set` awaits the human.
+- Nothing uncommitted. PR for `step-6/strike-daps` (docs only) awaits the human.
 
 ## Known broken / not yet real
 - **The held operating point is server memory** (like runs and tune-ups): a restart forgets it and the
@@ -77,13 +77,14 @@ routines — not started (the one deliverable left; it needs the physics decisio
 ## Next action
 **Human:**
 1. Merge the PR.
-2. Step 6 has one deliverable left, the **DAPS forward model + bias study as sim scenarios and analysis
-   routines**, and its L3 confirmation. Say what the DAPS study is to measure and which physics it needs
-   (the step's Open decisions list tunnel coupling and bias triangles, ADR 0020, 0030); a session then
-   writes the scenario, the method and the node. Or name the next slice instead: a `sensor_peak` method
-   (retires `flank_offset_v`), a bench confirmation of the stability nodes (a second OPX pulse line), or
-   the `PlayedWaveform` activity.
-3. The QDevil report; the Step 6 Open decisions still waiting.
+2. **Close Step 6, or hold it open for the L3 confirmation.** Every listed deliverable is done and the
+   first exit criterion is met on the simulator; the second ("first L3 contact as confirmation, not
+   discovery") needs a fridge, and L3 is never an exit criterion of a step by plan §7.1. If it closes, a
+   session marks it DONE (status, `docs/steps/README.md`) and opens Step 7's file, where ADR 0051 and
+   Analysis 0003 already wait; the L3 confirmation stays listed as the first fridge task.
+3. Or name the next slice first: a `sensor_peak` method (retires `flank_offset_v`), a bench confirmation
+   of the stability nodes (a second OPX pulse line), or the `PlayedWaveform` activity.
+4. The QDevil report; the Step 6 Open decisions still waiting.
 
 **Then (sessions):** the chosen item; a `tuneups` table and a `stand_state` table when something reads
 them; resume and parallel branches when a DAG needs them.
@@ -105,11 +106,12 @@ them; resume and parallel branches when a DAG needs them.
   before closing Step 5; Step 5 closes and Step 6 opens; the schema slice and the first node first (ADR
   0048); the second node is the virtual-gate stability diagram (ADR 0049); the persisted tune-up before a
   third node (ADR 0050); `qdt-telemetry` ingests, does not collect (ADR 0051, from a separate chat's
-  patch); the third node is the sensor operating point (ADR 0052); **"continue to next session"**:
-  click-to-set, the listed deliverable (ADR 0053).
+  patch); the third node is the sensor operating point (ADR 0052); "continue to next session":
+  click-to-set, the listed deliverable (ADR 0053); **"let's strike the DAPS development for now"**: the
+  DAPS forward model and bias study leave Step 6's deliverables (session 7).
 
 ## Decisions pending
-- The DAPS forward model + bias study: what it measures, which physics it needs.
+- Closing Step 6 now (deliverables done; L3 waits for a fridge) or holding it open.
 - Step 6's Open decisions (step file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
   a rest level at a sweep's end (the held operating point now says where the stand should be); the
   time-series view's remainder; the deferred physics.
