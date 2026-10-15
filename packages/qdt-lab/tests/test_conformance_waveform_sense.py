@@ -20,11 +20,14 @@ from qdt_schemas.data import (
 )
 
 N_RECORDS, N_SAMPLES = 4, 256
+T_START, T_STOP = 0.0, 1e-6
+"""The declared grid starts at the trigger: pre-trigger samples are a scope's ability, not part of the
+protocol (an OPX input opens its readout window at the trigger; bench, 2026-10-15)."""
 
 
 def records(n_records: int | None = N_RECORDS, declared_axis: bool = True) -> Dataset:
     coord = (
-        LinearCoordinate(name="time", dim="t", unit="s", start=-1e-7, stop=9e-7, num=N_SAMPLES)
+        LinearCoordinate(name="time", dim="t", unit="s", start=T_START, stop=T_STOP, num=N_SAMPLES)
         if declared_axis
         else StreamedCoordinate(name="time", dim="t", unit="s")
     )
@@ -59,7 +62,7 @@ def test_records_land_whole_on_the_declared_grid(waveform_sense):
     out = assemble(ds, frames)
     assert out["voltage"].shape == (N_RECORDS, N_SAMPLES)
     assert not np.isnan(out["voltage"].values).any(), "every declared record was filled"
-    np.testing.assert_allclose(out["time"].values, np.linspace(-1e-7, 9e-7, N_SAMPLES))
+    np.testing.assert_allclose(out["time"].values, np.linspace(T_START, T_STOP, N_SAMPLES))
 
 
 def test_last_frame_is_final(waveform_sense):

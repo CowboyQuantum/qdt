@@ -12,7 +12,7 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
 | Role (protocol) | Instrument | Backend key | Address variable | Notes |
 |---|---|---|---|---|
 | `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet or its rear USB port | `qdac2` | `QDT_QDAC2_ADDRESS` | `TCPIP::<host>::5025::SOCKET`, or `ASRL/dev/cu.usbserial-NNNN::INSTR` (921600 baud, set by the driver; ADR 0043). The LAN address is set over USB: `syst:comm:lan:dhcp 0`, `:ipad "<ip>"`, `:smask`, `:gat`, `:upd`, then a power cycle with the cable in. Channels used: TODO |
-| `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings |
+| `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings. Conformance on hardware 18/18 (2026-10-15): the suite's waveform is 0.1 V (direct mode is ±0.5 V) and its record grid starts at the trigger (the input opens its readout window there; pre-trigger samples are a scope's ability, not the protocol's) |
 | `WaveformSense` | Keysight InfiniiVision (X or HD3 series; an HD304MSO on the bench) | `infiniivision` | `QDT_SCOPE_ADDRESS` | `TCPIP::<host>::5025::SOCKET` (the VXI-11 `::INSTR` form refuses connections intermittently on the HD3; the socket form never did); it self-assigns a 169.254 address without DHCP. Trigger sweep must be AUTO, vertical scale set on the front panel. `:TIMebase:REFerence LEFT` is one division in from the left edge; the driver accounts for it |
 | `LevelSource` + `LevelSense` on one terminal | Keithley 2400-series | `keithley2400` | `QDT_SMU_ADDRESS` | legacy or 2450-style SCPI picked from `*IDN?` |
 
@@ -30,6 +30,18 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
 - The current readout in the default (HIGH) sense range carries a common-mode error of the order of
   0.1–0.3 mA per volt of output (manual § accuracy), so a 1 MΩ load is invisible there. To use the
   current as a load check, switch `SENS<n>:RANG LOW` (nA) with the channel at 0 V.
+- **The LOW current-sense range measures nothing on this unit (2026-10-15):** `SENS<n>:RANG LOW` reads
+  back LOW and `read? (@n)` returns ≈ 2.0 nA at 0 V, 2.1 nA with 1 µA flowing (1 V into the scope's
+  1 MΩ) and 2.1 nA with 1 mA flowing (0.1 V set into 50 Ω). The HIGH range works: 1 mA reads 2–3 % low
+  after its ≈ +73 µA zero is taken out. With the output filter finding (Probe 04) and ch02 dying, every
+  relay-switched setting of the output stage looks stuck; one report to QDevil for the three.
+- **The output impedance is 50 Ω:** into the scope's 50 Ω input half the setpoint arrives. A 1 MΩ load
+  sees the full setpoint (L2-1, L2-2 SMU-style loads are fine); a 50 Ω load halves it.
+- **A channel went dead and stayed dead (ch02, 2026-10-15, after Probe 04 had switched its output filter
+  DC → MED → HIGH → DC → HIGH):** 0 V at the scope for every setpoint, in both sense ranges, with `VOLT?`
+  and `LAST?` reporting the setpoint, no error, and a HIGH-range current readout of −143 µA at 1 V set;
+  `*RST` did not bring it back (unlike the outputs-at-0-V case above). ch01 kept working. Use another
+  channel and power-cycle the unit when the bench allows; report to QDevil with the filter finding.
 
 First bench run: `uv run pytest packages/qdt-lab -m hardware` with the variables exported. It runs the same
 conformance suite the emulators pass in CI. The OPX calibration constants
@@ -108,6 +120,14 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
   volt). This is also ADR 0016's load-dependent `LevelSense` oracle.
 - **Fit:** a line through the origin. Slope 1/R_scope, within the specs of the instrument's current
   range and the scope's input impedance.
+- **Run 2026-10-15 (`bench/test_l2_current_readout.py`):** SMU row passes: −1.9989, −0.9995, +0.9994,
+  +1.9988 µA at ±2 and ±1 V (R = 1.0006 MΩ). The 2450's current measure range is held at 10 µA: left to
+  autorange it drops to 10 nA at 0 V, and a source behind a 10 nA measure range charges the cable at
+  10 nA, so the next level arrives late (the scope still read the previous level 0.1 s after the set).
+  QDAC row passes **into the 50 Ω input in the HIGH range** (±1 mA at ±0.1 V set; the QDAC's 50 Ω
+  output impedance halves the level at the scope, confirmed): slope against V_scope / 50 Ω within the
+  budget, zero ≈ +73 µA. The row as specified (1 MΩ, LOW sense range) could not run on this unit: see
+  the QDAC-II quirks (the LOW range reads ≈ 2 nA for any current).
 
 ### L2-3: the bias tee's droop, a real exponential
 - **Setup:** an OPX step (a long pulse) into the RF port, with the bias tee output on the scope (DC, high

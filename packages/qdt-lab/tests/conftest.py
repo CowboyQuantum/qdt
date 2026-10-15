@@ -185,18 +185,49 @@ def level_loopback(level_loopback_factory):
     return level_loopback_factory()
 
 
-WAVEFORM_SOURCE_BACKENDS = [pytest.param(SimulatedWaveformSource, id="simulated")]
+def _opx_waveform_hardware(kind: str):
+    """The OPX1000 as a WaveformSource (ch00 → ao1) or WaveformSense (ch00 → ai1), through the stand's
+    logical-name resolution; the suite checks shapes and the declared grid, so no loopback is needed."""
+
+    def make():
+        from qdt_lab.drivers.qm.opx1000 import Opx1000
+
+        inst = _instrument("opx", "qua", ("waveform_source", "waveform_sense"), "QDT_OPX_ADDRESS")
+        inst = inst.model_copy(
+            update={
+                "settings": {
+                    **inst.settings,
+                    "fem": int(os.environ.get("QDT_OPX_FEM", "1")),
+                    "output_mode": "direct",
+                }
+            }
+        )
+        port = "ao1" if kind == "source" else "ai1"
+        return Opx1000.from_config(
+            inst, (ChannelMap(logical="ch00", instrument="opx", channel=port, quantity="voltage"),)
+        )
+
+    return make
+
+
+WAVEFORM_SOURCE_BACKENDS = [
+    pytest.param(SimulatedWaveformSource, id="simulated"),
+    pytest.param(_opx_waveform_hardware("source"), id="opx1000", marks=pytest.mark.hardware),
+]
 
 
 @pytest.fixture(params=WAVEFORM_SOURCE_BACKENDS)
-def waveform_source(request):
-    return request.param()
+def waveform_source(request, closing):
+    backend = request.param()
+    closing.append(backend)
+    return backend
 
 
 WAVEFORM_SENSE_BACKENDS = [
     pytest.param(lambda: SimulatedWaveformSense(seed=1), id="simulated"),
     pytest.param(infiniivision_emulated, id="infiniivision-emulated"),
     pytest.param(_infiniivision_hardware, id="infiniivision", marks=pytest.mark.hardware),
+    pytest.param(_opx_waveform_hardware("sense"), id="opx1000", marks=pytest.mark.hardware),
 ]
 
 
