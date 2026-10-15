@@ -96,3 +96,12 @@ a `(record, time)` slab per stepped point through `WaveformSense.arm`; a simulat
 recording a droop; Flight Deck's capture kind, record traces drawn as traces (and a latent blank-trace-after-
 heatmap bug fixed), the exponential's markers as rules on the trace. The L0 model of L2-3 is an API test and an
 e2e test. Left for the bench: the stand file's scope entry, L2-1 and L2-3 as capture definitions, the report.
+Session 15, bench (2026-10-15, afternoon): **all three L2 rows pass on hardware through the control path**
+(`bench/test_l2_capture.py` against `qdt-server --stand` with the QDAC and the scope; the OPX plays the pulse
+train beside the sweep): L2-1 DC slope 0.385–0.386 V/V vs 1/2.589, unchanged with the pulse on, plateau gain
+0.595 vs 0.61 from Probe 03's record; L2-3 τ 2.0 µs vs 1.86 µs by the same fit on Probe 03's record. Every run
+recorded in the registry and shown in Flight Deck with its overlays: **the Step 5 exit run exists**. Probe 04
+(QDAC settling, asked for by the human): the edge follows `set()` by < 4.5 ms, steady to ±0.2 ms; 1 % in 3 µs,
+0.1 % in < 1 ms; the output filter setting made no difference on this unit. `settle_s = 0.01` direct, `0.05`
+through the combiner. Two bench facts in the tests: a sweep leaves its last level on the QDAC; a trigger at
+the pulse's height is marginal (AC-coupled at 40 %).
