@@ -57,14 +57,21 @@ them. No site tolerance is written here (rule 7).
 ### L2-1: DC + pulse through the bias tee (Step 5 exit run)
 ```
 QDAC ch ── DC port ─┐
-                    ├─ bias tee ── out ──► OPX analog in   (stage `measure`)
-OPX AO ─── RF port ─┘
+                    ├─ bias tee ── out ──► OPX analog in   (stage `measure`)        [as first written]
+OPX AO ─── RF port ─┘                 └──► scope ch (DC, 1 MΩ)   (capture)          [restated 2026-10-15]
 ```
-- **Sweep:** a stage sweep of the same shape as the simulator's stability diagram (`qdt_sim.scenarios`).
-  - Outer axis: the QDAC DC level, stepped. Its operating point is set with `SweepDefinition.levels`
-    (ADR 0038).
-  - Inner axis: the OPX pulse amplitude, swept in the stage.
-  - Per pixel: step to the amplitude, wait, `measure` on the OPX input.
+- **Sink (human decision, 2026-10-15): the scope.** The combiner board that stands in for the bias tee
+  has ≈ 25 kΩ of output impedance (Probe 03) and cannot drive the OPX's 50 Ω input, so L2-1 is restated:
+  the QDAC steps the DC level, the OPX plays the pulse, and the scope's 1 MΩ input reads the sum. The
+  OPX's `measure` path stays proven by the loopback runs of session 11.
+- **Sweep (restated):** a capture sweep (ADR 0047): the outer axis steps the QDAC DC level (with
+  `settle_s ≥ 0.05` on that channel, the board's 20 Hz low-pass), and at every point the scope captures
+  one record of the pulse train the OPX plays beside the sweep (`WaveformSource.play`, as Probe 03 did).
+  The record's Dataset is (V_DC, time): a heatmap in Flight Deck, rows the DC level, columns time; the
+  pulse plateau's level against V_DC and the pulse amplitude is the plane.
+  - As first written (buffer into the OPX input): a stage sweep of the same shape as the simulator's
+    stability diagram, outer axis the QDAC level, inner axis the OPX pulse amplitude swept in the stage,
+    `measure` on the OPX input. Kept here for a bench that has the buffer.
 - **Oracle:** a plane, V = c_DC·V_DC + c_P·V_pulse + offset.
   - c_P ≈ 1 minus the bias tee's insertion loss (matched 50 Ω RF path).
   - c_DC = R_in / (R_in + R_DC), where R_DC is the bias tee's DC-port series resistance and R_in is the
@@ -88,7 +95,10 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
 
 ### L2-3: the bias tee's droop, a real exponential
 - **Setup:** an OPX step (a long pulse) into the RF port, with the bias tee output on the scope (DC, high
-  Z, or terminated per the bias tee's datasheet).
+  Z, or terminated per the bias tee's datasheet). Through the server (ADR 0047): a capture sweep with no
+  axis, `captured = [{channel: scope1, start_s, stop_s, num, records}]`, the OPX pulse train played
+  beside it; the scope's trigger is set on the instrument (level, edge, source), not by the sweep. The
+  stand file lists the scope with `waveform_sense` and a voltage channel on its input.
 - **Oracle:** V(t) = A·e^(−t/τ) after the edge. τ is the bias tee's low-frequency time constant,
   1/(2π f_low) from its datasheet.
 - **Fit:** a single exponential (`qdt_analysis.exponential.fit_exponential`, ADR 0046) → `tau`, `amplitude`,

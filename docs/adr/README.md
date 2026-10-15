@@ -50,3 +50,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0044 | OPX1000 LF-FEM input constants are measured (Probe 02): inverted, 1.155 × 2⁻¹², 180 ns of flight | Accepted |
 | 0045 | The curated plane fit: least squares with standard errors, failure below `min_r2`, iso-lines as `line` overlays, fitted plane + residual as output | Accepted |
 | 0046 | The curated single exponential: an edge-anchored window, nonlinear least squares with standard errors, markers on the time axis, fitted curve + residual as output; `MethodSpec.applies_to` gains `trace_1d` additively | Accepted (amends 0036 additively) |
+| 0047 | Waveform capture as an activity: `CapturedWaveform` in the sweep, a `(record, time)` slab per stepped point, a simulated scope on the server's stand, traces drawn as traces | Accepted (amends 0022 additively) |
