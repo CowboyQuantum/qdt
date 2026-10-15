@@ -48,3 +48,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0042 | Bench reports are written by pytest: one file per day, a section per run, addresses redacted | Accepted |
 | 0043 | The QDAC-II is also reachable over its USB serial port; `open_visa` takes a baud rate; pyserial in `[qdac]` | Accepted |
 | 0044 | OPX1000 LF-FEM input constants are measured (Probe 02): inverted, 1.155 × 2⁻¹², 180 ns of flight | Accepted |
+| 0045 | The curated plane fit: least squares with standard errors, failure below `min_r2`, iso-lines as `line` overlays, fitted plane + residual as output | Accepted |

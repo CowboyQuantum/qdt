@@ -9,6 +9,7 @@ stores the result.
 qdt_analysis/
   transitions.py  # detect_segments (shared detection stage: threshold + NMS + direction families + runs); detect_transitions (+ lattice estimate), ADR 0029
   diamonds.py     # detect_diamonds: edges via detect_segments; estimate_diamonds (degeneracy points, period, apex → E_c, lever arm), ADR 0030
+  plane.py        # fit_plane: least-squares plane with standard errors, iso-line overlays, fitted plane + residual as output; the L2-1 oracle, ADR 0045
   recovery.py     # injection–recovery scoring of line overlays against a truth mask, in pixels
 ```
 
