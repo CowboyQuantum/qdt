@@ -58,3 +58,12 @@ def test_bind_refuses_missing_rejected_or_unknown_inputs():
     )
     with pytest.raises(ValueError, match="does not validate"):
         bind(broken, {"charge-lattice": outcome(c_21=-0.2)})  # num must be an integer ≥ 1
+
+
+def test_bind_fills_a_held_level_from_the_sensor_node(tmp_path=None):
+    """ADR 0052: the operating point flows into `levels.0.value`."""
+    node = charge_lattice(instrument="dot", sensor_gate="SG")
+    bound = bind(
+        node, {"sensor-operating-point": outcome("sensor-operating-point", sg_operating_v=-0.04)}
+    )
+    assert bound.definition.levels[0].channel == "SG" and bound.definition.levels[0].value == -0.04

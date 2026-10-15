@@ -149,11 +149,69 @@ def straightened(result: AnalysisResult, *, max_residual_ratio: float = 0.05) ->
     )
 
 
+SENSOR_OPERATING_POINT_NAME = "qdt_tuning.decisions.sensor_operating_point"
+SENSOR_OPERATING_POINT_VERSION = "1"
+
+
+def sensor_operating_point(
+    result: AnalysisResult, *, flank_offset_v: float = 0.02, near_v: float = 0.0
+) -> Decision:
+    """Judge a Coulomb-diamonds result (`qdt_analysis.diamonds.detect_diamonds`, ADR 0030) and decide
+    where to park the sensor gate: on the flank of the Coulomb peak (degeneracy point) nearest `near_v`,
+    `flank_offset_v` above it, where the sensor's current changes fastest with charge (ADR 0052).
+
+    Accepted when the result is `ok`, it marks at least one degeneracy point and its period and charging
+    energy are positive. Outputs: `sg_peak_v` (the chosen peak), `sg_operating_v` (= peak +
+    flank_offset_v), `period`, `charging_energy`, `lever_arm`. The offset is a parameter because the
+    method does not estimate the peak's width; a peak-width method is the right successor.
+    """
+    if result.status != "ok":
+        return Decision("failed", f"the method failed: {result.message}", {})
+    peaks = sorted(
+        float(a.points[0][0])
+        for a in result.annotations
+        if a.kind == "marker" and a.label.startswith("g") and len(a.points[0]) >= 1
+    )
+    if not peaks:
+        return Decision("failed", "the result marks no degeneracy point", {})
+    try:
+        period = result.estimate("period").value
+        charging = result.estimate("charging_energy").value
+        lever = result.estimate("lever_arm").value
+    except KeyError as e:
+        return Decision("failed", f"the result lacks a diamond estimate: {e}", {})
+    if not (period > 0 and charging > 0):
+        return Decision(
+            "rejected",
+            f"period {period:.3g} and charging energy {charging:.3g} must be positive",
+            {},
+        )
+    if not 0 <= flank_offset_v < period:
+        return Decision(
+            "rejected",
+            f"flank offset {flank_offset_v:.3g} V must lie within one period ({period:.3g} V)",
+            {},
+        )
+    peak = min(peaks, key=lambda g: abs(g - near_v))
+    return Decision(
+        "accepted",
+        f"peak at {peak:+.4f} V (of {len(peaks)}), operating point {peak + flank_offset_v:+.4f} V",
+        {
+            "sg_peak_v": peak,
+            "sg_operating_v": peak + flank_offset_v,
+            "period": float(period),
+            "charging_energy": float(charging),
+            "lever_arm": float(lever),
+        },
+    )
+
+
 Rule = Callable[..., Decision]
 
 RULES: dict[str, tuple[str, Rule]] = {
     VIRTUAL_GATES_NAME: (VIRTUAL_GATES_VERSION, virtual_gates),
     STRAIGHTENED_NAME: (STRAIGHTENED_VERSION, straightened),
+    SENSOR_OPERATING_POINT_NAME: (SENSOR_OPERATING_POINT_VERSION, sensor_operating_point),
 }
 """Rule name → (version, callable). A rule is applicable through `apply` only if it is here."""
 

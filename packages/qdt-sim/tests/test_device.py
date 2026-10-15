@@ -188,7 +188,9 @@ def test_operating_point_level_is_what_pulses_add_to():
     held = type(held).model_validate(held.model_dump())
     plan, a = run(absolute, quiet())
     plan_h, b = run(held, quiet())
-    assert "P2" in {c.logical for c in plan_h.channels} and "P2" not in {c.logical for c in plan.channels}
+    assert "P2" in {c.logical for c in plan_h.channels} and "P2" not in {
+        c.logical for c in plan.channels
+    }
     np.testing.assert_allclose(b["I_sensor"].values, a["I_sensor"].values, rtol=1e-12)
 
 

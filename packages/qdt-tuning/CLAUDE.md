@@ -11,12 +11,13 @@ qdt_tuning/
   nodes.py      # CalibrationNode constructors: the experiment in logical channel names, the method, the rule, the inputs
   decisions.py  # RULES: curated decision rules, name → (version, callable); apply(rule, result) → Decision
   bind.py       # bind(node, outcomes): fill the node's `inputs` paths from upstream accepted outputs (ADR 0049)
-  dag.py        # order(nodes): topological sort over depends_on, stable (ADR 0050); nodes.TEMPLATES: what a server offers
+  dag.py        # order(nodes): topological sort over depends_on, stable (ADR 0050); nodes.TEMPLATES(instrument, sensor_gate): what a server offers
 ```
 
 ## Rules
-- A node is stand-agnostic: it names logical channels (`P1`, `P2_pulse`, `sensor`) and takes the
-  sequencer's instrument id as an argument; the same node runs on the simulator and on the bench.
+- A node is stand-agnostic: it names logical channels (`P1`, `P2_pulse`, `sensor`; the sensor node `SG`,
+  `bias`, `sensor`) and takes the sequencer's instrument id (and the sensor gate, when it holds one) as
+  arguments; the same node runs on the simulator and on the bench.
 - A rule has a dotted name and a `VERSION`, puts every parameter in its `DecisionRule`, and returns a
   `Decision(status, message, outputs)`. A `failed` result is `failed`; a rule that declines a readable
   result is `rejected` with a reason; `outputs` are filled only when `accepted`. Bump `VERSION` whenever

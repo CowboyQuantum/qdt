@@ -5,9 +5,23 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
+from qdt_schemas.data import Annotation
 from qdt_schemas.modeling import AnalysisResult, DecisionRule, Estimate, FitModel
-from qdt_tuning import RULES, apply, straightened, virtual_gate_matrix, virtual_gates
-from qdt_tuning.decisions import VIRTUAL_GATES_NAME, decision_rule, rule_defaults
+from qdt_tuning import (
+    RULES,
+    apply,
+    sensor_operating_point,
+    straightened,
+    virtual_gate_matrix,
+    virtual_gates,
+)
+from qdt_tuning.decisions import (
+    SENSOR_OPERATING_POINT_NAME,
+    STRAIGHTENED_NAME,
+    VIRTUAL_GATES_NAME,
+    decision_rule,
+    rule_defaults,
+)
 
 
 def result_with(lattice, status="ok", message="") -> AnalysisResult:
@@ -111,8 +125,6 @@ def test_rules_are_applied_by_their_data_and_every_parameter_is_carried():
 
 
 def test_straightened_accepts_axis_aligned_transitions_and_rejects_cross_talk():
-    from qdt_tuning.decisions import STRAIGHTENED_NAME
-
     aligned = straightened(result_with(((71.5, -0.5), (0.3, 68.0))))
     assert aligned.status == "accepted"
     assert aligned.outputs["residual_a"] == pytest.approx(-0.5 / 71.5)
@@ -129,4 +141,60 @@ def test_straightened_accepts_axis_aligned_transitions_and_rejects_cross_talk():
     d = virtual_gates(result_with(LATTICE))
     assert d.outputs["c_21"] == pytest.approx(d.outputs["m_21"] / d.outputs["m_11"])
     assert d.outputs["c_12"] == pytest.approx(d.outputs["m_12"] / d.outputs["m_22"])
-    assert set(RULES) == {VIRTUAL_GATES_NAME, STRAIGHTENED_NAME}
+
+
+def diamonds_result(peaks=(-0.06, 0.19), period=0.25, charging=1e-3, status="ok", message=""):
+    method = FitModel(name="qdt_analysis.diamonds.detect_diamonds", version="1", parameters={})
+    markers = tuple(
+        Annotation(
+            annotation_id=f"p{k}",
+            dataset_id="d",
+            kind="marker",
+            coords=("SG", "V_sd"),
+            points=((g, 0.0),),
+            label=f"g{k}",
+        )
+        for k, g in enumerate(peaks)
+    )
+    return AnalysisResult(
+        result_id="ab" * 16,
+        record_id="cd" * 16,
+        dataset_id="d",
+        method=method,
+        method_sha256=method.content_sha256(),
+        status=status,
+        message=message,
+        estimates=(
+            Estimate(name="period", value=period, unit="V"),
+            Estimate(name="charging_energy", value=charging, unit="eV"),
+            Estimate(name="lever_arm", value=charging / period, unit="eV/V"),
+        )
+        if status == "ok"
+        else (),
+        annotations=markers if status == "ok" else (),
+        created_at=datetime(2026, 10, 15, tzinfo=UTC),
+    )
+
+
+def test_sensor_operating_point_parks_the_gate_on_the_flank_of_the_nearest_peak():
+    d = sensor_operating_point(diamonds_result())
+    assert d.status == "accepted" and "of 2" in d.message
+    assert d.outputs["sg_peak_v"] == -0.06 and d.outputs["sg_operating_v"] == pytest.approx(-0.04)
+    assert d.outputs["period"] == 0.25 and d.outputs["lever_arm"] == pytest.approx(4e-3)
+    far = sensor_operating_point(diamonds_result(), near_v=0.15)
+    assert far.outputs["sg_peak_v"] == 0.19 and far.outputs["sg_operating_v"] == pytest.approx(0.21)
+    assert (
+        sensor_operating_point(diamonds_result(), flank_offset_v=0.0).outputs["sg_operating_v"]
+        == -0.06
+    )
+    assert sensor_operating_point(diamonds_result(peaks=())).status == "failed"
+    assert (
+        sensor_operating_point(diamonds_result(status="failed", message="no diamond")).status
+        == "failed"
+    )
+    assert sensor_operating_point(diamonds_result(period=-1.0)).status == "rejected"
+    assert sensor_operating_point(diamonds_result(), flank_offset_v=0.3).status == "rejected"
+    rule = decision_rule(SENSOR_OPERATING_POINT_NAME, near_v=0.15)
+    assert rule.parameters == {"flank_offset_v": 0.02, "near_v": 0.15}
+    assert apply(rule, diamonds_result()).outputs["sg_peak_v"] == 0.19
+    assert set(RULES) == {VIRTUAL_GATES_NAME, STRAIGHTENED_NAME, SENSOR_OPERATING_POINT_NAME}

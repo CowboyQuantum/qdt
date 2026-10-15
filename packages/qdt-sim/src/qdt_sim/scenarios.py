@@ -195,3 +195,19 @@ def lattice_truth(
     (`l_ij`, electrons per volt, [dot, gate])."""
     lattice = model_for(scenario).charge_lattice(x_gate, y_gate)
     return {f"l_{i + 1}{j + 1}": float(lattice[i, j]) for i in range(2) for j in range(2)}
+
+
+def sensor_truth(scenario: SimScenario, near_v: float = 0.0) -> dict[str, float]:
+    """The sensor's Coulomb peaks the scenario's model gives, by the names the `sensor-operating-point`
+    node outputs: the peak nearest `near_v` with the plungers at 0 V, the period, the charging energy and
+    the lever arm (`sg_operating_v` is that peak plus the rule's offset; not a model quantity)."""
+    m = model_for(scenario)
+    k = round((near_v - m.sensor_phase_v) / m.sensor_period_v)
+    candidates = [m.sensor_phase_v + (k + d) * m.sensor_period_v for d in (-1, 0, 1)]
+    peak = min(candidates, key=lambda g: abs(g - near_v))
+    return {
+        "sg_peak_v": float(peak),
+        "period": float(m.sensor_period_v),
+        "charging_energy": float(m.sensor_charging_ev),
+        "lever_arm": float(m.sensor_charging_ev / m.sensor_period_v),
+    }

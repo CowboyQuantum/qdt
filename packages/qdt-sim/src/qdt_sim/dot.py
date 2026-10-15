@@ -176,4 +176,6 @@ class DoubleDotModel:
         self, v: np.ndarray, delta_phi: float = 0.0, v_sd: float | np.ndarray | None = None
     ) -> np.ndarray:
         """Sensor current (A) at gate voltages `v` (..., gates) with thermal-average occupation."""
-        return self.sensor_current(self.sensor_potential(v, self.mean_occupation(v), delta_phi), v_sd)
+        return self.sensor_current(
+            self.sensor_potential(v, self.mean_occupation(v), delta_phi), v_sd
+        )

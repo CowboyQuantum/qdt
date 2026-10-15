@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from qdt_schemas.modeling import SimScenario
-from qdt_sim.scenarios import default_model, device_for, lattice_truth, model_for
+from qdt_sim.scenarios import default_model, device_for, lattice_truth, model_for, sensor_truth
 
 
 def same_model(a, b) -> bool:
@@ -47,4 +47,20 @@ def test_a_realized_scenario_is_a_seeded_device_and_its_truth_is_the_models_latt
     assert set(truth) == {"l_11", "l_12", "l_21", "l_22"}
     np.testing.assert_allclose(
         [[truth["l_11"], truth["l_12"]], [truth["l_21"], truth["l_22"]]], lattice
+    )
+
+
+def test_the_sensors_truth_is_the_peak_nearest_the_asked_gate_value():
+    t = sensor_truth(SimScenario(scenario_id="s"))
+    assert t == {
+        "sg_peak_v": -0.06,
+        "period": 0.25,
+        "charging_energy": 1e-3,
+        "lever_arm": pytest.approx(4e-3),
+    }
+    assert sensor_truth(SimScenario(scenario_id="s"), near_v=0.15)["sg_peak_v"] == pytest.approx(
+        0.19
+    )
+    assert sensor_truth(SimScenario(scenario_id="s"), near_v=-0.25)["sg_peak_v"] == pytest.approx(
+        -0.31
     )
