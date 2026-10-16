@@ -1,23 +1,25 @@
 {
   "stand_id": "bench",
   "instruments": [
-    {"id": "dac0", "backend": "qdac2", "capabilities": ["level_source", "level_sense"],
-     "settings": {"address": "TCPIP::<qdac-host>::5025::SOCKET"}},
+    {"id": "dac0", "backend": "qdac2", "capabilities": ["level_source", "level_sense", "triggered_level_source"],
+     "settings": {"address": "TCPIP::<qdac-host>::5025::SOCKET", "trigger_in": "ext1", "trigger_from": "dac_trigger"}},
     {"id": "smu", "backend": "keithley2400", "capabilities": ["level_source", "level_sense"],
      "settings": {"address": "TCPIP::<smu-host>::5025::SOCKET", "current_limit_a": 0.001}},
     {"id": "scope0", "backend": "infiniivision", "capabilities": ["waveform_sense"],
-     "settings": {"address": "TCPIP::<scope-host>::INSTR"}},
+     "settings": {"address": "TCPIP::<scope-host>::5025::SOCKET", "trigger_from": "scope_trigger", "trigger_level_v": 1.0}},
     {"id": "opx", "backend": "qua", "capabilities": ["waveform_source", "waveform_sense", "sequencer"],
      "settings": {"address": "<qm-host>", "fem": 1, "output_mode": "direct"}}
   ],
   "channels": [
-    {"logical": "P1", "instrument": "dac0", "channel": "ch01", "quantity": "voltage"},
-    {"logical": "P2", "instrument": "dac0", "channel": "ch02", "quantity": "voltage"},
+    {"logical": "P1", "instrument": "dac0", "channel": "ch01", "quantity": "voltage", "settle_s": 0.01},
+    {"logical": "P2", "instrument": "dac0", "channel": "ch02", "quantity": "voltage", "settle_s": 0.01},
     {"logical": "P1_i", "instrument": "dac0", "channel": "ch01_i", "quantity": "current"},
     {"logical": "smu_v", "instrument": "smu", "channel": "out", "quantity": "voltage"},
     {"logical": "smu_i", "instrument": "smu", "channel": "out_i", "quantity": "current", "integration_s": 0.02},
     {"logical": "scope1", "instrument": "scope0", "channel": "1", "quantity": "voltage"},
     {"logical": "P2_pulse", "instrument": "opx", "channel": "ao1", "quantity": "voltage"},
-    {"logical": "sensor", "instrument": "opx", "channel": "ai1", "quantity": "voltage"}
+    {"logical": "sensor", "instrument": "opx", "channel": "ai1", "quantity": "voltage"},
+    {"logical": "scope_trigger", "instrument": "opx", "channel": "do1", "quantity": "voltage"},
+    {"logical": "dac_trigger", "instrument": "opx", "channel": "do2", "quantity": "voltage"}
   ]
 }

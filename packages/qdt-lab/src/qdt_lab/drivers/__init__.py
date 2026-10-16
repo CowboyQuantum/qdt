@@ -1,9 +1,9 @@
 """Real instrument drivers (Step 5), one module per instrument, each behind an extra (ADR 0006).
 
-    qdevil/qdac2.py           QDAC-II              LevelSource, LevelSense (current)     extra [qdac]
+    qdevil/qdac2.py           QDAC-II              LevelSource, LevelSense (current), TriggeredLevelSource  extra [qdac]
     keithley/k2400.py         Keithley 2400-series LevelSource, LevelSense               extra [smu]
     keysight/infiniivision.py InfiniiVision X      WaveformSense                         extra [keysight]
-    qm/opx1000.py             OPX1000 (LF-FEM)     WaveformSource, WaveformSense, Sequencer  extra [opx]
+    qm/opx1000.py             OPX1000 (LF-FEM)     WaveformSource, WaveformSense, Sequencer (+ marker lines)  extra [opx]
 
 Each driver is built by its `from_config(instrument, channels)` (ADR 0021); the address is
 `instrument.settings["address"]`, supplied at run time and never committed (rule 7). Vendor libraries

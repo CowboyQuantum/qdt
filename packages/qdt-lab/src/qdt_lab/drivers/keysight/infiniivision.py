@@ -6,6 +6,10 @@ The commands follow the InfiniiVision programmer's guide; confirmed on an HD304M
 `:TIMebase:RANGe`, `:TIMebase:POSition`) so one capture covers the declared time axis, and the waveform
 transfer (signed 16-bit words, LSB first, raw points). Vertical scale, offset, coupling and the trigger
 are left exactly as the user set them on the instrument: they belong to the signal, not to the grid.
+The one exception (ADR 0063): a scope whose stand entry names `settings["trigger_from"]` (the
+sequencer's marker channel wired to its EXT TRIG input) is set at `arm` to trigger on that input, a
+rising edge at `settings["trigger_level_v"]` (default `EXT_TRIGGER_LEVEL_V`), NORMal sweep: a record is
+the triggered one or the acquisition times out, never a free-run.
 
 Each frame is one `:DIGitize` of the channel. The capture is converted to volts with the preamble and
 resampled onto the declared `LinearCoordinate` (`np.interp`): the producer aligns, never the consumer
@@ -32,6 +36,10 @@ LEFT_REFERENCE_FRACTION = 0.1
 MIN_POINTS = 1000
 """Fewest raw points requested per record."""
 
+EXT_TRIGGER_LEVEL_V = 1.0
+"""Default EXT TRIG level: below half of an LVTTL marker into the input's 1 MΩ (Probe 05 measures the
+bench's marker level)."""
+
 _MODEL = re.compile(r"^(DSOX|MSOX|HD3)\d")
 
 
@@ -48,6 +56,7 @@ class InfiniiVisionX:
         transport: ScpiTransport,
         channels: tuple[ChannelMap, ...] = (),
         max_records: int = 8,
+        external_trigger_level_v: float | None = None,
     ) -> None:
         idn = transport.query("*IDN?")
         fields = [f.strip() for f in idn.split(",")]
@@ -62,6 +71,7 @@ class InfiniiVisionX:
         self._t = transport
         self.idn = idn
         self.max_records = max_records
+        self.external_trigger_level_v = external_trigger_level_v
         self._logical: dict[str, int] = {}
         for ch in channels:
             if ch.quantity != "voltage":
@@ -74,13 +84,19 @@ class InfiniiVisionX:
     def from_config(
         cls, instrument: InstrumentConfig, channels: tuple[ChannelMap, ...]
     ) -> "InfiniiVisionX":
-        """`BackendFactory` (ADR 0021): opens `instrument.settings['address']` over VISA."""
+        """`BackendFactory` (ADR 0021): opens `instrument.settings['address']` over VISA. With
+        `settings['trigger_from']` the scope triggers on its EXT TRIG input at `arm` (ADR 0063), at
+        `settings['trigger_level_v']` volts (default `EXT_TRIGGER_LEVEL_V`)."""
         address = instrument.settings.get("address")
         if not address:
             raise ValueError(f"instrument {instrument.id!r} has no settings['address']")
         kw = {}
         if "max_records" in instrument.settings:
             kw["max_records"] = int(instrument.settings["max_records"])
+        if instrument.settings.get("trigger_from"):
+            kw["external_trigger_level_v"] = float(
+                instrument.settings.get("trigger_level_v", EXT_TRIGGER_LEVEL_V)
+            )
         return cls(open_visa(str(address)), channels, **kw)
 
     def _channel(self, channel: str) -> int:
@@ -114,6 +130,12 @@ class InfiniiVisionX:
         # LEFT puts the reference one division (10 % of the range) in from the screen's left edge, so
         # the capture starts at position - range/10 (bench, HD304MSO, 2026-10-14). Place it at `start`.
         rng = span * (1 + TIMEBASE_MARGIN)
+        if self.external_trigger_level_v is not None:  # ADR 0063: the sequencer's marker triggers
+            t.write(":TRIGger:MODE EDGE")
+            t.write(":TRIGger:EDGE:SOURce EXTernal")
+            t.write(":TRIGger:EDGE:SLOPe POSitive")
+            t.write(f":TRIGger:EDGE:LEVel {self.external_trigger_level_v:.6g}")
+            t.write(":TRIGger:SWEep NORMal")
         t.write(":TIMebase:REFerence LEFT")
         t.write(f":TIMebase:RANGe {rng:.12g}")
         t.write(f":TIMebase:POSition {start + rng * LEFT_REFERENCE_FRACTION:.12g}")

@@ -26,7 +26,7 @@ from qdt_schemas.data import (
 )
 from qdt_schemas.stand import QUANTITY_UNIT, Capability, StandConfig
 
-from .emit import Emitter
+from .emit import Emitter, TriggeredStep
 
 REPEAT_DIM = "repeat"
 SHOT_DIM = "shot"
@@ -49,9 +49,14 @@ def compile_sweep(
 
     def resolve(logical: str, role: Capability) -> None:
         if logical in roles and roles[logical] != role:
-            raise ValueError(
-                f"channel {logical!r} is used as {roles[logical]} and {role}: one terminal, one role"
-            )
+            # a TriggeredLevelSource is a LevelSource: a held level on a channel the triggered axis
+            # moves as a companion (the coupling's origin, ADR 0049) keeps the one terminal, one role
+            levels = {"level_source", "triggered_level_source"}
+            if {roles[logical], role} != levels:
+                raise ValueError(
+                    f"channel {logical!r} is used as {roles[logical]} and {role}: one terminal, one role"
+                )
+            role = "triggered_level_source"
         roles[logical] = role
         instrument = stand.instrument(stand.channel(logical).instrument)
         if role not in instrument.capabilities:
@@ -60,10 +65,13 @@ def compile_sweep(
             )
 
     stepped = definition.stepped_axes()
+    triggered = definition.triggered_axis()
     for a in stepped:
-        resolve(a.channel, "level_source")
+        # a triggered axis (ADR 0064) and its companions are loaded as lists, not set per point
+        role: Capability = "triggered_level_source" if a is triggered else "level_source"
+        resolve(a.channel, role)
         for ch in a.couplings:  # a virtual gate's companions (ADR 0049)
-            resolve(ch, "level_source")
+            resolve(ch, role)
     for lv in definition.levels:  # the operating point (ADR 0038)
         resolve(lv.channel, "level_source")
     for s in definition.sensed:
@@ -106,10 +114,57 @@ def compile_sweep(
             emitter = dict(emitters).get(instrument.backend)
             if emitter is None:
                 raise ValueError(f"no emitter for backend {instrument.backend!r}")
+
+            def marker_line(stepped_instrument: str, what: str) -> str | None:
+                """The logical sequencer channel whose marker drives `stepped_instrument`'s trigger
+                input: its `settings['trigger_from']`. None when it is the sequencer itself (it
+                triggers itself) or, for a scope, when it has none (it triggers itself, ADR 0063)."""
+                if stepped_instrument == stage.instrument:
+                    return None
+                line = stand.instrument(stepped_instrument).settings.get("trigger_from")
+                if line is None:
+                    return None
+                line = str(line)
+                if line not in {c.logical for c in stand.channels} or (
+                    stand.channel(line).instrument != stage.instrument
+                ):
+                    raise ValueError(
+                        f"{what}: instrument {stepped_instrument!r} says settings['trigger_from'] = "
+                        f"{line!r}, which is not a channel of the sequencer {stage.instrument!r}"
+                    )
+                resolve(line, "sequencer")
+                return line
+
+            trigger_step = None
+            if triggered is not None:
+                what = f"triggered axis {triggered.name!r}"
+                lines: list[str] = []
+                settle = 0.0
+                for ch in (triggered.channel, *triggered.couplings):
+                    stepped_instrument = stand.channel(ch).instrument
+                    line = marker_line(stepped_instrument, what)
+                    if line is None and stepped_instrument != stage.instrument:
+                        raise ValueError(
+                            f"{what}: instrument {stepped_instrument!r} has no settings['trigger_from'], "
+                            "the sequencer channel whose marker advances its list (ADR 0064)"
+                        )
+                    if line is not None and line not in lines:
+                        lines.append(line)
+                    settle = max(settle, stand.channel(ch).settle_s)
+                trigger_step = TriggeredStep(
+                    axis=triggered.name, lines=tuple(lines), settle_ns=round(settle * 1e9)
+                )
+            capture_lines = {}
+            for c in stage.captures():
+                line = marker_line(stand.channel(c.channel).instrument, f"capture {c.result!r}")
+                if line is not None:
+                    capture_lines[c.channel] = line
             program, bindings = emitter.emit(
                 stage,
                 {a.name: a for a in definition.axes},
                 {ch: stand.channel(ch) for ch in stage.sequence.channels()},
+                triggered=trigger_step,
+                lines=capture_lines,
             )
             if not program.results and stage.shots > 1 and not stage.captures():
                 raise ValueError("a stage with no results and no capture records nothing")

@@ -2,7 +2,7 @@
 
 import random
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 
 from qdt_schemas.stand import ChannelMap, InstrumentConfig
 
@@ -10,11 +10,13 @@ from ..protocols import LevelSource
 
 
 class SimulatedLevelSource:
-    """Ideal level source with optional additive Gaussian noise on readback for realism tests."""
+    """Ideal level source with optional additive Gaussian noise on readback for realism tests. Also a
+    `TriggeredLevelSource` (ADR 0064): a loaded list advances on `advance`, the host-fired trigger."""
 
     def __init__(self, noise: float = 0.0) -> None:
         self._levels: dict[str, float] = {}
         self._noise = noise
+        self._lists: dict[str, tuple[tuple[float, ...], int]] = {}  # channel -> (values, index)
 
     @classmethod
     def from_config(
@@ -24,11 +26,34 @@ class SimulatedLevelSource:
         return cls(**kwargs)
 
     def set(self, channel: str, value: float) -> None:
+        self.release(channel)
         self._levels[channel] = value
 
     def get(self, channel: str) -> float:
         base = self._levels.get(channel, 0.0)
         return base + (random.gauss(0, self._noise) if self._noise else 0.0)
+
+    # --- TriggeredLevelSource (ADR 0064) -----------------------------------------------------------
+
+    def load(self, channel: str, values: Sequence[float]) -> None:
+        if not len(values):
+            raise ValueError("a list needs at least one point")
+        self._lists[channel] = (tuple(float(v) for v in values), -1)
+
+    def advance(self, channel: str) -> None:
+        if channel not in self._lists:
+            raise ValueError(f"channel {channel!r} has no list loaded")
+        values, i = self._lists[channel]
+        i = min(i + 1, len(values) - 1)
+        self._lists[channel] = (values, i)
+        self._levels[channel] = values[i]
+
+    def release(self, channel: str) -> None:
+        self._lists.pop(channel, None)
+
+    def armed(self) -> tuple[str, ...]:
+        """Simulation-only: the channels with a list loaded, for a simulated sequencer's trigger."""
+        return tuple(self._lists)
 
 
 class SimulatedLevelSense:

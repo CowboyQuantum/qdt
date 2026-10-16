@@ -201,3 +201,28 @@ def test_operating_point_needs_a_level_source():
     d = type(d).model_validate(d.model_dump())
     with pytest.raises(ValueError, match="one terminal, one role|lacks capability"):
         run(d, quiet())
+
+
+def test_a_triggered_axis_on_the_device_gives_the_same_map_as_software_stepping():
+    """ADR 0064: the device is its own sequencer, so a triggered P1 needs no marker line; every
+    loaded list sits on the point the program is at. The map is the software-stepped one."""
+    from qdt_lab.protocols import TriggeredLevelSource
+
+    assert isinstance(quiet(), TriggeredLevelSource)
+    software = stability(6, 9, p1=(-0.02, 0.04), p2=(-0.03, 0.05))
+    triggered = software.model_copy(
+        update={"axes": (software.axes[0].model_copy(update={"stepping": "triggered"}), software.axes[1])}
+    )
+    plan, out = run(triggered, quiet())
+    assert [p.name for p in plan.stage_program.parameters][:1] == ["n_P1"]
+    assert plan.stage_program.results[0].dims == ("n_P1", "n_P2")
+    _, expected = run(software, quiet())
+    np.testing.assert_allclose(out["I_sensor"].values, expected["I_sensor"].values, rtol=1e-12)
+    d = quiet()
+    d.load("P1", (0.1, 0.2))
+    d.advance("P1")
+    assert d.get("P1") == 0.1
+    d.release("P1")
+    assert d.get("P1") == 0.1
+    with pytest.raises(ValueError, match="no list loaded"):
+        d.advance("P1")

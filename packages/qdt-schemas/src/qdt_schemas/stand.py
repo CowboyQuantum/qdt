@@ -14,8 +14,15 @@ from ._base import QdtModel
 from .data import AttrValue
 
 Capability = Literal[
-    "level_source", "level_sense", "waveform_source", "waveform_sense", "sequencer"
+    "level_source",
+    "level_sense",
+    "waveform_source",
+    "waveform_sense",
+    "sequencer",
+    "triggered_level_source",
 ]
+"""The five protocols frozen by ADR 0021, plus `triggered_level_source` (ADR 0064): a LevelSource that
+also advances through a loaded list of levels on a hardware trigger (a QDAC-II list)."""
 Quantity = Literal["voltage", "current"]
 
 QUANTITY_UNIT: dict[str, str] = {"voltage": "V", "current": "A"}

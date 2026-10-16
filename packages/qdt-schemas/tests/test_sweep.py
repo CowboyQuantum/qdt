@@ -331,13 +331,17 @@ def test_a_shot_capture_keeps_every_shot_and_needs_a_stage_without_stage_axes():
     stage = SequencerStage(instrument="dot", sequence=_shot_capture(), shots=3)
     assert stage.captures()[0].result == "trace" and stage.results() == ("trace",)
     with pytest.raises(ValidationError, match="keeps every shot"):
-        SequencerStage(instrument="dot", sequence=_shot_capture(), shots=3, reduce={"trace": "mean"})
+        SequencerStage(
+            instrument="dot", sequence=_shot_capture(), shots=3, reduce={"trace": "mean"}
+        )
     d = SweepDefinition(
         name="step response",
         axes=(SweepAxis(name="P1", channel="P1", start=0.0, stop=0.1, num=4),),
         stage=stage,
     )
-    assert d.capture_time_dim("trace") == "time" and d.capture_grids() == {"trace": (0.0, 1e-5, 200)}
+    assert d.capture_time_dim("trace") == "time" and d.capture_grids() == {
+        "trace": (0.0, 1e-5, 200)
+    }
     with pytest.raises(ValidationError, match="without stage axes"):
         SweepDefinition(
             name="x",
@@ -367,6 +371,100 @@ def test_a_shot_capture_keeps_every_shot_and_needs_a_stage_without_stage_axes():
     two = SweepDefinition(
         name="x",
         stage=stage,
-        captured=(CapturedWaveform(name="mon", channel="scope2", start_s=0.0, stop_s=1e-3, num=10),),
+        captured=(
+            CapturedWaveform(name="mon", channel="scope2", start_s=0.0, stop_s=1e-3, num=10),
+        ),
     )
-    assert two.capture_time_dim("trace") == "trace_time" and two.capture_time_dim("mon") == "mon_time"
+    assert (
+        two.capture_time_dim("trace") == "trace_time" and two.capture_time_dim("mon") == "mon_time"
+    )
+
+
+# --- the sequencer paces the scan: a triggered stepped axis (ADR 0064) ------------------------------
+
+
+def _triggered(**axis_kw) -> SweepDefinition:
+    axes = (
+        SweepAxis(name="gate_R", channel="gate_R", start=-0.5, stop=0.5, num=3),
+        SweepAxis(name="gate_L", channel="gate_L_p", start=-1.0, stop=0.0, num=4),
+    )
+    return SweepDefinition(
+        name="stability",
+        axes=(axes[0].model_copy(update=axis_kw), axes[1]),
+        stage=SequencerStage(
+            instrument="seq0",
+            axes=("gate_L",),
+            sequence=pixel(),
+            bindings=(
+                SymbolBinding(symbol="v_L", axis="gate_L"),
+                SymbolBinding(symbol="v_R", axis="gate_R"),
+            ),
+        ),
+    )
+
+
+def test_a_triggered_axis_is_the_innermost_stepped_axis_the_sequencer_advances():
+    d = _triggered(stepping="triggered")
+    assert d.triggered_axis().name == "gate_R"
+    assert [a.name for a in d.program_axes()] == ["gate_R", "gate_L"]
+    assert [a.name for a in d.stepped_axes()] == [
+        "gate_R"
+    ]  # still stepped: the DAC moves, by trigger
+    assert SweepDefinition.model_validate_json(d.model_dump_json()) == d
+    assert "stepping" not in stability().model_dump()["axes"][0]  # the default keeps content hashes
+    assert (
+        _triggered().triggered_axis() is None
+        and _triggered().program_axes() == _triggered().stage_axes()
+    )
+
+
+def test_a_triggered_axis_needs_the_sequencer_in_the_loop_and_nothing_per_point():
+    base = _triggered(stepping="triggered")
+    with pytest.raises(ValidationError, match="innermost stepped axis"):
+        SweepDefinition.model_validate(
+            base.model_dump()
+            | {
+                "axes": [
+                    base.axes[0].model_dump(),
+                    SweepAxis(name="gate_M", channel="gate_M", start=0, stop=1, num=2).model_dump(),
+                    base.axes[1].model_dump(),
+                ],
+            }
+        )
+    with pytest.raises(ValidationError, match="at most one axis is triggered"):
+        SweepDefinition.model_validate(
+            base.model_dump()
+            | {
+                "axes": [
+                    SweepAxis(
+                        name="gate_M",
+                        channel="gate_M",
+                        start=0,
+                        stop=1,
+                        num=2,
+                        stepping="triggered",
+                    ).model_dump(),
+                    *[a.model_dump() for a in base.axes],
+                ],
+            }
+        )
+    with pytest.raises(ValidationError, match="swept by the sequencer, not triggered"):
+        SweepDefinition.model_validate(
+            base.model_dump()
+            | {
+                "axes": [
+                    base.axes[0].model_dump() | {"stepping": "software"},
+                    base.axes[1].model_dump() | {"stepping": "triggered"},
+                ]
+            }
+        )
+    with pytest.raises(ValidationError, match="needs a stage with a sequence"):
+        SweepDefinition(
+            name="dc",
+            axes=(SweepAxis(name="g", channel="g", start=0, stop=1, num=2, stepping="triggered"),),
+            sensed=(SensedLevel(name="I", channel="sensor"),),
+        )
+    with pytest.raises(ValidationError, match="nothing is sensed or captured per point"):
+        SweepDefinition.model_validate(
+            base.model_dump() | {"sensed": [{"name": "I_dc", "channel": "sensor_dc"}]}
+        )

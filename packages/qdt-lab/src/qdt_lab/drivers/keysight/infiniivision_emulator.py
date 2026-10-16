@@ -32,6 +32,12 @@ _SETTINGS = {
     ":WAVeform:UNSigned": "0",
     ":WAVeform:POINts:MODE": "RAW",
 }
+_TRIGGER = {  # the external trigger a scope with `trigger_from` is set to at arm (ADR 0063)
+    ":TRIGger:MODE": "EDGE",
+    ":TRIGger:EDGE:SOURce": "EXTernal",
+    ":TRIGger:EDGE:SLOPe": "POSitive",
+    ":TRIGger:SWEep": "NORMal",
+}
 
 
 class InfiniiVisionEmulator:
@@ -53,6 +59,7 @@ class InfiniiVisionEmulator:
         self.source: int = 1
         self.requested_points: int = points
         self.settings: dict[str, str] = {}
+        self.trigger: dict[str, str] = {}
         self.records = 0
         self._capture: tuple[int, float, float, np.ndarray] | None = None
         self.closed = False
@@ -65,6 +72,12 @@ class InfiniiVisionEmulator:
             if arg != _SETTINGS[head]:
                 raise ValueError(f"emulator supports only {head} {_SETTINGS[head]}, got {arg!r}")
             self.settings[head] = arg
+        elif head in _TRIGGER:
+            if arg != _TRIGGER[head]:
+                raise ValueError(f"emulator supports only {head} {_TRIGGER[head]}, got {arg!r}")
+            self.trigger[head] = arg
+        elif head == ":TRIGger:EDGE:LEVel" and re.fullmatch(_NUM, arg):
+            self.trigger[head] = arg
         elif head == ":TIMebase:REFerence":
             if arg != "LEFT":
                 raise ValueError(f"emulator supports only :TIMebase:REFerence LEFT, got {arg!r}")
