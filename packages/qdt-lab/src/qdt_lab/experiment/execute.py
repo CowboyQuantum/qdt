@@ -1,17 +1,22 @@
 """Walk an `ExecutionPlan` against backend objects and stream the Dataset (ADR 0019).
 
-Loop order: repeats (outermost, executor) → stepped axes row-major (executor: set levels and their
-coupled companions, settle, then the stage, the sensed levels, the captures) → the stage (sequencer: its axes and shots). Sensed
-levels are chunked one innermost stepped line per frame; stage frames and capture frames are re-keyed
-into the full index space. A capture arms its `WaveformSense` on a (record, time) slab per stepped
-point and passes every record it yields (ADR 0047). A shot capture (ADR 0060) arms its scope for one
-record per shot before the stage runs and re-keys each record to its shot after. The executor holds no
-data and never averages (ADR 0018).
+Loop order: repeats (outermost, executor) → software-stepped axes row-major (executor: set levels and
+their coupled companions, settle, then the stage, the sensed levels, the captures) → the stage
+(sequencer: a triggered axis, its axes and shots). Sensed levels are chunked one innermost stepped
+line per frame; stage frames and capture frames are re-keyed into the full index space. A capture
+arms its `WaveformSense` on a (record, time) slab per stepped point and passes every record it yields
+(ADR 0047). A shot capture (ADR 0060) arms its scope for one record per shot before the stage runs,
+drains it on a thread while the shots play (a real scope acquires only while its `frames()` is being
+read), and re-keys each record to its shot after. A triggered axis (ADR 0064) is loaded as a list on
+its `TriggeredLevelSource` before each program run and advanced by the sequencer's marker; the
+executor releases the lists when the plan ends. The executor holds no data and never averages
+(ADR 0018).
 """
 
 import contextlib
 import itertools
 import math
+import threading
 import time
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
@@ -35,9 +40,21 @@ from qdt_schemas.data import (
 from qdt_schemas.pulse import Capture
 from qdt_schemas.stand import StandConfig
 
-from ..protocols import BackendFactory, LevelSense, LevelSource, Sequencer, WaveformSense
+from ..protocols import (
+    BackendFactory,
+    LevelSense,
+    LevelSource,
+    Sequencer,
+    TriggeredLevelSource,
+    WaveformSense,
+)
 from ..stream.frame import Frame
 from .compile import RECORD_DIM, REPEAT_DIM, SHOT_DIM
+
+CAPTURE_ARM_GRACE_S = 0.05
+"""Seconds between starting to drain a shot capture's records (which is when a real scope arms its
+acquisition) and starting the sequencer that triggers it: the scope's arm must be in place before the
+first marker. Probe 05 measures what the bench's scope needs; the simulated scope needs nothing."""
 
 
 def resolve_parameters(
@@ -120,6 +137,7 @@ class Executor:
             "level_sense": LevelSense,
             "sequencer": Sequencer,
             "waveform_sense": WaveformSense,
+            "triggered_level_source": TriggeredLevelSource,
         }
         for c in plan.channels:
             if c.instrument not in self._backends:
@@ -142,7 +160,8 @@ class Executor:
 
     def _frames(self) -> Iterator[Frame]:
         plan, definition = self.plan, self.plan.definition
-        stepped = definition.stepped_axes()
+        triggered = definition.triggered_axis()
+        stepped = tuple(a for a in definition.stepped_axes() if a is not triggered)
         innermost = stepped[-1].name if stepped else None
         has_repeat = definition.repeats != 1
         repeats = itertools.count() if definition.repeats is None else range(definition.repeats)
@@ -170,147 +189,227 @@ class Executor:
             applied[logical] = value
             return ch.settle_s
 
-        for k in repeats:
-            buffers: dict[str, list[float]] = {s.name: [] for s in definition.sensed}
-            for idx in itertools.product(*(range(a.num) for a in stepped)):
-                settle = 0.0
-                for a, i in zip(stepped, idx, strict=True):
-                    current[a.name] = a.value(i)
-                    settle = max(settle, set_level(a.channel, current[a.name]))
-                    # a virtual gate (ADR 0049): companions move from their held level, or 0
-                    for companion, per_volt in a.couplings.items():
-                        settle = max(
-                            settle,
-                            set_level(
-                                companion, held.get(companion, 0.0) + per_volt * current[a.name]
-                            ),
-                        )
-                if settle > 0:
-                    self._sleep(settle)
-                prefix = (
-                    *((IndexSlice(dim=REPEAT_DIM, start=k, stop=k + 1),) if has_repeat else ()),
-                    *(
-                        IndexSlice(dim=a.name, start=i, stop=i + 1)
-                        for a, i in zip(stepped, idx, strict=True)
-                    ),
+        loaded: list[tuple[object, str]] = []  # (backend, vendor channel) with a list armed
+
+        def load_lists() -> None:
+            """ADR 0064: the triggered axis and its companions as lists, armed for the sequencer's
+            marker; loaded again before every program run so each run starts at the first point."""
+            values = [triggered.value(i) for i in range(triggered.num)]
+            for logical, per_volt in ((triggered.channel, None), *triggered.couplings.items()):
+                ch = plan.channel(logical)
+                backend = self._backends[ch.instrument]
+                points = (
+                    values
+                    if per_volt is None
+                    else [held.get(logical, 0.0) + per_volt * v for v in values]
                 )
-                if definition.stage is not None:
-                    params = resolve_parameters(
-                        plan.stage_program, plan.stage_parameters, plan, current
+                backend.load(ch.channel, points)
+                if (backend, ch.channel) not in loaded:
+                    loaded.append((backend, ch.channel))
+                applied.pop(logical, None)  # a later `set` on it must be sent again
+
+        try:
+            for k in repeats:
+                buffers: dict[str, list[float]] = {s.name: [] for s in definition.sensed}
+                for idx in itertools.product(*(range(a.num) for a in stepped)):
+                    settle = 0.0
+                    for a, i in zip(stepped, idx, strict=True):
+                        current[a.name] = a.value(i)
+                        settle = max(settle, set_level(a.channel, current[a.name]))
+                        # a virtual gate (ADR 0049): companions move from their held level, or 0
+                        for companion, per_volt in a.couplings.items():
+                            settle = max(
+                                settle,
+                                set_level(
+                                    companion, held.get(companion, 0.0) + per_volt * current[a.name]
+                                ),
+                            )
+                    if settle > 0:
+                        self._sleep(settle)
+                    prefix = (
+                        *((IndexSlice(dim=REPEAT_DIM, start=k, stop=k + 1),) if has_repeat else ()),
+                        *(
+                            IndexSlice(dim=a.name, start=i, stop=i + 1)
+                            for a, i in zip(stepped, idx, strict=True)
+                        ),
                     )
-                    sequencer = self._backends[definition.stage.instrument]
-                    # ADR 0060: every shot capture's scope is armed before the shots run, one record
-                    # per shot; its frames are drained after and re-keyed record → shot
-                    armed = []
-                    for c in definition.stage.captures():
-                        ch = plan.channel(c.channel)
-                        slab = shot_capture_slab(plan, c)
-                        armed.append(
-                            (c, self._backends[ch.instrument].arm(ch.channel, slab, c.result))
+                    if definition.stage is not None:
+                        if triggered is not None:
+                            load_lists()
+                        params = resolve_parameters(
+                            plan.stage_program, plan.stage_parameters, plan, current
                         )
-                    for f in sequencer.run(self._compiled, params, self._slab).frames():
-                        yield Frame(
-                            DatasetChunk(
-                                dataset_id=plan.dataset.dataset_id,
-                                seq=seq,
-                                region=(*prefix, *f.chunk.region),
-                                variables=f.chunk.variables,
-                                explicit_coords=f.chunk.explicit_coords,
-                                produced_at=f.chunk.produced_at,
-                            ),
-                            {
-                                name: a.reshape((1,) * len(prefix) + a.shape)
-                                for name, a in f.arrays.items()
-                            },
-                        )
-                        seq += 1
-                    keep_shot = definition.stage.shots > 1
-                    for c, source in armed:
-                        for f in source.frames():
-                            record = next(s for s in f.chunk.region if s.dim == RECORD_DIM)
-                            time_slice = next(s for s in f.chunk.region if s.dim != RECORD_DIM)
-                            shot = IndexSlice(dim=SHOT_DIM, start=record.start, stop=record.stop)
+                        sequencer = self._backends[definition.stage.instrument]
+                        # ADR 0060: every shot capture's scope is armed before the shots run, one
+                        # record per shot (per point of a triggered axis), drained on a thread while
+                        # they play; its frames are re-keyed record → (point,) shot after
+                        drains = []
+                        for c in definition.stage.captures():
+                            ch = plan.channel(c.channel)
+                            slab = shot_capture_slab(plan, c)
+                            source = self._backends[ch.instrument].arm(ch.channel, slab, c.result)
+                            drains.append((c, _Drain(source)))
+                        if drains:
+                            self._sleep(CAPTURE_ARM_GRACE_S)
+                        for f in sequencer.run(self._compiled, params, self._slab).frames():
                             yield Frame(
                                 DatasetChunk(
                                     dataset_id=plan.dataset.dataset_id,
                                     seq=seq,
-                                    region=(*prefix, *((shot,) if keep_shot else ()), time_slice),
+                                    region=(*prefix, *f.chunk.region),
+                                    variables=f.chunk.variables,
+                                    explicit_coords=f.chunk.explicit_coords,
+                                    produced_at=f.chunk.produced_at,
+                                ),
+                                {
+                                    name: a.reshape((1,) * len(prefix) + a.shape)
+                                    for name, a in f.arrays.items()
+                                },
+                            )
+                            seq += 1
+                        shots = definition.stage.shots
+                        keep_shot = shots > 1
+                        for c, drain in drains:
+                            for f in drain.frames():
+                                record = next(s for s in f.chunk.region if s.dim == RECORD_DIM)
+                                time_slice = next(s for s in f.chunk.region if s.dim != RECORD_DIM)
+                                point = (
+                                    (
+                                        IndexSlice(
+                                            dim=triggered.name,
+                                            start=record.start // shots,
+                                            stop=record.start // shots + 1,
+                                        ),
+                                    )
+                                    if triggered is not None
+                                    else ()
+                                )
+                                shot = (
+                                    (
+                                        IndexSlice(
+                                            dim=SHOT_DIM,
+                                            start=record.start % shots,
+                                            stop=record.start % shots + 1,
+                                        ),
+                                    )
+                                    if keep_shot
+                                    else ()
+                                )
+                                yield Frame(
+                                    DatasetChunk(
+                                        dataset_id=plan.dataset.dataset_id,
+                                        seq=seq,
+                                        region=(*prefix, *point, *shot, time_slice),
+                                        variables=f.chunk.variables,
+                                        produced_at=f.chunk.produced_at,
+                                    ),
+                                    {
+                                        name: np.asarray(a).reshape(
+                                            (1,) * (len(prefix) + len(point) + len(shot))
+                                            + (a.shape[-1],)
+                                        )
+                                        for name, a in f.arrays.items()
+                                    },
+                                )
+                                seq += 1
+                    if definition.sensed:
+                        for s in definition.sensed:
+                            ch = plan.channel(s.channel)
+                            buffers[s.name].append(self._backends[ch.instrument].sense(ch.channel))
+                        if innermost is None or idx[-1] == stepped[-1].num - 1:
+                            region = prefix
+                            if innermost is not None:
+                                region = (
+                                    *prefix[:-1],
+                                    IndexSlice(dim=innermost, start=0, stop=stepped[-1].num),
+                                )
+                            arrays = {}
+                            for s in definition.sensed:
+                                shape = tuple(
+                                    len(buffers[s.name]) if d == innermost else 1
+                                    for d in var_dims[s.name]
+                                )
+                                arrays[s.name] = np.asarray(
+                                    buffers[s.name], dtype=np.float64
+                                ).reshape(shape)
+                                buffers[s.name] = []
+                            yield Frame(
+                                DatasetChunk(
+                                    dataset_id=plan.dataset.dataset_id,
+                                    seq=seq,
+                                    region=region,
+                                    variables=tuple(s.name for s in definition.sensed),
+                                    produced_at=datetime.now(UTC),
+                                ),
+                                arrays,
+                            )
+                            seq += 1
+                    for c in definition.captured:  # ADR 0047: one slab per stepped point
+                        ch = plan.channel(c.channel)
+                        slab = capture_slab(plan, c)
+                        keep_record = c.records > 1
+                        for f in (
+                            self._backends[ch.instrument].arm(ch.channel, slab, c.name).frames()
+                        ):
+                            record = next(s for s in f.chunk.region if s.dim == RECORD_DIM)
+                            time_slice = next(s for s in f.chunk.region if s.dim != RECORD_DIM)
+                            yield Frame(
+                                DatasetChunk(
+                                    dataset_id=plan.dataset.dataset_id,
+                                    seq=seq,
+                                    region=(
+                                        *prefix,
+                                        *((record,) if keep_record else ()),
+                                        time_slice,
+                                    ),
                                     variables=f.chunk.variables,
                                     produced_at=f.chunk.produced_at,
                                 ),
                                 {
                                     name: np.asarray(a).reshape(
                                         (1,) * len(prefix)
-                                        + ((a.shape[0],) if keep_shot else ())
+                                        + ((a.shape[0],) if keep_record else ())
                                         + (a.shape[1],)
                                     )
                                     for name, a in f.arrays.items()
                                 },
                             )
                             seq += 1
-                if definition.sensed:
-                    for s in definition.sensed:
-                        ch = plan.channel(s.channel)
-                        buffers[s.name].append(self._backends[ch.instrument].sense(ch.channel))
-                    if innermost is None or idx[-1] == stepped[-1].num - 1:
-                        region = prefix
-                        if innermost is not None:
-                            region = (
-                                *prefix[:-1],
-                                IndexSlice(dim=innermost, start=0, stop=stepped[-1].num),
-                            )
-                        arrays = {}
-                        for s in definition.sensed:
-                            shape = tuple(
-                                len(buffers[s.name]) if d == innermost else 1
-                                for d in var_dims[s.name]
-                            )
-                            arrays[s.name] = np.asarray(buffers[s.name], dtype=np.float64).reshape(
-                                shape
-                            )
-                            buffers[s.name] = []
-                        yield Frame(
-                            DatasetChunk(
-                                dataset_id=plan.dataset.dataset_id,
-                                seq=seq,
-                                region=region,
-                                variables=tuple(s.name for s in definition.sensed),
-                                produced_at=datetime.now(UTC),
-                            ),
-                            arrays,
-                        )
-                        seq += 1
-                for c in definition.captured:  # ADR 0047: one slab per stepped point
-                    ch = plan.channel(c.channel)
-                    slab = capture_slab(plan, c)
-                    keep_record = c.records > 1
-                    for f in self._backends[ch.instrument].arm(ch.channel, slab, c.name).frames():
-                        record = next(s for s in f.chunk.region if s.dim == RECORD_DIM)
-                        time_slice = next(s for s in f.chunk.region if s.dim != RECORD_DIM)
-                        yield Frame(
-                            DatasetChunk(
-                                dataset_id=plan.dataset.dataset_id,
-                                seq=seq,
-                                region=(*prefix, *((record,) if keep_record else ()), time_slice),
-                                variables=f.chunk.variables,
-                                produced_at=f.chunk.produced_at,
-                            ),
-                            {
-                                name: np.asarray(a).reshape(
-                                    (1,) * len(prefix)
-                                    + ((a.shape[0],) if keep_record else ())
-                                    + (a.shape[1],)
-                                )
-                                for name, a in f.arrays.items()
-                            },
-                        )
-                        seq += 1
+        finally:
+            for backend, channel in loaded:  # the last point holds (ADR 0038); `set` applies again
+                with contextlib.suppress(Exception):
+                    backend.release(channel)
+
+
+class _Drain:
+    """Reads a `Source`'s frames on a thread from the moment it is made, so a `WaveformSense` whose
+    acquisition starts when its frames are read (a scope's `:DIGitize`) is acquiring while the
+    sequencer plays the shots; `frames()` joins and yields what was read, or re-raises."""
+
+    def __init__(self, source) -> None:
+        self._frames: list[Frame] = []
+        self._error: BaseException | None = None
+
+        def run() -> None:
+            try:
+                self._frames.extend(source.frames())
+            except Exception as e:  # noqa: BLE001 - carried to the executor's thread and re-raised
+                self._error = e
+
+        self._thread = threading.Thread(target=run, name="qdt-capture-drain", daemon=True)
+        self._thread.start()
+
+    def frames(self) -> Iterator[Frame]:
+        self._thread.join()
+        if self._error is not None:
+            raise self._error
+        yield from self._frames
 
 
 def stage_slab(plan: ExecutionPlan) -> Dataset:
     """The inner Dataset the sequencer fills per stepped point: stage axes (+ shot), stage results."""
     definition = plan.definition
-    inner = {a.name for a in definition.stage_axes()} | {SHOT_DIM}
+    inner = {a.name for a in definition.program_axes()} | {SHOT_DIM}
     dims = tuple(d for d in plan.dataset.dims if d.name in inner)
     if not dims:
         raise ValueError("a stage needs at least one inner axis or kept shots")
@@ -339,8 +438,12 @@ def stage_slab(plan: ExecutionPlan) -> Dataset:
 
 def shot_capture_slab(plan: ExecutionPlan, capture: Capture) -> Dataset:
     """The (record, time) Dataset a `WaveformSense` fills for a shot capture at one stepped point: one
-    record per shot on the capture's time axis from 0 (ADR 0060). The executor re-keys record → shot."""
+    record per shot on the capture's time axis from 0 (ADR 0060), times the points of a triggered axis
+    (ADR 0064). The executor re-keys record → (point,) shot."""
     shots = plan.definition.stage.shots
+    triggered = plan.definition.triggered_axis()
+    if triggered is not None:
+        shots *= triggered.num
     tdim = plan.definition.capture_time_dim(capture.result)
     var = next(v for v in plan.dataset.data_vars if v.name == capture.result)
     coord = next(c for c in plan.dataset.coords if c.dim == tdim)

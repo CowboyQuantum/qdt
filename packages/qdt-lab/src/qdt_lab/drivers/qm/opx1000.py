@@ -6,9 +6,12 @@ push), and given its integer parameters through an int input stream. Fixed-typed
 compile on that QOP, so every fractional parameter travels as a scaled int (the emitter's scheme,
 ADR 0015/0018) and is turned back into a level inside the program.
 
-Channels (vendor ids, `ChannelMap.channel`): `ao<p>` / `fem<f>/ao<p>` analog outputs and `ai<p>` /
-`fem<f>/ai<p>` analog inputs of an LF-FEM (default FEM from settings["fem"], else 1). Outputs are
-`voltage` channels; inputs read volts.
+Channels (vendor ids, `ChannelMap.channel`): `ao<p>` / `fem<f>/ao<p>` analog outputs, `ai<p>` /
+`fem<f>/ai<p>` analog inputs and `do<p>` / `fem<f>/do<p>` digital outputs of an LF-FEM (default FEM
+from settings["fem"], else 1). Outputs are `voltage` channels; inputs read volts. A digital output is
+a marker line (ADR 0063, 0064): the stand wires it to another instrument's trigger input and names it
+in that instrument's `settings["trigger_from"]`; the sequence plays a `MARKER_NS` pulse on it at a
+shot capture (the scope's trigger) and at the top of a triggered axis (the DAC's list advance).
 
 Sequencer programs (backend "qua"):
 - an emitted stage (`QuaEmitter`): body = the PulseSequence JSON + symbol → parameter map + reductions.
@@ -16,7 +19,10 @@ Sequencer programs (backend "qua"):
   sequence vocabulary means (ADR 0018); ops are serialised in time with `align()`; every channel returns
   to 0 at the end of a shot. `measure` integrates its input over the op's duration; `difference` and
   `mean`/`sum` reductions are applied to the per-shot values as they are fetched (ADR 0037's per-shot
-  semantics). `drive` is not supported on an LF-FEM (ValueError at compile).
+  semantics). `drive` is not supported on an LF-FEM (ValueError at compile). A `capture` plays the
+  scope's marker (if the body names a line for it; otherwise the scope triggers itself, ADR 0063)
+  and the shot waits out the window. A triggered axis (body `triggered`) is the outermost loop: a
+  marker on each of its lines, a wait of the settle, then the inner loops.
 - the conformance program (`{"kind": "flat_index"}`): Probe 01's flat loop index.
 
 Calibration constants, measured on the bench (Probe 02, docs/probes/02-opx-input-calibration.md,
@@ -44,6 +50,10 @@ from ...stream.frame import Frame
 CONTROLLER = "con1"
 CLOCK_NS = 4
 MIN_PULSE_NS = 16
+MARKER_NS = 400
+"""Length of the marker pulse on a digital output: long enough for any trigger input's minimum pulse
+width (Probe 05 confirms the bench's); it plays on its own element, so the analog timeline is not
+delayed by it unless a capture window is shorter than it."""
 SAMPLE_RATE = 1e9  # LF-FEM native rate assumed for arbitrary waveforms and raw ADC traces
 TIME_OF_FLIGHT_NS = 180
 """Readout latency, so a record starts on the edge of a pulse played at the same time (Probe 02: the
@@ -56,7 +66,7 @@ INTEGRATION_TO_VOLTS = -4731.0
 """mean volts = integrated value * this / window_ns (constant unit weights). Measured, Probe 02, on the
 same shots as RAW_ADC_TO_VOLTS; the two agree to 0.5 %. Input offset at 0 V in: -1.7 mV (not applied)."""
 OUTPUT_RANGE_V = {"direct": 0.5, "amplified": 2.5}
-_PORT = re.compile(r"^(?:fem(\d+)[/_:])?(ao|ai)(\d+)$")
+_PORT = re.compile(r"^(?:fem(\d+)[/_:])?(ao|ai|do)(\d+)$")
 
 
 def _element(channel: str) -> str:
@@ -68,10 +78,15 @@ def _wave_element(channel: str) -> str:
     return _element(channel) + "_wave"
 
 
+def _trigger_element(channel: str) -> str:
+    """The digital-only element of a marker line (a `do<p>` port)."""
+    return "trig_" + re.sub(r"\W", "_", channel)
+
+
 @dataclass(frozen=True)
 class _Port:
     fem: int
-    kind: str  # "ao" | "ai"
+    kind: str  # "ao" | "ai" | "do"
     port: int
 
 
@@ -132,11 +147,13 @@ class Opx1000:
     def _port(self, channel: str) -> _Port:
         m = _PORT.match(channel.lower())
         if not m:
-            raise ValueError(f"OPX channel {channel!r} is not 'ao<p>', 'ai<p>' or 'fem<f>/ao<p>'")
+            raise ValueError(
+                f"OPX channel {channel!r} is not 'ao<p>', 'ai<p>', 'do<p>' or 'fem<f>/ao<p>'"
+            )
         fem, kind, port = m.groups()
         p = _Port(int(fem) if fem else self._fem, kind, int(port))
-        if not 1 <= p.port <= (8 if kind == "ao" else 2):
-            raise ValueError(f"OPX channel {channel!r}: LF-FEM has ao1..8 and ai1..2")
+        if not 1 <= p.port <= (2 if kind == "ai" else 8):
+            raise ValueError(f"OPX channel {channel!r}: LF-FEM has ao1..8, ai1..2 and do1..8")
         return p
 
     def _vendor(self, channel: str) -> str:
@@ -162,16 +179,24 @@ class Opx1000:
         waveforms are added)."""
         outputs = {p for p in self._ports.values() if p.kind == "ao"}
         inputs = {p for p in self._ports.values() if p.kind == "ai"}
+        markers = {p for p in self._ports.values() if p.kind == "do"}
         drive = (
             min(outputs, key=lambda p: (p.fem, p.port)) if outputs else _Port(self._fem, "ao", 1)
         )
         fems: dict[int, dict] = {}
+
+        def fem(f: int) -> dict:
+            return fems.setdefault(
+                f,
+                {"type": "LF", "analog_outputs": {}, "analog_inputs": {}, "digital_outputs": {}},
+            )
+
         for p in outputs | {drive}:
-            fems.setdefault(p.fem, {"type": "LF", "analog_outputs": {}, "analog_inputs": {}})
-            fems[p.fem]["analog_outputs"][p.port] = {"offset": 0.0, "output_mode": self._mode}
+            fem(p.fem)["analog_outputs"][p.port] = {"offset": 0.0, "output_mode": self._mode}
         for p in inputs:
-            fems.setdefault(p.fem, {"type": "LF", "analog_outputs": {}, "analog_inputs": {}})
-            fems[p.fem]["analog_inputs"][p.port] = {"offset": 0.0}
+            fem(p.fem)["analog_inputs"][p.port] = {"offset": 0.0}
+        for p in markers:
+            fem(p.fem)["digital_outputs"][p.port] = {}
         a = self.amplitude_ref
         elements, pulses = {}, {}
         waveforms = {
@@ -184,7 +209,16 @@ class Opx1000:
             "length": MIN_PULSE_NS,
             "waveforms": {"single": "const_wf"},
         }
+        if markers:  # ADR 0063/0064: a digital-only pulse on a digital-only element per line
+            pulses["marker"] = {"operation": "control", "length": MARKER_NS, "digital_marker": "ON"}
         for ch, p in self._ports.items():
+            if p.kind == "do":
+                elements[_trigger_element(ch)] = {
+                    "digitalInputs": {
+                        "marker": {"port": (CONTROLLER, p.fem, p.port), "delay": 0, "buffer": 0}
+                    },
+                    "operations": {"marker": "marker"},
+                }
             if p.kind != "ao":
                 continue
             ops = {"const": "const"}
@@ -341,23 +375,32 @@ class Opx1000:
             qm = self._ensure()
             prog, plan = flat_index_program(program)
         elif "sequence" in body:
-            if any(
-                op.op == "capture" for op in PulseSequence.model_validate(body["sequence"]).expand()
-            ):
-                raise ValueError(
-                    "a capture inside the shot needs a trigger line from the OPX to the scope, which "
-                    "this driver does not emit yet (ADR 0060); capture per point instead"
-                )
             sequence = PulseSequence.model_validate(
                 _vendor_channels(body["sequence"], self._logical)
             )
+            scopes = {op.channel for op in sequence.expand() if op.op == "capture"}
             for ch in sequence.channels():
+                if ch in scopes:  # the scope is another instrument's; its marker line is ours
+                    continue
                 self._known(
                     ch,
                     "ai"
                     if any(op.op == "measure" and op.channel == ch for op in sequence.expand())
                     else "ao",
                 )
+            body = dict(body)
+            body["lines"] = {
+                scope: self._vendor(line) for scope, line in body.get("lines", {}).items()
+            }
+            for line in body["lines"].values():
+                self._known(line, "do")
+            if body.get("triggered"):
+                body["triggered"] = dict(body["triggered"])
+                body["triggered"]["lines"] = [
+                    self._vendor(line) for line in body["triggered"].get("lines", [])
+                ]
+                for line in body["triggered"]["lines"]:
+                    self._known(line, "do")
             lengths = {
                 _cycles_ns(op.duration, "measure") for op in sequence.expand() if op.op == "measure"
             }
@@ -490,11 +533,14 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
     scales = {p.name: p.scale for p in program.parameters}
     n = len(names)
     symbols: dict = body["symbols"]
+    lines: dict = body.get("lines", {})  # a shot capture's scope channel -> its marker line
+    triggered: dict | None = body.get("triggered")  # ADR 0064: the axis the markers advance
     ops = sequence.expand()
+    scopes = {o.channel for o in ops if o.op == "capture"}
     outputs = [
         ch
         for ch in sequence.channels()
-        if not any(o.op == "measure" and o.channel == ch for o in ops)
+        if ch not in scopes and not any(o.op == "measure" and o.channel == ch for o in ops)
     ]
     axes = [
         p.name for p in program.parameters if p.name.startswith("n_")
@@ -516,7 +562,9 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
         integ = {o.result: qua.declare(qua.fixed) for o in measures}
         streams = {o.result: qua.declare_output_stream() for o in measures}
 
-        every = [_element(ch) for ch in sequence.channels()]  # a wait holds every element
+        every = [
+            _element(ch) for ch in sequence.channels() if ch not in scopes
+        ]  # a wait holds every analog element; marker lines run their own timeline
 
         def value(v):
             """A QUA expression (or float) for a level-like Value, in volts."""
@@ -567,6 +615,14 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
                         qua.assign(level[op.channel], target)
                 elif op.op == "wait":
                     qua.wait(duration_cycles(op.duration), *every)
+                elif op.op == "capture":
+                    # ADR 0063: the marker triggers the scope here; the shot waits out the window
+                    # (rounded up to the clock; the window itself is the scope's)
+                    line = lines.get(op.channel)
+                    if line is not None:
+                        qua.play("marker", _trigger_element(line))
+                    cycles = max(MIN_PULSE_NS, math.ceil(int(op.duration) / CLOCK_NS) * CLOCK_NS)
+                    qua.wait(cycles // CLOCK_NS, *every)
                 elif op.op == "measure":
                     d = _cycles_ns(op.duration, "measure")
                     qua.measure(
@@ -603,6 +659,14 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
                 return
             a = axes[k]
             with qua.for_(idx[a], 0, idx[a] < p[a], idx[a] + 1):
+                if triggered is not None and a == f"n_{triggered['axis']}":
+                    # ADR 0064: advance the DAC's list, settle, then the inner loops and shots
+                    for line in triggered["lines"]:
+                        qua.play("marker", _trigger_element(line))
+                    settle_cycles = math.ceil(int(triggered.get("settle_ns", 0)) / CLOCK_NS)
+                    if settle_cycles > 0:
+                        qua.wait(max(settle_cycles, MIN_PULSE_NS // CLOCK_NS), *every)
+                    qua.align()
                 loops(k + 1)
 
         for ch in outputs:

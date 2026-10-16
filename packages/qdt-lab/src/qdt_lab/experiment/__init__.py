@@ -7,7 +7,7 @@ returns a stream `Source`.
 """
 
 from .compile import compile_sweep
-from .emit import DEFAULT_SCALES, Emitter, QuaEmitter, SimulatedEmitter, scale_for
+from .emit import DEFAULT_SCALES, Emitter, QuaEmitter, SimulatedEmitter, TriggeredStep, scale_for
 from .execute import Executor, build_backends
 from .record import RunRecorder
 
@@ -18,6 +18,7 @@ __all__ = [
     "QuaEmitter",
     "RunRecorder",
     "SimulatedEmitter",
+    "TriggeredStep",
     "build_backends",
     "compile_sweep",
     "scale_for",

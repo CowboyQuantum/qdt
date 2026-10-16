@@ -165,3 +165,79 @@ def test_the_waveform_element_is_not_sticky_and_the_stage_element_is():
     assert elements["el_ao1"]["sticky"]["analog"] is True
     assert "sticky" not in elements["el_ao1_wave"]
     assert elements["el_ao1_wave"]["singleInput"] == elements["el_ao1"]["singleInput"]
+
+
+# --- marker lines: the scope's trigger and the DAC's list advance (ADR 0063, 0064) -------------------
+
+LINED = (
+    *CHANNELS,
+    ChannelMap(logical="scope_trigger", instrument="opx", channel="do1", quantity="voltage"),
+    ChannelMap(logical="dac_trigger", instrument="opx", channel="do2", quantity="voltage"),
+)
+
+
+def paced_program(lines: bool = True, triggered: bool = True) -> SequencerProgram:
+    """A stepped axis the OPX advances on do2, a shot of a step and a scope capture triggered on do1."""
+    from qdt_lab.experiment import TriggeredStep
+    from qdt_schemas.pulse import Capture
+
+    seq = PulseSequence(
+        name="step response",
+        body=(
+            Step(channel="P2_pulse", level=0.1, duration=2000),
+            Capture(channel="scope1", duration=10_000, num=200, result="trace"),
+        ),
+    )
+    stage = SequencerStage(instrument="opx", sequence=seq, shots=2)
+    axes = {
+        "V": SweepAxis(name="V", channel="P1", start=0.0, stop=1.0, num=5, stepping="triggered")
+    }
+    keyed = {c.logical: c for c in LINED}
+    program, _ = QuaEmitter().emit(
+        stage,
+        axes,
+        keyed,
+        triggered=TriggeredStep(axis="V", lines=("dac_trigger",), settle_ns=50_000)
+        if triggered
+        else None,
+        lines={"scope1": "scope_trigger"} if lines else {},
+    )
+    return program
+
+
+def test_marker_lines_are_digital_outputs_with_their_own_elements_and_the_program_plays_them():
+    opx = Opx1000(_FakeQMM(), LINED)
+    compiled = opx.compile(paced_program())
+    config = opx._qm.config
+    assert config["controllers"]["con1"]["fems"][1]["digital_outputs"] == {1: {}, 2: {}}
+    assert config["elements"]["trig_do1"]["digitalInputs"]["marker"]["port"] == ("con1", 1, 1)
+    assert config["pulses"]["marker"] == {
+        "operation": "control",
+        "length": opx1000.MARKER_NS,
+        "digital_marker": "ON",
+    }
+    assert "el_scope1" not in config["elements"]  # the scope is not an OPX element
+    script = qm.generate_qua_script(compiled.plan["qua"], config)  # validates program + config
+    assert script.count("play('marker', 'trig_do2')") == 1  # at the top of the triggered loop
+    assert script.count("play('marker', 'trig_do1')") == 1  # at the capture
+    assert "wait(2500," in script  # the capture window, 10 µs in clock cycles
+    assert "wait(12500," in script  # the settle, 50 µs
+    assert [p.name for p in compiled.program.parameters][:1] == ["n_V"]
+
+
+def test_a_capture_without_a_line_compiles_and_the_shot_still_waits_out_the_window():
+    """The interim of ADR 0063: the scope triggers itself; the shot's timeline is unchanged."""
+    opx = Opx1000(_FakeQMM(), CHANNELS)
+    compiled = opx.compile(paced_program(lines=False, triggered=False))
+    script = qm.generate_qua_script(compiled.plan["qua"], opx._qm.config)
+    assert "marker" not in script and "wait(2500," in script
+
+
+def test_a_line_must_be_a_digital_output():
+    bad = (
+        *CHANNELS,
+        ChannelMap(logical="scope_trigger", instrument="opx", channel="ao2", quantity="voltage"),
+    )
+    program = paced_program(lines=True, triggered=False)
+    with pytest.raises(ValueError, match="is an ao, not an do"):
+        Opx1000(_FakeQMM(), bad).compile(program)

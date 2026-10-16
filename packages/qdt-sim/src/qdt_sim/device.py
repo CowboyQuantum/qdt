@@ -1,4 +1,5 @@
-"""`SimulatedDevice`: the double dot behind `LevelSource`, `LevelSense` and `Sequencer` (ADR 0020).
+"""`SimulatedDevice`: the double dot behind `LevelSource`, `LevelSense`, `Sequencer` and
+`TriggeredLevelSource` (ADR 0020, 0064).
 
 One object, three capabilities, one set of vendor channels. Each channel has a role: a gate name of
 the model (several channels may drive the same gate; their levels add, as a DC line and a pulse line
@@ -9,7 +10,9 @@ the charge state at a `measure` is the Boltzmann state (sampled per shot, or its
 levels at that instant.
 
 As a `Sequencer` it compiles only backend `"simulated"` programs: the body emitted by
-`qdt_lab.experiment.SimulatedEmitter` (sequence JSON, symbol → parameter map, reductions).
+`qdt_lab.experiment.SimulatedEmitter` (sequence JSON, symbol → parameter map, reductions). A body
+with a `triggered` axis (ADR 0064) is the device triggering itself: at each point of that axis every
+list loaded on it (`load`) sits on that point, as a marker line to a DAC would put it.
 
 Built from a stand with `SimulatedDevice.from_config` (the ADR 0021 `BackendFactory`): gate channels
 must be declared `voltage`, the sensor `current`, and a sensor channel's `integration_s` is the device
@@ -18,7 +21,7 @@ time one `sense` integrates for (default `sense_integration_s`).
 
 import json
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import NamedTuple
@@ -55,6 +58,7 @@ class CompiledDeviceProgram(NamedTuple):
     symbols: dict[str, dict[str, str]]
     reduce: dict[str, str]
     compiled_id: str
+    triggered: str | None = None  # the axis every loaded list follows (ADR 0064)
 
 
 class SimulatedDevice:
@@ -107,6 +111,8 @@ class SimulatedDevice:
             raise ValueError(f"integration times for unknown channels {sorted(unknown)}")
         self._rng = np.random.default_rng(seed)
         self._dc: dict[str, float] = dict.fromkeys(self.channels, 0.0)
+        self._lists: dict[str, tuple[float, ...]] = {}  # channel -> loaded list (ADR 0064)
+        self._armed: dict[str, int] = {}  # channel -> index of the point last played
         bias = [ch for ch, role in self.channels.items() if role == BIAS]
         if bias:  # the sensor is read at its default bias until something sets it
             self._dc[bias[0]] = self.model.sensor_bias_v
@@ -148,6 +154,32 @@ class SimulatedDevice:
         self._check(channel)
         return self._dc[channel]
 
+    # --- TriggeredLevelSource (ADR 0064) -----------------------------------------------------------
+
+    def load(self, channel: str, values: Sequence[float]) -> None:
+        self._check(channel)
+        if not len(values):
+            raise ValueError("a list needs at least one point")
+        self._lists[channel] = tuple(float(v) for v in values)
+        self._armed[channel] = -1
+
+    def advance(self, channel: str) -> None:
+        self._check(channel)
+        if channel not in self._lists:
+            raise ValueError(f"channel {channel!r} has no list loaded")
+        self._play_point(channel, self._armed[channel] + 1)
+
+    def release(self, channel: str) -> None:
+        self._check(channel)
+        self._lists.pop(channel, None)
+        self._armed.pop(channel, None)
+
+    def _play_point(self, channel: str, i: int) -> None:
+        values = self._lists[channel]
+        i = min(i, len(values) - 1)
+        self._armed[channel] = i
+        self._dc[channel] = values[i]
+
     # --- LevelSense -----------------------------------------------------------------------------
 
     def sense(self, channel: str) -> float:
@@ -182,6 +214,7 @@ class SimulatedDevice:
             dict(body["symbols"]),
             dict(body.get("reduce", {})),
             f"{id(program):x}",
+            (body.get("triggered") or {}).get("axis"),
         )
 
     def run(
@@ -270,8 +303,14 @@ class _DeviceRun:
         return out
 
     def _pixel(self, index: tuple[int, ...]) -> dict[str, np.ndarray]:
-        """Run the sequence `shots` times at one pixel; result name → (shots,) samples."""
+        """Run the sequence `shots` times at one pixel; result name → (shots,) samples. At a point of
+        the triggered axis (ADR 0064) every loaded list is put on that point first: the device's own
+        marker line."""
         device, ops = self._device, self._compiled.sequence.expand()
+        if self._compiled.triggered is not None:
+            i = index[self._axes.index(f"n_{self._compiled.triggered}")]
+            for ch in list(device._lists):
+                device._play_point(ch, i)
         values = self._symbol_values(index)
 
         def val(x):

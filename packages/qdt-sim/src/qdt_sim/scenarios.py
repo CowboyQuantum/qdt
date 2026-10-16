@@ -70,7 +70,12 @@ def default_stand() -> StandConfig:
             InstrumentConfig(
                 id=DEVICE_ID,
                 backend="simulated",
-                capabilities=("level_source", "level_sense", "sequencer"),
+                capabilities=(
+                    "level_source",
+                    "level_sense",
+                    "sequencer",
+                    "triggered_level_source",
+                ),
             ),
         ),
         channels=(

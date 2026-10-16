@@ -9,6 +9,7 @@ ISA: its body is the sequence itself as JSON plus the symbol → parameter map, 
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from qdt_schemas.activity import (
@@ -39,6 +40,18 @@ def scale_for(unit: str) -> float:
         raise ValueError(f"no integer scale defined for unit {unit!r}") from None
 
 
+@dataclass(frozen=True)
+class TriggeredStep:
+    """A stepped axis the program advances by trigger (ADR 0064): at the top of each of its
+    iterations the sequencer plays a marker on every line in `lines` (logical sequencer channels
+    wired to the stepped instruments' trigger inputs; empty when the sequencer is the stepped
+    instrument and triggers itself) and waits `settle_ns` before the shots."""
+
+    axis: str
+    lines: tuple[str, ...]
+    settle_ns: int
+
+
 @runtime_checkable
 class Emitter(Protocol):
     """Translates a stage into one backend's program and the bindings that compute its parameters."""
@@ -50,20 +63,29 @@ class Emitter(Protocol):
         stage: SequencerStage,
         axes: Mapping[str, SweepAxis],
         channels: Mapping[str, ChannelMap],
+        *,
+        triggered: TriggeredStep | None = None,
+        lines: Mapping[str, str] = (),
     ) -> tuple[SequencerProgram, tuple[ParameterBinding, ...]]:
         """`axes` holds every axis of the definition by name; `channels` every logical channel the
-        sequence touches. Raises ValueError for what this backend cannot express."""
+        sequence touches. `triggered` is the stepped axis the program advances by trigger, outer to
+        the stage axes; `lines` maps a shot capture's channel to the logical sequencer channel whose
+        marker triggers that scope (absent: the scope triggers itself, ADR 0063). Raises ValueError
+        for what this backend cannot express."""
         ...
 
 
 class SimulatedEmitter:
     """Backend 'simulated': the body is the sequence as JSON; parameters follow a fixed naming scheme.
 
-    Parameters: `n_<axis>` per stage axis (axis_num); per symbol bound to a stage axis `<sym>_start`
-    and `<sym>_step` (axis_start / axis_step); per symbol bound to a stepped axis `<sym>` (axis_value);
-    per constant symbol `<sym>` (const); `shots` (const). Results: one per `measure` and per
-    `difference` (ADR 0037), float64, in the sense channel's quantity unit, dims = stage axes (+ `shots`
-    when kept and shots > 1). Affine values travel inside the sequence; the device applies them.
+    Parameters: `n_<axis>` per program axis (axis_num) — the triggered axis first, then the stage
+    axes; per symbol bound to a program axis `<sym>_start` and `<sym>_step` (axis_start / axis_step);
+    per symbol bound to a software-stepped axis `<sym>` (axis_value); per constant symbol `<sym>`
+    (const); `shots` (const). Results: one per `measure` and per `difference` (ADR 0037), float64, in
+    the sense channel's quantity unit, dims = program axes (+ `shots` when kept and shots > 1). Affine
+    values travel inside the sequence; the device applies them. The body carries `triggered` (the
+    axis, its marker lines, the settle in ns; ADR 0064) and `lines` (capture channel → marker line;
+    ADR 0063) when the stage has them.
     """
 
     backend = "simulated"
@@ -73,6 +95,9 @@ class SimulatedEmitter:
         stage: SequencerStage,
         axes: Mapping[str, SweepAxis],
         channels: Mapping[str, ChannelMap],
+        *,
+        triggered: TriggeredStep | None = None,
+        lines: Mapping[str, str] = (),
     ) -> tuple[SequencerProgram, tuple[ParameterBinding, ...]]:
         if stage.sequence is None:
             raise ValueError("SimulatedEmitter emits a PulseSequence; the stage carries a program")
@@ -81,13 +106,14 @@ class SimulatedEmitter:
         params: list[SequencerParameter] = []
         bindings: list[ParameterBinding] = []
         symbol_params: dict[str, dict[str, str]] = {}
-        for name in stage.axes:
+        program_axes = (*((triggered.axis,) if triggered else ()), *stage.axes)
+        for name in program_axes:
             params.append(SequencerParameter(name=f"n_{name}", unit="", scale=1.0))
             bindings.append(ParameterBinding(parameter=f"n_{name}", source="axis_num", axis=name))
         for b in stage.bindings:
             unit = units[b.symbol]
             scale = scale_for(unit)
-            if b.axis is not None and b.axis in stage.axes:
+            if b.axis is not None and b.axis in program_axes:
                 for suffix, source in (("start", "axis_start"), ("step", "axis_step")):
                     p = f"{b.symbol}_{suffix}"
                     params.append(SequencerParameter(name=p, unit=unit, scale=scale))
@@ -124,7 +150,7 @@ class SimulatedEmitter:
                 continue
             elif op.channel not in channels:
                 raise ValueError(f"measure on unknown channel {op.channel!r}")
-            dims = tuple(f"n_{a}" for a in stage.axes)
+            dims = tuple(f"n_{a}" for a in program_axes)
             if stage.reduction(op.result) == "keep" and stage.shots > 1:
                 dims = (*dims, "shots")
             if not dims:
@@ -139,14 +165,20 @@ class SimulatedEmitter:
                     unit=QUANTITY_UNIT[channels[seq.result_channel(op.result)].quantity],
                 )
             )
-        body = json.dumps(
-            {
-                "sequence": seq.model_dump(mode="json"),
-                "symbols": symbol_params,
-                "reduce": {r.name: stage.reduction(r.name) for r in results},
-            },
-            sort_keys=True,
-        )
+        body_dict: dict = {
+            "sequence": seq.model_dump(mode="json"),
+            "symbols": symbol_params,
+            "reduce": {r.name: stage.reduction(r.name) for r in results},
+        }
+        if triggered is not None:
+            body_dict["triggered"] = {
+                "axis": triggered.axis,
+                "lines": list(triggered.lines),
+                "settle_ns": triggered.settle_ns,
+            }
+        if lines:
+            body_dict["lines"] = dict(lines)
+        body = json.dumps(body_dict, sort_keys=True)
         program = SequencerProgram(
             backend=self.backend,
             body=body,
