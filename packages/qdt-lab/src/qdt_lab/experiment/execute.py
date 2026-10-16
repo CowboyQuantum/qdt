@@ -4,8 +4,9 @@ Loop order: repeats (outermost, executor) → stepped axes row-major (executor: 
 coupled companions, settle, then the stage, the sensed levels, the captures) → the stage (sequencer: its axes and shots). Sensed
 levels are chunked one innermost stepped line per frame; stage frames and capture frames are re-keyed
 into the full index space. A capture arms its `WaveformSense` on a (record, time) slab per stepped
-point and passes every record it yields (ADR 0047). The executor holds no data and never averages
-(ADR 0018).
+point and passes every record it yields (ADR 0047). A shot capture (ADR 0060) arms its scope for one
+record per shot before the stage runs and re-keys each record to its shot after. The executor holds no
+data and never averages (ADR 0018).
 """
 
 import contextlib
@@ -31,6 +32,7 @@ from qdt_schemas.data import (
     IndexSlice,
     LinearCoordinate,
 )
+from qdt_schemas.pulse import Capture
 from qdt_schemas.stand import StandConfig
 
 from ..protocols import BackendFactory, LevelSense, LevelSource, Sequencer, WaveformSense
@@ -130,7 +132,9 @@ class Executor:
         if stage is not None:
             if not isinstance(self._backends.get(stage.instrument), Sequencer):
                 raise TypeError(f"backend {stage.instrument!r} does not satisfy Sequencer")
-            self._slab = stage_slab(plan)
+            # a stage whose program fills nothing (a stimulus with a shot capture) runs over the plan's
+            # own Dataset: the sequencer checks every result it has, which is none
+            self._slab = stage_slab(plan) if plan.stage_program.results else plan.dataset
             self._compiled = self._backends[stage.instrument].compile(plan.stage_program)
 
     def run(self) -> "_PlanSource":
@@ -193,6 +197,13 @@ class Executor:
                         plan.stage_program, plan.stage_parameters, plan, current
                     )
                     sequencer = self._backends[definition.stage.instrument]
+                    # ADR 0060: every shot capture's scope is armed before the shots run, one record
+                    # per shot; its frames are drained after and re-keyed record → shot
+                    armed = []
+                    for c in definition.stage.captures():
+                        ch = plan.channel(c.channel)
+                        slab = shot_capture_slab(plan, c)
+                        armed.append((c, self._backends[ch.instrument].arm(ch.channel, slab, c.result)))
                     for f in sequencer.run(self._compiled, params, self._slab).frames():
                         yield Frame(
                             DatasetChunk(
@@ -209,6 +220,30 @@ class Executor:
                             },
                         )
                         seq += 1
+                    keep_shot = definition.stage.shots > 1
+                    for c, source in armed:
+                        for f in source.frames():
+                            record = next(s for s in f.chunk.region if s.dim == RECORD_DIM)
+                            time_slice = next(s for s in f.chunk.region if s.dim != RECORD_DIM)
+                            shot = IndexSlice(dim=SHOT_DIM, start=record.start, stop=record.stop)
+                            yield Frame(
+                                DatasetChunk(
+                                    dataset_id=plan.dataset.dataset_id,
+                                    seq=seq,
+                                    region=(*prefix, *((shot,) if keep_shot else ()), time_slice),
+                                    variables=f.chunk.variables,
+                                    produced_at=f.chunk.produced_at,
+                                ),
+                                {
+                                    name: np.asarray(a).reshape(
+                                        (1,) * len(prefix)
+                                        + ((a.shape[0],) if keep_shot else ())
+                                        + (a.shape[1],)
+                                    )
+                                    for name, a in f.arrays.items()
+                                },
+                            )
+                            seq += 1
                 if definition.sensed:
                     for s in definition.sensed:
                         ch = plan.channel(s.channel)
@@ -292,6 +327,26 @@ def stage_slab(plan: ExecutionPlan) -> Dataset:
             )
             for v in plan.dataset.data_vars
             if v.name in results
+        ),
+        source=plan.dataset.source,
+        created_at=plan.dataset.created_at,
+    )
+
+
+def shot_capture_slab(plan: ExecutionPlan, capture: Capture) -> Dataset:
+    """The (record, time) Dataset a `WaveformSense` fills for a shot capture at one stepped point: one
+    record per shot on the capture's time axis from 0 (ADR 0060). The executor re-keys record → shot."""
+    shots = plan.definition.stage.shots
+    tdim = plan.definition.capture_time_dim(capture.result)
+    var = next(v for v in plan.dataset.data_vars if v.name == capture.result)
+    coord = next(c for c in plan.dataset.coords if c.dim == tdim)
+    return Dataset(
+        dataset_id=f"{plan.dataset.dataset_id}:{capture.result}",
+        name=f"{plan.dataset.name} ({capture.result})",
+        dims=(Dimension(name=RECORD_DIM, size=shots), Dimension(name=tdim, size=capture.num)),
+        coords=(coord,),
+        data_vars=(
+            DataVariable(name=capture.result, dims=(RECORD_DIM, tdim), unit=var.unit, dtype=var.dtype),
         ),
         source=plan.dataset.source,
         created_at=plan.dataset.created_at,

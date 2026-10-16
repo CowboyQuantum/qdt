@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from qdt_schemas.activity import (
+    CapturedWaveform,
     FixedLevel,
     ParameterBinding,
     SensedLevel,
@@ -13,7 +14,7 @@ from qdt_schemas.activity import (
     SweepDefinition,
     SymbolBinding,
 )
-from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
+from qdt_schemas.pulse import Capture, Difference, Measure, PulseSequence, Step, Symbol
 
 
 def pixel() -> PulseSequence:
@@ -279,3 +280,93 @@ def test_a_stepped_axis_may_couple_other_channels_as_a_virtual_gate():
             ),
             sensed=(SensedLevel(name="I", channel="sensor"),),
         )
+
+
+# --- the shot is the timeline: a capture is an op of the sequence (ADR 0060) -------------------------
+
+
+def _shot_capture(**kw) -> PulseSequence:
+    ops = (
+        Step(channel="P2_pulse", level=0.1, duration=2000),
+        Capture(channel="scope1", duration=10_000, num=200, result="trace"),
+    )
+    return PulseSequence(name="step response", body=ops, **kw)
+
+
+def test_a_capture_is_a_readout_op_of_the_shot():
+    seq = _shot_capture()
+    assert seq.results() == ("trace",) and seq.captures()[0].channel == "scope1"
+    assert seq.result_channel("trace") == "scope1" and "scope1" in seq.channels()
+    assert seq.captures()[0].duration_s == pytest.approx(1e-5)
+    with pytest.raises(ValidationError, match="result names must be unique"):
+        PulseSequence(
+            name="x",
+            body=(
+                Measure(channel="sensor", duration=100, result="trace"),
+                Capture(channel="scope1", duration=100, num=2, result="trace"),
+            ),
+        )
+    with pytest.raises(ValidationError, match="captured once per shot"):
+        PulseSequence(
+            name="x",
+            body=(
+                Capture(channel="scope1", duration=100, num=2, result="a"),
+                Capture(channel="scope1", duration=100, num=2, result="b"),
+            ),
+        )
+    with pytest.raises(ValidationError, match="needs 'trace' measured"):  # not a measure
+        PulseSequence(
+            name="x",
+            body=(
+                Capture(channel="scope1", duration=100, num=2, result="trace"),
+                Measure(channel="sensor", duration=100, result="i"),
+                Difference(result="d", a="trace", b="i"),
+            ),
+        )
+    with pytest.raises(ValidationError):  # the window is fixed: no Symbol, no zero
+        Capture(channel="scope1", duration=0, num=2, result="t")
+
+
+def test_a_shot_capture_keeps_every_shot_and_needs_a_stage_without_stage_axes():
+    stage = SequencerStage(instrument="dot", sequence=_shot_capture(), shots=3)
+    assert stage.captures()[0].result == "trace" and stage.results() == ("trace",)
+    with pytest.raises(ValidationError, match="keeps every shot"):
+        SequencerStage(instrument="dot", sequence=_shot_capture(), shots=3, reduce={"trace": "mean"})
+    d = SweepDefinition(
+        name="step response",
+        axes=(SweepAxis(name="P1", channel="P1", start=0.0, stop=0.1, num=4),),
+        stage=stage,
+    )
+    assert d.capture_time_dim("trace") == "time" and d.capture_grids() == {"trace": (0.0, 1e-5, 200)}
+    with pytest.raises(ValidationError, match="without stage axes"):
+        SweepDefinition(
+            name="x",
+            axes=(SweepAxis(name="P2", channel="P2_pulse", start=0.0, stop=0.1, num=4),),
+            stage=SequencerStage(
+                instrument="dot",
+                axes=("P2",),
+                sequence=PulseSequence(
+                    name="s",
+                    body=(
+                        Step(channel="P2_pulse", level=Symbol(name="v", unit="V"), duration=100),
+                        Capture(channel="scope1", duration=100, num=2, result="trace"),
+                    ),
+                ),
+                bindings=(SymbolBinding(symbol="v", axis="P2"),),
+            ),
+        )
+    with pytest.raises(ValidationError, match="in the shot or per point, not both"):
+        SweepDefinition(
+            name="x",
+            stage=stage,
+            captured=(
+                CapturedWaveform(name="mon", channel="scope1", start_s=0.0, stop_s=1e-3, num=10),
+            ),
+        )
+    # two grids: each variable gets its own time axis
+    two = SweepDefinition(
+        name="x",
+        stage=stage,
+        captured=(CapturedWaveform(name="mon", channel="scope2", start_s=0.0, stop_s=1e-3, num=10),),
+    )
+    assert two.capture_time_dim("trace") == "trace_time" and two.capture_time_dim("mon") == "mon_time"

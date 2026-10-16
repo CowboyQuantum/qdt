@@ -27,7 +27,7 @@ from qdt_schemas.activity import (
     SweepDefinition,
     SymbolBinding,
 )
-from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
+from qdt_schemas.pulse import Capture, Measure, PulseSequence, Step, Symbol
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 
 T0 = datetime(2026, 10, 12, tzinfo=UTC)
@@ -570,3 +570,109 @@ def test_a_coupled_channel_needs_the_capability():
     )
     with pytest.raises(ValueError, match="lacks capability 'level_source'"):
         compile_sweep(definition, bare)
+
+
+# --- the shot is the timeline: captures inside the shot (ADR 0060) ----------------------------------
+
+
+def pulsed_scope_stand() -> StandConfig:
+    """A sequencer with a pulse line and a scope on its own instrument: L2-3's shape."""
+    return StandConfig(
+        stand_id="pulsed-scope",
+        instruments=(
+            InstrumentConfig(id="dac", backend="simulated", capabilities=("level_source",)),
+            InstrumentConfig(id="seq", backend="simulated", capabilities=("sequencer",)),
+            InstrumentConfig(id="scope", backend="simulated", capabilities=("waveform_sense",)),
+        ),
+        channels=(
+            ChannelMap(logical="V", instrument="dac", channel="ch00", quantity="voltage"),
+            ChannelMap(logical="rf", instrument="seq", channel="ao1", quantity="voltage"),
+            ChannelMap(logical="scope1", instrument="scope", channel="1", quantity="voltage"),
+        ),
+    )
+
+
+def step_response(shots=1, axis=False) -> SweepDefinition:
+    seq = PulseSequence(
+        name="step response",
+        body=(
+            Step(channel="rf", level=0.1, duration=2000),
+            Capture(channel="scope1", duration=8_000_000, num=200, result="trace"),
+        ),
+    )
+    return SweepDefinition(
+        name="step response",
+        axes=(SweepAxis(name="V", channel="V", start=0.0, stop=1.0, num=3),) if axis else (),
+        stage=SequencerStage(instrument="seq", sequence=seq, shots=shots),
+    )
+
+
+def test_a_shot_capture_is_one_record_per_shot_on_a_time_axis_from_the_capture():
+    """ADR 0060: the stimulus is a step on the sequencer's line; the readout is a scope window opened
+    in the shot. The scope is armed for one record per shot before the shots run; each record is
+    re-keyed to its shot; time starts at the capture, not at a front-panel trigger."""
+    from qdt_lab.experiment.execute import shot_capture_slab
+    from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
+
+    plan = compile_sweep(step_response(shots=3), pulsed_scope_stand(), {"simulated": SimulatedEmitter()})
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [("shot", 3), ("time", 200)]
+    (coord,) = plan.dataset.coords
+    assert (coord.dim, coord.start, coord.stop, coord.num, coord.unit) == ("time", 0.0, 8e-3, 200, "s")
+    assert [(v.name, v.dims, v.unit) for v in plan.dataset.data_vars] == [("trace", ("shot", "time"), "V")]
+    assert {(c.logical, c.role) for c in plan.channels} == {("rf", "sequencer"), ("scope1", "waveform_sense")}
+    assert plan.stage_program.results == ()  # the sequencer fills nothing: the scope does
+    slab = shot_capture_slab(plan, plan.definition.stage.captures()[0])
+    assert [(d.name, d.size) for d in slab.dims] == [("record", 3), ("time", 200)]
+
+    class SpyScope(SimulatedWaveformSense):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.armed: list[tuple[str, tuple[int | None, ...]]] = []
+
+        def arm(self, channel, dataset, variable):
+            self.armed.append((channel, tuple(d.size for d in dataset.dims)))
+            return super().arm(channel, dataset, variable)
+
+    scope = SpyScope(noise=0.0, response=exponential_decay(2e-3, 0.2))
+    frames = list(
+        Executor(plan, {"seq": SimulatedSequencer(), "scope": scope}).run().frames()
+    )
+    assert scope.armed == [("1", (3, 200))]
+    assert [f.chunk.variables for f in frames] == [("trace",)] * 3
+    assert [(s.dim, s.start, s.stop) for s in frames[1].chunk.region] == [("shot", 1, 2), ("time", 0, 200)]
+    assert frames[-1].chunk.final and not any(f.chunk.final for f in frames[:-1])
+    out = assemble(plan.dataset, frames)
+    t = np.linspace(0.0, 8e-3, 200)
+    np.testing.assert_allclose(out["trace"].values[2], 0.2 * np.exp(-t / 2e-3))
+
+
+def test_a_shot_capture_at_every_stepped_point_with_one_shot_has_no_shot_dimension():
+    from qdt_lab.simulated import SimulatedWaveformSense, low_pass_step
+
+    plan = compile_sweep(step_response(axis=True), pulsed_scope_stand(), {"simulated": SimulatedEmitter()})
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [("V", 3), ("time", 200)]
+    assert plan.dataset.data_vars[0].dims == ("V", "time")
+    dac, scope = SimulatedLevelSource(), SimulatedWaveformSense(noise=0.0, response=low_pass_step(3e-3, 1.0))
+    frames = list(Executor(plan, {"dac": dac, "seq": SimulatedSequencer(), "scope": scope}).run().frames())
+    assert [(s.dim, s.start, s.stop) for s in frames[2].chunk.region] == [("V", 2, 3), ("time", 0, 200)]
+    assert dac.get("ch00") == 1.0  # the axis was stepped before each shot
+    out = assemble(plan.dataset, frames)
+    assert out["trace"].shape == (3, 200) and not np.isnan(out["trace"].values).any()
+
+
+def test_a_shot_capture_on_the_sequencers_own_input_is_refused_for_now():
+    stand = pulsed_scope_stand().model_copy(
+        update={
+            "instruments": (
+                InstrumentConfig(id="dac", backend="simulated", capabilities=("level_source",)),
+                InstrumentConfig(id="seq", backend="simulated", capabilities=("sequencer", "waveform_sense")),
+            ),
+            "channels": (
+                ChannelMap(logical="V", instrument="dac", channel="ch00", quantity="voltage"),
+                ChannelMap(logical="rf", instrument="seq", channel="ao1", quantity="voltage"),
+                ChannelMap(logical="scope1", instrument="seq", channel="ai1", quantity="voltage"),
+            ),
+        }
+    )
+    with pytest.raises(ValueError, match="sequencer's own input"):
+        compile_sweep(step_response(), stand, {"simulated": SimulatedEmitter()})

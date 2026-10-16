@@ -489,3 +489,41 @@ def test_the_server_holds_an_operating_point_that_sweeps_inherit(client):
     assert client.delete("/levels").json() == [] and client.get("/levels").json() == []
     plan = client.post("/sweeps/compile", json=definition()).json()
     assert plan["definition"].get("levels", []) == []
+
+
+def test_a_step_and_its_capture_compose_one_shot_through_the_server(client):
+    """ADR 0060: L2-3 as a shot. The stimulus is a step on the device's pulse line, the readout a
+    window on the simulated scope opened in the same shot; the trace is recorded like any result and
+    the single exponential reads its droop from the stored record."""
+    definition = {
+        "name": "api step response",
+        "stage": {
+            "instrument": DEVICE_ID,
+            "sequence": {
+                "name": "step response",
+                "body": [
+                    {"op": "step", "channel": "P2_pulse", "level": 0.1, "duration": 2000},
+                    {"op": "capture", "channel": "scope1", "duration": 8_000_000, "num": 800, "result": "trace"},
+                ],
+            },
+            "shots": 1,
+        },
+    }
+    plan = client.post("/sweeps/compile", json=definition)
+    assert plan.status_code == 200, plan.text
+    assert [d["name"] for d in plan.json()["dataset"]["dims"]] == ["time"]
+    assert plan.json()["dataset"]["coords"][0]["start"] == 0.0
+    options = {"seed": 3, "tau_s": 1.5e-3, "droop_v": 0.3, "scope_noise_v": 1e-3}
+    run = Run.model_validate(
+        client.post("/runs", json={"definition": definition, "options": options}).json()
+    )
+    run = wait_for(client, run.run_id)
+    assert run.state == "completed", run.error
+    r = client.post(
+        f"/records/{run.record_id}/results",
+        json={"method": "qdt_analysis.exponential.fit_exponential", "parameters": {}},
+    )
+    assert r.status_code == 201, r.text
+    result = AnalysisResult.model_validate(r.json())
+    assert result.status == "ok", result.message
+    assert result.estimate("tau").value == pytest.approx(1.5e-3, rel=0.02)
