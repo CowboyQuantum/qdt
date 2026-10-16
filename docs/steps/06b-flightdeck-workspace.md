@@ -73,4 +73,20 @@ Ordered; one session each.
 - Whether uploaded themes are shared through the registry (a `Theme` record) or stay per browser. Default: per browser.
 
 ## Status
-NOT STARTED
+IN PROGRESS (opened 2026-10-15 on the human's "go with 6b"; ADR 0054 accepted with it).
+Session 1 (2026-10-15): **the shell** (deliverable 1). Themes as data: `themes/{slate,paper,steel}.json`,
+`theme.schema.json`, `workspace/theme.ts` (validator, `themeStyle`, `applyTheme`, `ThemeManager` with
+load/export/per-browser persistence; the schema and the validator are held in step by a test; no Google Fonts
+link, the Plex stacks fall back to system fonts at an offline bench). The strip (`workspace/strip.ts`): stand and
+device from the API, source, live pill, next-run line, Run (submits the control panel's form through the bus),
+telemetry (`#status`), progress, messages, replay picker, theme menu. The layout model (`workspace/layout.ts`,
+pure; split refused below `MIN_PANE_HEIGHT`, close keeps a column's last pane, sizes normalised, widths clamped,
+`flightdeck.layout.v1` in localStorage behind try/catch), the widget contract and registry (`workspace/widget.ts`;
+a bus scoped per mount is disposed on unmount), the typed bus (`workspace/bus.ts`), the renderer
+(`workspace/workspace.ts`: panes reconciled by id, pointer and keyboard gutters). Widgets: `plot` (the old stage,
+one instance, its selects in the pane head; emits `stream:state` and `map:click`), `control` (the Step 4b panel
+unchanged; listens for `run:request` and `map:click`), `empty`. `main.ts` is 60 lines of wiring. No behaviour
+change: the six Step 4b–6 e2e tests pass untouched; `e2e/workspace.test.ts` (3) covers the default layout, the
+theme on `:root`, split/close/persist, the keyboard gutters and the theme menu; 28 unit tests for layout, widget,
+bus and theme. Left for deliverable 2: N plot panes (the centre's `+` is disabled while `plot` is single), the
+⚙ menu, history; the WebGL2 context cap (Open decisions).
