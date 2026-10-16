@@ -1,0 +1,32 @@
+{
+  "name": "ember",
+  "scheme": "dark",
+  "tokens": {
+    "bg": "#141010",
+    "panel": "#1C1516",
+    "panel-2": "#241B1C",
+    "line": "#3A2C2E",
+    "line-strong": "#55403F",
+    "text": "#F1E6E0",
+    "text-2": "#B59C94",
+    "text-3": "#7E6A64",
+    "live": "#FF7A45",
+    "live-ink": "#1A1010",
+    "ok": "#9BD3A8",
+    "warn": "#FFC36B",
+    "sel": "#E8B88A"
+  },
+  "type": {
+    "sans": "\"IBM Plex Sans\",system-ui,sans-serif",
+    "mono": "\"IBM Plex Mono\",ui-monospace,monospace",
+    "size": "14px"
+  },
+  "shape": {
+    "radius": "4px",
+    "paneRadius": "4px"
+  },
+  "flags": [
+    "graticule",
+    "glow"
+  ]
+}
