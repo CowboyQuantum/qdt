@@ -2,7 +2,8 @@
 
 Any other command raises ValueError, so a typo in the driver fails the suite. Each channel drives a
 resistive load (`load_ohm`, default 1 MΩ): `read? (@n)` returns setpoint / load, after sleeping the
-channel's aperture if one was set.
+channel's aperture if one was set. A channel in list mode (ADR 0064) advances one point per
+`trigger(source)`: `*TRG` fires `bus`; a test fires `ext<k>` the way the OPX's marker line does.
 """
 
 import re
@@ -21,6 +22,14 @@ _VOLT = re.compile(rf"sour(\d+):volt {_NUM}")
 _VOLT_Q = re.compile(r"sour(\d+):volt\?")
 _APER = re.compile(rf"sens(\d+):aper {_NUM}")
 _READ_Q = re.compile(r"read\? \(@(\d+)\)")
+_MODE_LIST = re.compile(r"sour(\d+):dc:volt:mode list")
+_LIST_VOLT = re.compile(r"sour(\d+):list:volt ([-+0-9.eE,]+)")
+_LIST_TMOD = re.compile(r"sour(\d+):list:tmod step")
+_LIST_COUN = re.compile(r"sour(\d+):list:coun 1")
+_LIST_DIR = re.compile(r"sour(\d+):list:dir up")
+_TRIG_SOUR = re.compile(r"sour(\d+):dc:trig:sour (bus|ext[1-4])")
+_INIT = re.compile(r"sour(\d+):dc:init")
+_ABOR = re.compile(r"sour(\d+):dc:abor")
 
 
 class Qdac2Emulator:
@@ -31,6 +40,10 @@ class Qdac2Emulator:
         self.volts: dict[int, float] = {}
         self.mode: dict[int, str] = {}
         self.aperture: dict[int, float] = {}
+        self.lists: dict[int, list[float]] = {}
+        self.trigger_source: dict[int, str] = {}
+        self.armed: dict[int, int] = {}  # channel -> index of the point last played (-1: none yet)
+        self.triggers: list[str] = []  # every trigger fired, in order
         self.log: list[str] = []
         self.closed = False
 
@@ -49,8 +62,36 @@ class Qdac2Emulator:
             self.volts[self._ch(m[1])] = float(m[2])
         elif m := _APER.fullmatch(command):
             self.aperture[self._ch(m[1])] = float(m[2])
+        elif m := _MODE_LIST.fullmatch(command):
+            self.mode[self._ch(m[1])] = "list"
+        elif m := _LIST_VOLT.fullmatch(command):
+            self.lists[self._ch(m[1])] = [float(v) for v in m[2].split(",")]
+        elif _LIST_TMOD.fullmatch(command) or _LIST_COUN.fullmatch(command) or _LIST_DIR.fullmatch(command):
+            pass
+        elif m := _TRIG_SOUR.fullmatch(command):
+            self.trigger_source[self._ch(m[1])] = m[2]
+        elif m := _INIT.fullmatch(command):
+            n = self._ch(m[1])
+            if self.mode.get(n) != "list" or n not in self.lists or n not in self.trigger_source:
+                raise ValueError(f"channel {n}: init needs list mode, a list and a trigger source")
+            self.armed[n] = -1
+        elif m := _ABOR.fullmatch(command):
+            self.armed.pop(self._ch(m[1]), None)
+        elif command == "*TRG":
+            self.trigger("bus")
         else:
             raise ValueError(f"emulator does not understand {command!r}")
+
+    def trigger(self, source: str) -> None:
+        """A trigger on `source` (`bus`, `ext1`..): every armed channel listening there plays its next
+        point; after the last point the channel stays there, still armed."""
+        self.triggers.append(source)
+        for n, i in list(self.armed.items()):
+            if self.trigger_source.get(n) != source:
+                continue
+            i = min(i + 1, len(self.lists[n]) - 1)
+            self.armed[n] = i
+            self.volts[n] = self.lists[n][i]
 
     def query(self, command: str) -> str:
         self.log.append(command)

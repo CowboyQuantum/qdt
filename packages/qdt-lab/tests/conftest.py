@@ -147,6 +147,43 @@ def level_source(request, closing):
     return backend
 
 
+class _RenamedTriggered(_Renamed):
+    """`_Renamed` for a `TriggeredLevelSource` (the QDAC-II's list mode, ADR 0064)."""
+
+    def load(self, channel: str, values) -> None:
+        self._d.load(self._MAP.get(channel, channel), values)
+
+    def advance(self, channel: str) -> None:
+        self._d.advance(self._MAP.get(channel, channel))
+
+    def release(self, channel: str) -> None:
+        self._d.release(self._MAP.get(channel, channel))
+
+
+def _qdac2_triggered_hardware():
+    """The QDAC-II with its list advancing on the bus trigger: the suite fires it from the host.
+    Probe 05 is where an external input (`ext1`, the OPX's marker line) is proven."""
+    return _RenamedTriggered(
+        QDac2.from_config(
+            _instrument("dac0", "qdac2", ("triggered_level_source",), "QDT_QDAC2_ADDRESS"), ()
+        )
+    )
+
+
+TRIGGERED_LEVEL_SOURCE_BACKENDS = [
+    pytest.param(SimulatedLevelSource, id="simulated"),
+    pytest.param(lambda: _RenamedTriggered(qdac2_emulated()), id="qdac2-emulated"),
+    pytest.param(_qdac2_triggered_hardware, id="qdac2", marks=pytest.mark.hardware),
+]
+
+
+@pytest.fixture(params=TRIGGERED_LEVEL_SOURCE_BACKENDS)
+def triggered_level_source(request, closing):
+    backend = request.param()
+    closing.append(backend)
+    return backend
+
+
 def _simulated_loopback(sense_channels: tuple[ChannelMap, ...] = ()):
     source = SimulatedLevelSource.from_config(
         InstrumentConfig(id="src", backend="simulated", capabilities=("level_source",)), ()

@@ -10,6 +10,9 @@ the one non-terminal protocol: it runs a compiled, self-clocked program and stre
     WaveformSense   arm a terminal to fill a declared record Dataset         (scope, OPX input)
     Sequencer       compile once, run with int parameters into a Dataset     (OPX)
 
+    TriggeredLevelSource  a LevelSource that also steps through a loaded list of levels, one per
+                          trigger (QDAC-II list mode on an external trigger input; ADR 0064)
+
 A driver implements every protocol its instrument honours (an SMU is a LevelSource and a LevelSense on
 the same terminal; `get` returns what was applied, `sense` what is measured). The physical quantity
 (voltage, current) is a property of the channel, declared in `qdt_schemas.stand.ChannelMap` together
@@ -22,10 +25,11 @@ single conformance suite in tests/.
 
 A backend learns its channels' declarations (quantity, integration time) once, when a `BackendFactory`
 builds it from its `InstrumentConfig` and `ChannelMap`s; the methods never carry them (ADR 0021).
-The five protocols and that construction convention are frozen by ADR 0021.
+The five protocols and that construction convention are frozen by ADR 0021. `TriggeredLevelSource`
+is added beside them by ADR 0064, not edited into `LevelSource`.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -119,3 +123,29 @@ class BackendFactory(Protocol):
     def __call__(
         self, instrument: InstrumentConfig, channels: tuple[ChannelMap, ...]
     ) -> object: ...
+
+
+@runtime_checkable
+class TriggeredLevelSource(LevelSource, Protocol):
+    """A `LevelSource` whose terminal can also step through a loaded list of levels, one point per
+    trigger (ADR 0064): the inner loop of a sweep paced by a sequencer's marker line rather than by
+    `set` and a settle per point. Which trigger input the instrument listens on is its own business
+    (its `InstrumentConfig.settings`), wired in the stand from a sequencer's marker channel."""
+
+    def load(self, channel: str, values: Sequence[float]) -> None:
+        """Load `values` (SI unit of the channel's declared quantity) on `channel` and arm it: the
+        output moves to `values[0]` on the first trigger and one point further on each later one;
+        after the last point it holds there. A second `load` on the channel replaces the list and
+        re-arms. Until the first trigger the channel holds the level it had."""
+        ...
+
+    def advance(self, channel: str) -> None:
+        """Fire the trigger from the host: what the hardware trigger does, for a sweep with no
+        sequencer and for the conformance suite. Raises ValueError when the armed trigger input
+        cannot be fired from the host (an external input wired to a sequencer)."""
+        ...
+
+    def release(self, channel: str) -> None:
+        """Leave list mode on `channel`, holding its present level; `set` and `get` apply again.
+        Idempotent."""
+        ...
