@@ -70,7 +70,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=outer_channel]")).toBe("P1");
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=inner_channel]")).toBe("P2_pulse");
-  expect((await page.locator(".pane[data-widget=analysis] select[name=method] option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Single exponential"]);
+  expect((await page.locator(".pane[data-widget=analysis] select[name=method] option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Sensor peak", "Single exponential"]);
 
   // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region)
   await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e stability");
@@ -305,21 +305,25 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   page.on("pageerror", (e) => console.error("page error:", e));
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
-  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=tuneup] input[name=node]").length === 3);
-  expect(await page.locator(".pane[data-widget=tuneup] .node-id").allTextContents()).toEqual(["sensor-operating-point", "charge-lattice", "virtual-lattice"]);
+  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=tuneup] input[name=node]").length === 4);
+  expect(await page.locator(".pane[data-widget=tuneup] .node-id").allTextContents()).toEqual(["sensor-operating-point", "sensor-wing", "charge-lattice", "virtual-lattice"]);
   // a cold sensor so the diamonds resolve (ADR 0030); the sensor node decides where the stability nodes park SG
   await page.fill(".pane[data-widget=tuneup] input[name=options]", '{"seed": 2, "noise": false, "sensor_width_v": 0.01}');
   await page.locator(".pane[data-widget=tuneup] [data-start]").click();
   await page.waitForFunction(() => /queued|running/.test(document.querySelector(".pane[data-widget=tuneup] .tuneup-state")?.textContent ?? ""));
   await page.waitForFunction(() => /· completed/.test(document.querySelector(".pane[data-widget=tuneup] .tuneup-head")?.textContent ?? ""), null, { timeout: 120_000 });
   const lines = await page.locator(".pane[data-widget=tuneup] .dag li").allTextContents();
-  expect(lines).toHaveLength(3);
+  expect(lines).toHaveLength(4);
   expect(lines[0]).toMatch(/sensor-operating-point · accepted/);
-  expect(lines[0]).toMatch(/sg_operating_v=/);
-  expect(lines[1]).toMatch(/charge-lattice · accepted/);
-  expect(lines[1]).toMatch(/c_21=/);
-  expect(lines[2]).toMatch(/virtual-lattice · accepted/);
-  expect(lines[2]).toMatch(/residual_a=/);
+  expect(lines[0]).toMatch(/sg_peak_v=/);
+  // ADR 0062: the wing node fits the width and parks the gate on the wing; the server then holds it
+  expect(lines[1]).toMatch(/sensor-wing · accepted/);
+  expect(lines[1]).toMatch(/sg_width_v=/);
+  expect(lines[2]).toMatch(/charge-lattice · accepted/);
+  expect(lines[2]).toMatch(/c_21=/);
+  expect(lines[3]).toMatch(/virtual-lattice · accepted/);
+  expect(lines[3]).toMatch(/residual_a=/);
+  await page.waitForFunction(() => /held: SG = /.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""), null, { timeout: 10_000 });
   // both sweeps were runs and records like any other
   await page.waitForFunction(() => (document.querySelector(".pane[data-widget=history]")?.textContent ?? "").includes("virtual-gate lattice"), null, { timeout: 20_000 });
   await page.close();

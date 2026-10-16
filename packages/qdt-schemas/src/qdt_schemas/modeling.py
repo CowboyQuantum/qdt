@@ -185,6 +185,21 @@ class InputBinding(QdtModel):
             "'axes.0.couplings.P2' or 'stage.sequence.body.0.level.scale'."
         ),
     )
+    scale: float = Field(
+        default=1.0, description="The target takes `scale · output + offset` (ADR 0062); 1 by default."
+    )
+    offset: float = Field(
+        default=0.0,
+        description="Added after scaling, in the target's unit, e.g. ±half a window around a peak (ADR 0062).",
+    )
+    held: str | None = Field(
+        default=None,
+        description=(
+            "Fallback for a retune (ADR 0062): a logical channel whose level the server holds as the "
+            "operating point; its value stands in for the upstream output when the upstream node is not "
+            "in the tune-up, so the node can run on its own."
+        ),
+    )
 
 
 class CalibrationNode(QdtModel):
@@ -205,6 +220,13 @@ class CalibrationNode(QdtModel):
     decision: DecisionRule = Field(description="The rule that judges the method's result.")
     depends_on: tuple[str, ...] = Field(
         default=(), description="Node ids whose accepted outcomes this node needs; unique."
+    )
+    holds: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Logical channel → output name: when the node is accepted, the server holds that output as "
+            "the channel's operating point (ADR 0053, 0062), so the stand sits where the node decided."
+        ),
     )
     inputs: tuple[InputBinding, ...] = Field(
         default=(),

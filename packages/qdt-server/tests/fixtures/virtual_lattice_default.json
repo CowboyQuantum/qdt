@@ -12,21 +12,21 @@
   "node_id": "virtual-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "55c2e6372ae8409198def6576695c8cc",
+    "outcome_id": "b5a9d8f020bb4fbebdad3ddf7264dfbd",
     "node_id": "virtual-lattice",
-    "tuneup_id": "210925fe24954fb8b65861efc0154bcb",
+    "tuneup_id": "e264367980f34a9f94887fbcd82dfce9",
     "scenario_id": "default-occupied-window",
-    "record_id": "c58bef9cb08449859bada7c0d299afdb",
-    "result_id": "1622494b72a84d8b8f82abc191a47cd6",
+    "record_id": "012771a625164d898422b137278c8954",
+    "result_id": "0bbc9f080c56475c87b549a303d1e0c7",
     "status": "accepted",
     "message": "residual cross ratios -0.008, -0.004",
     "outputs": {
       "residual_a": -0.007565483661913145,
-      "residual_b": -0.0042526756186324205,
+      "residual_b": -0.004252675618631585,
       "l_11": 71.45852334111942,
       "l_22": 68.05812950046698
     },
-    "created_at": "2026-10-15T20:59:33.127133Z",
+    "created_at": "2026-10-16T04:59:09.523066Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.straightened"
@@ -50,7 +50,7 @@
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": -0.28942914797636377,
+      "value": -0.2894291479763069,
       "stderr": null,
       "unit": "1/V"
     },
@@ -71,7 +71,7 @@
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": -0.0042526756186324205,
+      "value": -0.004252675618631585,
       "stderr": null,
       "unit": ""
     }
@@ -82,5 +82,5 @@
     "l_11": 71.5059843965396,
     "l_22": 68.52656838001712
   },
-  "created_at": "2026-10-15T20:59:33.128946Z"
+  "created_at": "2026-10-16T04:59:09.538490Z"
 }

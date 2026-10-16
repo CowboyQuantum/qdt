@@ -206,12 +206,57 @@ def sensor_operating_point(
     )
 
 
+SENSOR_WING_NAME = "qdt_tuning.decisions.sensor_wing"
+SENSOR_WING_VERSION = "1"
+
+
+def sensor_wing(result: AnalysisResult, *, min_sensitivity_a_per_v: float = 0.0) -> Decision:
+    """Judge a sensor-peak result (`qdt_analysis.sensor_peak.fit_sensor_peak`, ADR 0062) and park the
+    sensor gate on the fitted wing: the inflection of the peak, where the current changes fastest with
+    charge. Unlike `sensor_operating_point`, nothing here is typed: the offset is the fitted width times
+    a constant of the lineshape, with an error.
+
+    Accepted when the result is `ok` with a positive width and height and a sensitivity of at least
+    `min_sensitivity_a_per_v`. Outputs: `sg_peak_v`, `sg_width_v`, `sg_operating_v` (the wing),
+    `sensitivity_a_per_v`.
+    """
+    if result.status != "ok":
+        return Decision("failed", f"the method failed: {result.message}", {})
+    try:
+        peak = result.estimate("peak_v")
+        width = result.estimate("width_v")
+        wing = result.estimate("wing_v")
+        sensitivity = result.estimate("sensitivity_a_per_v").value
+    except KeyError as e:
+        return Decision("failed", f"the result lacks a peak estimate: {e}", {})
+    if not (width.value > 0 and result.estimate("height_a").value > 0):
+        return Decision("rejected", "the peak needs a positive width and height", {})
+    if sensitivity < min_sensitivity_a_per_v:
+        return Decision(
+            "rejected",
+            f"sensitivity {sensitivity:.3g} A/V is below {min_sensitivity_a_per_v:.3g}",
+            {},
+        )
+    err = f" ± {wing.stderr:.2g}" if wing.stderr is not None else ""
+    return Decision(
+        "accepted",
+        f"peak at {peak.value:+.4f} V, width {width.value:.4f} V; wing at {wing.value:+.4f}{err} V",
+        {
+            "sg_peak_v": float(peak.value),
+            "sg_width_v": float(width.value),
+            "sg_operating_v": float(wing.value),
+            "sensitivity_a_per_v": float(sensitivity),
+        },
+    )
+
+
 Rule = Callable[..., Decision]
 
 RULES: dict[str, tuple[str, Rule]] = {
     VIRTUAL_GATES_NAME: (VIRTUAL_GATES_VERSION, virtual_gates),
     STRAIGHTENED_NAME: (STRAIGHTENED_VERSION, straightened),
     SENSOR_OPERATING_POINT_NAME: (SENSOR_OPERATING_POINT_VERSION, sensor_operating_point),
+    SENSOR_WING_NAME: (SENSOR_WING_VERSION, sensor_wing),
 }
 """Rule name → (version, callable). A rule is applicable through `apply` only if it is here."""
 

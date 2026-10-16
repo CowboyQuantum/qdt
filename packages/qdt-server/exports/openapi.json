@@ -296,6 +296,14 @@
             "title": "Description",
             "type": "string"
           },
+          "holds": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Logical channel \u2192 output name: when the node is accepted, the server holds that output as the channel's operating point (ADR 0053, 0062), so the stand sits where the node decided.",
+            "title": "Holds",
+            "type": "object"
+          },
           "inputs": {
             "default": [],
             "description": "Values of `definition` filled from upstream outputs before the node runs; unique targets.",
@@ -1385,17 +1393,41 @@
         "additionalProperties": false,
         "description": "Where a node's definition takes a value from an upstream node's accepted outputs (ADR 0049).",
         "properties": {
+          "held": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fallback for a retune (ADR 0062): a logical channel whose level the server holds as the operating point; its value stands in for the upstream output when the upstream node is not in the tune-up, so the node can run on its own.",
+            "title": "Held"
+          },
           "node_id": {
             "description": "The upstream node; must be in `depends_on`.",
             "minLength": 1,
             "title": "Node Id",
             "type": "string"
           },
+          "offset": {
+            "default": 0.0,
+            "description": "Added after scaling, in the target's unit, e.g. \u00b1half a window around a peak (ADR 0062).",
+            "title": "Offset",
+            "type": "number"
+          },
           "output": {
             "description": "The name in that node's `NodeOutcome.outputs`.",
             "minLength": 1,
             "title": "Output",
             "type": "string"
+          },
+          "scale": {
+            "default": 1.0,
+            "description": "The target takes `scale \u00b7 output + offset` (ADR 0062); 1 by default.",
+            "title": "Scale",
+            "type": "number"
           },
           "schema_version": {
             "default": 1,

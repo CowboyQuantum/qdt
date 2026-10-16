@@ -19,7 +19,7 @@ from qdt_schemas.modeling import SimResult
 if __name__ == "__main__":
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for name, (scenario, builders) in SCENARIOS.items():
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:  # Windows: sqlite may still be open
             outcomes, result, truth = run_scenario(scenario, builders, pathlib.Path(tmp))
         outcome = outcomes[-1]  # the tune-up's last node is the fixture's
         fixture = SimResult(

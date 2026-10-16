@@ -5,72 +5,80 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6b/follow-ups` (PR against `main`; the human merges). PRs #25–#58 merged 2026-10-14/16.
-**Last session:** 2026-10-16, Flight Deck follow-ups (not at the bench), on the human's "let's clear up the other
-flight deck follow ups" (ADR 0061). **Colormaps** `viridis`/`magma`/`grey` as a per-pane view setting: viridis keeps
-its polynomial (the pixel oracle), the others are a 256-entry LUT both renderers read alike; the pixel e2e runs
-every renderer × colormap against the CPU reference. **A pane remembers its view** across a reload (`Pane.state`
-in the layout; the plot keeps variable, minus, transform, swap, cut, colormap; never a dataset id). **Web fonts**
-are a per-browser opt-in in the theme menu, off by default. **The UI queues runs**: the server executes one at a
-time; Run is never refused; the strip shows the executing run and how many wait; abort takes the running one.
-**A tune-up's `c_21`/`c_12`** are offered to the Virtual gates widget with the gates they couple, applied on one
-click, never unasked. **The record a plot pane shows** is a choice in the Analysis picker.
+**Branch:** `step-6/sensor-wing` (PR against `main`, stacked on `step-6b/follow-ups` until #59 merges; the
+human merges). PRs #25–#58 merged 2026-10-14/16; #59 (Flight Deck follow-ups) open.
+**Last session:** 2026-10-16, a Step 6 open decision (not at the bench), on the human's "I want the analysis to
+naturally sit on the wing of the sensor peak for a retune" (ADR 0062). **`fit_sensor_peak`** (qdt-analysis): the
+Coulomb peak on a sensor-gate trace fitted as `background + height·sech²((V − peak)/width)`; the wing, the
+inflection at atanh(1/√3) ≈ 0.66 widths from the peak on the side asked, with its error from the fit; the
+sensitivity there. **`sensor_wing`** rule: nothing typed; outputs the peak, the width, the wing as
+`sg_operating_v`, the sensitivity. **`sensor-wing`** node: a short sweep of the sensor gate (±50 mV, 101 points)
+at a 10 µV bias (linear response, so the width is the thermal one); after `sensor-operating-point` it is
+centred on the diamonds' peak; alone it is a **retune** centred on the level the server holds for the gate
+(`InputBinding.held`, with `scale`/`offset` for the window's ends; the DAG allows the absent upstream). On
+acceptance the server **holds** the gate at the wing (`CalibrationNode.holds`, ADR 0053's `/levels`).
+`charge-lattice` binds its sensor level from the wing node; the chain is four nodes. Cold scenario: width
+0.0101 V (model 0.01), wing −0.0534 V; the lattice then runs there. `flank_offset_v` no longer parks anything.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
-1. Run the three-node tune-up (sensor-operating-point → charge-lattice → virtual-lattice) on a real device through
-   `POST /tuneups`; compare outcomes to the sim's (`SimResult` fixtures). Confirmation, not discovery: a surprise
-   is a bug in a sim scenario or a node, filed as such.
-2. The diamond estimator on a cold sensor (ADR 0030); `flank_offset_v` against a real peak (ADR 0052).
+1. Run the four-node tune-up (sensor-operating-point → sensor-wing → charge-lattice → virtual-lattice) on a real
+   device through `POST /tuneups`; compare outcomes to the sim's (`SimResult` fixtures). Confirmation, not
+   discovery: a surprise is a bug in a sim scenario or a node, filed as such.
+2. The diamond estimator on a cold sensor (ADR 0030); the fitted width and wing against a real peak (ADR 0062),
+   then a retune after an hour of drift.
 3. A dated report in `bench/reports/` (the ladder has no fridge report format yet; write one with the first run).
 
 ## Done
-- **Steps 0–6 and 6b DONE.** ADR 0001–0061. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+- **Steps 0–6 and 6b DONE.** ADR 0001–0062. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
   stand/activity/pulse (0022; amended additively by 0037, 0038, 0047, 0049, 0060), identity/envelope/
-  `qdt-hdf5-v1` (0028), modeling (0033; Step 6 objects beside it by 0048–0050), control (0036; amended
-  additively by 0046, 0050; `ChannelLevel` beside it by 0057). Registry DDL v3 (0026, 0029, 0050).
-- **Step 6b:** the workspace (0054–0059) and its follow-ups (0061). **ADR 0060:** the shot is the timeline; a
-  `capture` op; no `PlayedWaveform`.
+  `qdt-hdf5-v1` (0028), modeling (0033; Step 6 objects beside it by 0048–0050; `InputBinding.scale/offset/held`
+  and `CalibrationNode.holds` by 0062), control (0036; amended additively by 0046, 0050; `ChannelLevel` beside
+  it by 0057). Registry DDL v3 (0026, 0029, 0050).
+- **Step 6b:** the workspace (0054–0059) and its follow-ups (0061). **ADR 0060:** the shot is the timeline.
+- **This session:** `qdt_analysis.sensor_peak`; the `sensor_wing` rule and `sensor-wing` node; `holds` and the
+  held-level fallback in the server's tune-up runner; fixtures `sensor_wing_cold` (new) and `virtual_lattice_cold`
+  (regenerated: the lattice at the wing); the Tune-up e2e runs four nodes and sees `SG` held afterwards.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- 401 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
+- 410 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
   hardware-only in `bench/`; Flight Deck 124 unit tests and 13 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6b/follow-ups` awaits the human.
+- Nothing uncommitted. PR for `step-6/sensor-wing` awaits the human (after #59).
 
 ## Known broken / not yet real
-- **Magma is nine anchors, linear between**: close to matplotlib's, not its curve; a fit like viridis's when
-  someone needs the reference. No diverging colormap yet (a derivative would want one).
-- **A shot capture runs on the simulator only** (ADR 0060): the sequencer-to-scope trigger is not in the
-  protocols; the OPX driver refuses a `capture` op; on the bench L2-3 stays the per-point capture. A capture on
-  the sequencer's own input is refused at compile; a shot capture allows no stage axes; the simulated scope's
-  record does not depend on the stimulus.
-- **The UI's run queue has no reordering**: the server has none.
+- **A retune needs a held level to centre on**: the first tune-up or a manual set provides it; the direct
+  `run_node`/`run_tuneup` paths (tests, fixtures) have no stand state and refuse the fallback with a message. A
+  drift of more than half the window (25 mV) lands on the wrong peak; the diamonds' period could catch that later.
+- **The fitted width is the thermal width only in linear response**: a bias window broadens it by about eV/α
+  in gate volts. The node holds 10 µV; a stand whose sensor needs more bias gets a wider "width" and a wing
+  further out, which is still where the slope is steepest at that bias.
+- **The simulated sensor's neighbouring peaks** bias the fitted background (their tails are in the window).
+- **A shot capture runs on the simulator only** (ADR 0060); the OPX trigger line is the next bench slice.
+- **The UI's run queue has no reordering**; magma is nine anchors (0061).
 - Flight Deck carry-overs: the simulator's live device and a run's device diverge (0057); a simulated gate reads
   back null; the Levels widget polls; limits and the coupling matrix are per browser; a stage sweep needs the
-  Pulse widget mounted; Run compiles again when stale (0056); the Script widget runs nothing (0059); the strip's
-  stand/device read "?" without a server.
+  Pulse widget mounted; Run compiles again when stale (0056); the Script widget runs nothing (0059); no Google
+  Fonts link unless asked (0061).
 - **`provenance_check.sh` matches bare substrings**; a word-boundary pattern is a one-line fix.
 - Step 6 carry-overs: the held operating point is server memory (a `stand_state` table later); click-to-set only
-  for axes named after stand DC channels; `flank_offset_v` is a judgment (0052); the diamonds method needs a cold
-  sensor (0030); `TuneUp` not persisted, one at a time, no resume/parallel (0050); the bench has one OPX pulse
-  line and no `SG`/`bias`/`sensor`; `detect_transitions` reports `ok` on a constant map; `SimScenario.model`
-  overrides scalars only; QDAC-II quirks (BENCH.md); captures sequential; the trace view has no axes/labels/
-  output curve; the exponential's edge detector is a heuristic (0046); the plane fit is OLS (0045); OPX input
-  offset not applied; `bench_report.py` does not redact serials; qm-qua deprecations; zero-clipping in the dot
-  model (0020); Postgres suite only in CI; `FINISH_LINE.md` TODO (human); Windows pnpm via `corepack pnpm`.
+  for axes named after stand DC channels; the diamonds method needs a cold sensor (0030); `TuneUp` not persisted,
+  one at a time, no resume/parallel (0050); the bench has one OPX pulse line and no `SG`/`bias`/`sensor`;
+  `detect_transitions` reports `ok` on a constant map; `SimScenario.model` overrides scalars only; QDAC-II quirks
+  (BENCH.md); captures sequential; the trace view has no axes/labels/output curve; the exponential's edge
+  detector is a heuristic (0046); the plane fit is OLS (0045); OPX input offset not applied; `bench_report.py`
+  does not redact serials; qm-qua deprecations; zero-clipping in the dot model (0020); Postgres suite only in
+  CI; `FINISH_LINE.md` TODO (human); Windows pnpm via `corepack pnpm`.
 
 ## Next action
 **Human:**
-1. Merge the PR; try the ⚙ menu's colormap, a reload, two Runs in a row, and a tune-up's "apply" in the Virtual
-   gates widget in `pnpm dev` against `python -m qdt_server`.
-2. **Name the next slice.** The bench slices ADR 0060 opened: the sequencer-to-scope trigger line (protocol +
-   stand + OPX driver) or a capture on the OPX's own ADC. The other Step 6 open decisions: sub-ms stepping; how
-   a sense range is declared; a rest level at a sweep's end. A `sensor_peak` method. A bench session (second OPX
-   pulse line, the QDevil report). Step 7 when sign-off arrives.
+1. Merge #59, then this PR. In `pnpm dev` against `python -m qdt_server`: run the four-node tune-up, watch the
+   Levels widget show `SG` held at the wing, then run `sensor-wing` alone (uncheck the others) as a retune.
+2. **Name the next slice.** Bench: the sequencer-to-scope trigger line or an OPX-ADC capture (ADR 0060); a second
+   OPX pulse line; the QDevil report. Software: sub-ms stepping; how a sense range is declared; a rest level at
+   a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches. Step 7 when sign-off arrives.
 
-**Then (sessions):** the chosen item, on its own branch, with its ADR. A `tuneups` table and a `stand_state`
-table when something reads them; resume and parallel branches when a DAG needs them.
+**Then (sessions):** the chosen item, on its own branch, with its ADR.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -93,8 +101,8 @@ table when something reads them; resume and parallel branches when a DAG needs t
 - **2026-10-16:** PRs #52–#57 merged without a word, so Step 6b's six sessions (ADR 0054–0059) followed the step
   file's order; "the flight deck ci didn't pass" (two timing fixes in #56); on `PlayedWaveform`: "perhaps we need
   to go back to how sweeps and pulse sequences (including readout) get composed", then "go ahead and revise the
-  adr and implement": the shot is the timeline (ADR 0060); **"let's clear up the other flight deck follow ups"**
-  (ADR 0061).
+  adr and implement": the shot is the timeline (ADR 0060); "let's clear up the other flight deck follow ups"
+  (ADR 0061); **"I want the analysis to naturally sit on the wing of the sensor peak for a retune"** (ADR 0062).
 
 ## Decisions pending
 - **What follows** (the list above).
@@ -104,5 +112,5 @@ table when something reads them; resume and parallel branches when a DAG needs t
 - Step 6's Open decisions (its file): sub-ms stepping; how a sense range is declared; a rest level at a sweep's
   end; the time-series view's remainder; the deferred physics.
 - A `tuneups` table and a `stand_state` table; resume and parallel branches.
-- `detect_transitions` on a noiseless constant map (a method `VERSION` bump); a `sensor_peak` method.
+- `detect_transitions` on a noiseless constant map (a method `VERSION` bump).
 - `bench_report.py` and `*IDN?` serials; the dot model's zero-clipping; the diamond estimator on warm edges.

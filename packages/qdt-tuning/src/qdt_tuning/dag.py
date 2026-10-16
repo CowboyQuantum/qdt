@@ -15,7 +15,13 @@ def order(nodes: Iterable[CalibrationNode]) -> tuple[CalibrationNode, ...]:
         raise ValueError("node ids must be unique")
     by_id = {n.node_id: n for n in given}
     for n in given:
-        missing = set(n.depends_on) - set(by_id)
+        # a dependency may be absent when every input taken from it has a held-level fallback: the
+        # node then runs on its own, centred on the stand's operating point (a retune, ADR 0062)
+        missing = set()
+        for d in set(n.depends_on) - set(by_id):
+            taken = [b for b in n.inputs if b.node_id == d]
+            if not (taken and all(b.held for b in taken)):
+                missing.add(d)
         if missing:
             raise ValueError(
                 f"node {n.node_id!r} depends on {sorted(missing)}, which are not in the tune-up"
@@ -24,7 +30,7 @@ def order(nodes: Iterable[CalibrationNode]) -> tuple[CalibrationNode, ...]:
     done: set[str] = set()
     remaining = list(given)
     while remaining:
-        ready = [n for n in remaining if set(n.depends_on) <= done]
+        ready = [n for n in remaining if set(n.depends_on) & set(by_id) <= done]
         if not ready:
             raise ValueError(
                 f"nodes {[n.node_id for n in remaining]} depend on each other in a cycle"

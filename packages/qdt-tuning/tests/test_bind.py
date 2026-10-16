@@ -63,7 +63,20 @@ def test_bind_refuses_missing_rejected_or_unknown_inputs():
 def test_bind_fills_a_held_level_from_the_sensor_node(tmp_path=None):
     """ADR 0052: the operating point flows into `levels.0.value`."""
     node = charge_lattice(instrument="dot", sensor_gate="SG")
-    bound = bind(
-        node, {"sensor-operating-point": outcome("sensor-operating-point", sg_operating_v=-0.04)}
-    )
+    bound = bind(node, {"sensor-wing": outcome("sensor-wing", sg_operating_v=-0.04)})
     assert bound.definition.levels[0].channel == "SG" and bound.definition.levels[0].value == -0.04
+
+
+def test_bind_centres_the_wing_window_on_the_peak_or_on_the_held_level_for_a_retune():
+    """ADR 0062: `scale · output + offset` into both ends of the window; without the diamonds node the
+    held level of the sensor gate stands in, and without that too the binding fails and says so."""
+    from qdt_tuning.nodes import sensor_wing
+
+    node = sensor_wing(span_v=0.05)
+    bound = bind(node, {"sensor-operating-point": outcome("sensor-operating-point", sg_peak_v=-0.06)})
+    assert (bound.definition.axes[0].start, bound.definition.axes[0].stop) == pytest.approx((-0.11, -0.01))
+    retune = bind(node, {}, {"SG": -0.0534})
+    assert (retune.definition.axes[0].start, retune.definition.axes[0].stop) == pytest.approx((-0.1034, -0.0034))
+    with pytest.raises(KeyError, match="or a held level of 'SG'"):
+        bind(node, {}, {"P1": 0.1})
+    assert node.holds == {"SG": "sg_operating_v"}

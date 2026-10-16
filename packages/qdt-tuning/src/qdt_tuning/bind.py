@@ -40,29 +40,42 @@ def set_path(data: Any, path: str, value: Any) -> None:
             raise KeyError(f"{'.'.join(parts[:i])}: not a container")
 
 
-def bind(node: CalibrationNode, outcomes: Mapping[str, NodeOutcome]) -> CalibrationNode:
-    """The node with every `inputs` binding filled from `outcomes` (node id → accepted outcome).
+def bind(
+    node: CalibrationNode,
+    outcomes: Mapping[str, NodeOutcome],
+    held: Mapping[str, float] | None = None,
+) -> CalibrationNode:
+    """The node with every `inputs` binding filled from `outcomes` (node id → accepted outcome), or,
+    for a binding with a `held` fallback whose upstream node has no outcome here, from `held` (logical
+    channel → the level the server holds, ADR 0062). The target takes `scale · value + offset`.
 
-    Raises KeyError for a missing upstream outcome or output name or an unknown path, ValueError for an
-    upstream outcome that is not `accepted` or a bound definition that does not validate."""
+    Raises KeyError for a missing upstream outcome (and no held level to fall back on), a missing
+    output name or an unknown path, ValueError for an upstream outcome that is not `accepted` or a
+    bound definition that does not validate."""
     if not node.inputs:
         return node
     data = node.definition.model_dump(
         mode="json"
     )  # tuples become lists, which a path can index into
+    levels = dict(held or {})
     for b in node.inputs:
-        if b.node_id not in outcomes:
-            raise KeyError(f"node {node.node_id!r} needs an outcome of {b.node_id!r}")
-        upstream = outcomes[b.node_id]
-        if upstream.status != "accepted":
-            raise ValueError(
-                f"node {node.node_id!r} needs {b.node_id!r} accepted; it is {upstream.status}"
-            )
-        if b.output not in upstream.outputs:
-            raise KeyError(
-                f"{b.node_id!r} has no output {b.output!r}; has {sorted(upstream.outputs)}"
-            )
-        set_path(data, b.target, upstream.outputs[b.output])
+        if b.node_id in outcomes:
+            upstream = outcomes[b.node_id]
+            if upstream.status != "accepted":
+                raise ValueError(
+                    f"node {node.node_id!r} needs {b.node_id!r} accepted; it is {upstream.status}"
+                )
+            if b.output not in upstream.outputs:
+                raise KeyError(
+                    f"{b.node_id!r} has no output {b.output!r}; has {sorted(upstream.outputs)}"
+                )
+            value = upstream.outputs[b.output]
+        elif b.held is not None and b.held in levels:
+            value = levels[b.held]
+        else:
+            fallback = f" or a held level of {b.held!r}" if b.held else ""
+            raise KeyError(f"node {node.node_id!r} needs an outcome of {b.node_id!r}{fallback}")
+        set_path(data, b.target, b.scale * value + b.offset)
     try:
         definition = SweepDefinition.model_validate(data)
     except ValueError as e:

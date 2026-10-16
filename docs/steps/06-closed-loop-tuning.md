@@ -51,6 +51,9 @@ Carried from Step 5, each with its evidence; an ADR closes each one.
   deferred Step 6 ADRs (ADR 0020, 0030); which nodes need them decides their order.
 - **Default operating point per device** (not in ADR 0038); whether the diamond estimator should survive
   warm edges; the dot model's zero-clipping (ADR 0020).
+- ~~`flank_offset_v` is a judgment~~ — closed by ADR 0062: the `sensor-wing` node fits the peak's width and
+  parks the gate on the fitted wing, with an error; alone it is a retune about the held level, and the
+  server holds the gate where it decided.
 
 ## Status
 DONE (opened 2026-10-15; closed 2026-10-15 on the human's word, session 8). Sessions below. Session 1: the file gained its

@@ -1,6 +1,7 @@
 """`SimScenario` as data (ADR 0048): the simulator realizes it and derives the truth from the model."""
 
 import dataclasses
+import math
 
 import numpy as np
 import pytest
@@ -57,6 +58,10 @@ def test_the_sensors_truth_is_the_peak_nearest_the_asked_gate_value():
         "period": 0.25,
         "charging_energy": 1e-3,
         "lever_arm": pytest.approx(4e-3),
+        # the wing (ADR 0062): atanh(1/√3) widths above the peak, and the slope there
+        "sg_width_v": 0.04,
+        "sg_wing_v": pytest.approx(-0.06 + math.atanh(1 / math.sqrt(3)) * 0.04),
+        "sensitivity_a_per_v": pytest.approx(4 / (3 * math.sqrt(3)) * 1e-9 / 0.04),
     }
     assert sensor_truth(SimScenario(scenario_id="s"), near_v=0.15)["sg_peak_v"] == pytest.approx(
         0.19

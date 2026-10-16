@@ -45,14 +45,20 @@ def test_order_refuses_cycles_strangers_and_repeats():
 
 def test_templates_build_every_node_for_a_stands_sequencer_and_sensor_gate():
     built = {k: make("opx", "SG") for k, make in TEMPLATES.items()}
-    assert set(built) == {"sensor-operating-point", "charge-lattice", "virtual-lattice"}
+    assert set(built) == {"sensor-operating-point", "sensor-wing", "charge-lattice", "virtual-lattice"}
     assert built["charge-lattice"].definition.stage.instrument == "opx"
-    assert built["charge-lattice"].depends_on == ("sensor-operating-point",)
+    assert built["charge-lattice"].depends_on == ("sensor-wing",)
+    assert built["sensor-wing"].depends_on == ("sensor-operating-point",)
     assert [n.node_id for n in order(reversed(list(built.values())))] == [
         "sensor-operating-point",
+        "sensor-wing",
         "charge-lattice",
         "virtual-lattice",
     ]
+    # a retune (ADR 0062): the wing node alone is allowed, its inputs fall back to the held level
+    assert [n.node_id for n in order([built["sensor-wing"]])] == ["sensor-wing"]
+    with pytest.raises(ValueError, match="not in the tune-up"):
+        order([built["charge-lattice"]])  # no fallback on its binding
     # without a sensor gate the charge lattice stands alone (the sensor node is not offered then)
     alone = TEMPLATES["charge-lattice"]("opx", None)
     assert alone.depends_on == () and alone.inputs == ()

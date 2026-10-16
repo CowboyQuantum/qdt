@@ -21,6 +21,7 @@ from qdt_schemas.pulse import Affine, Measure, PulseSequence, Step, Symbol
 
 from .decisions import (
     SENSOR_OPERATING_POINT_NAME,
+    SENSOR_WING_NAME,
     STRAIGHTENED_NAME,
     VIRTUAL_GATES_NAME,
     decision_rule,
@@ -160,6 +161,99 @@ def sensor_operating_point(
     )
 
 
+SENSOR_PEAK_METHOD = "qdt_analysis.sensor_peak.fit_sensor_peak"
+SENSOR_PEAK_VERSION = "1"
+SENSOR_PEAK_DEFAULTS = {
+    "variable": "",
+    "near_v": 0.0,
+    "near_centre": True,
+    "side": "above",
+    "min_r2": 0.5,
+}
+"""The sensor-peak method's defaults, as its `FitModel` carries them (pinned against the catalogue)."""
+
+
+def sensor_gate_trace(
+    *,
+    sensor_gate: str = "SG",
+    bias: str = "bias",
+    sensor: str = "sensor",
+    centre_v: float = 0.0,
+    span_v: float = 0.05,
+    n: int = 101,
+    bias_v: float = 10e-6,
+    name: str = "sensor peak",
+) -> SweepDefinition:
+    """The sensor gate stepped by its DC line through one Coulomb peak, `centre_v ± span_v`, the source–
+    drain bias held at `bias_v`, the sensor current sensed at every point (ADR 0062). The bias must be
+    well inside linear response (eV ≪ kT) for the fitted width to be the thermal one: a finite bias
+    window broadens the peak by about eV/α in gate volts. 10 µV is a width-tenth for a 10 mV sensor at
+    the simulator's lever arm; a warmer sensor tolerates more."""
+    return SweepDefinition(
+        name=name,
+        axes=(
+            SweepAxis(
+                name="SG", channel=sensor_gate, start=centre_v - span_v, stop=centre_v + span_v, num=n
+            ),
+        ),
+        sensed=(SensedLevel(name="I_sensor", channel=sensor),),
+        levels=(FixedLevel(channel=bias, value=bias_v),),
+    )
+
+
+def sensor_wing(
+    *,
+    sensor_gate: str = "SG",
+    bias: str = "bias",
+    sensor: str = "sensor",
+    span_v: float = 0.05,
+    n: int = 101,
+    bias_v: float = 10e-6,
+    side: str = "above",
+    min_sensitivity_a_per_v: float = 0.0,
+) -> CalibrationNode:
+    """The wing node (ADR 0062): a short sweep of the sensor gate through the peak the diamonds found,
+    the peak fitted for its width, the gate parked on the fitted wing. After `sensor-operating-point`
+    in a tune-up the window is centred on that node's peak; run on its own it is a *retune*, centred
+    on the level the server holds for the sensor gate. Either way, once accepted the server holds the
+    sensor gate at the wing (`holds`), and `charge-lattice` binds it from here."""
+    window = sensor_gate_trace(
+        sensor_gate=sensor_gate, bias=bias, sensor=sensor, span_v=span_v, n=n, bias_v=bias_v
+    )
+    return CalibrationNode(
+        node_id="sensor-wing",
+        description=(
+            "The sensor's Coulomb peak fitted on a short gate sweep: its width, and the wing where the "
+            "current changes fastest; the sensor gate parked there. Alone, a retune about the held level."
+        ),
+        definition=window,
+        method=FitModel(
+            name=SENSOR_PEAK_METHOD,
+            version=SENSOR_PEAK_VERSION,
+            parameters={**SENSOR_PEAK_DEFAULTS, "side": side},
+        ),
+        decision=decision_rule(SENSOR_WING_NAME, min_sensitivity_a_per_v=min_sensitivity_a_per_v),
+        depends_on=("sensor-operating-point",),
+        inputs=(
+            InputBinding(
+                node_id="sensor-operating-point",
+                output="sg_peak_v",
+                target="axes.0.start",
+                offset=-span_v,
+                held=sensor_gate,
+            ),
+            InputBinding(
+                node_id="sensor-operating-point",
+                output="sg_peak_v",
+                target="axes.0.stop",
+                offset=span_v,
+                held=sensor_gate,
+            ),
+        ),
+        holds={sensor_gate: "sg_operating_v"},
+    )
+
+
 def charge_lattice(
     *,
     instrument: str,
@@ -171,8 +265,8 @@ def charge_lattice(
 ) -> CalibrationNode:
     """The first node: a stability diagram in a window where both dots are occupied, the charge
     lattice from its transitions (ADR 0029), the virtual-gate matrix as the decision. With
-    `sensor_gate`, the node holds that gate at the operating point `sensor-operating-point` decided
-    (ADR 0052): a held level in the sweep, bound from the upstream outcome."""
+    `sensor_gate`, the node holds that gate at the wing `sensor-wing` fitted (ADR 0052, 0062): a held
+    level in the sweep, bound from the upstream outcome."""
     definition = stability_diagram(
         instrument=instrument, p1=p1, p2=p2, n_outer=n, n_inner=n, name="charge lattice"
     )
@@ -182,11 +276,9 @@ def charge_lattice(
         definition = definition.model_copy(
             update={"levels": (FixedLevel(channel=sensor_gate, value=0.0),)}
         )
-        depends_on = ("sensor-operating-point",)
+        depends_on = ("sensor-wing",)
         inputs = (
-            InputBinding(
-                node_id="sensor-operating-point", output="sg_operating_v", target="levels.0.value"
-            ),
+            InputBinding(node_id="sensor-wing", output="sg_operating_v", target="levels.0.value"),
         )
     return CalibrationNode(
         node_id="charge-lattice",
@@ -247,11 +339,13 @@ TEMPLATES: dict[str, Callable[[str, str | None], CalibrationNode]] = {
     "sensor-operating-point": lambda instrument, sensor_gate: sensor_operating_point(
         sensor_gate=sensor_gate or "SG"
     ),
+    "sensor-wing": lambda instrument, sensor_gate: sensor_wing(sensor_gate=sensor_gate or "SG"),
     "charge-lattice": lambda instrument, sensor_gate: charge_lattice(
         instrument=instrument, sensor_gate=sensor_gate
     ),
     "virtual-lattice": lambda instrument, sensor_gate: virtual_lattice(instrument=instrument),
 }
 """Node id → constructor taking the stand's sequencer instrument id and its sensor-gate channel (None
-when the stand has no `SG`): what a server offers (ADR 0050, 0052). With a sensor gate, `charge-lattice`
-depends on `sensor-operating-point`; the sensor node itself needs `SG`, `bias` and `sensor` channels."""
+when the stand has no `SG`): what a server offers (ADR 0050, 0052, 0062). With a sensor gate,
+`charge-lattice` depends on `sensor-wing`, which depends on `sensor-operating-point` (or stands alone as
+a retune); the two sensor nodes need `SG`, `bias` and `sensor` channels."""
