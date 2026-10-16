@@ -30,6 +30,10 @@ export interface Events {
   "sweep:axes": { kind: "stage" | "dc" | "capture"; axes: string[]; inner: string; sensor: string };
   /** The Pulse widget's sequence as edited, for the Sweep widget's stage sweep. */
   "pulse:sequence": { rows: OpRow[]; bindings: BindingRow[]; errors: string[] };
+  /** The Virtual gates widget's coupling matrix: axis channel → companion → V/V (ADR 0049). */
+  "gates:couplings": { matrix: Record<string, Record<string, number>> };
+  /** The held operating point changed (set or released) from the Levels widget. */
+  "levels:changed": Record<string, never>;
   /** A run reached a terminal state: a record may have landed. */
   "records:changed": Record<string, never>;
   /** A point on a map was clicked: coordinate names and values (rule 8: never a channel). */

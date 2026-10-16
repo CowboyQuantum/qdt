@@ -42,10 +42,11 @@ export function defaultLayout(): Layout {
     ],
     center: [{ id: newPaneId(), widget: PLOT_WIDGET, size: 1 }],
     right: [
-      { id: newPaneId(), widget: "pulse", size: 0.5 },
-      { id: newPaneId(), widget: "history", size: 0.5 },
+      { id: newPaneId(), widget: "pulse", size: 0.3 },
+      { id: newPaneId(), widget: "levels", size: 0.4 },
+      { id: newPaneId(), widget: "history", size: 0.3 },
     ],
-    widths: { left: 0.3, right: 0.24 },
+    widths: { left: 0.3, right: 0.26 },
   };
 }
 
@@ -167,7 +168,7 @@ export function serializeLayout(layout: Layout): string {
 }
 
 /** Versioned: a new default layout (new widgets) retires the stored one rather than hiding them. */
-export const LAYOUT_KEY = "flightdeck.layout.v2";
+export const LAYOUT_KEY = "flightdeck.layout.v3";
 
 /** localStorage is a per-viewer convenience: absent, blocked or full, the app still runs. */
 export function loadLayout(known: readonly string[], storage: Pick<Storage, "getItem"> | null = safeStorage()): Layout {

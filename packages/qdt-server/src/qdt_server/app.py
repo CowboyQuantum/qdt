@@ -22,7 +22,7 @@ from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
 from qdt_lab.stream import PayloadSource, StreamServer
 from qdt_registry import Registry
 from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
-from qdt_schemas.control import MethodSpec, Run, TuneUp
+from qdt_schemas.control import ChannelLevel, MethodSpec, Run, TuneUp
 from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
@@ -259,6 +259,12 @@ def create_app(settings: Settings) -> FastAPI:
     def get_levels(request: Request) -> list[FixedLevel]:
         """The DC levels the server holds for the stand; every sweep inherits them (ADR 0038, 0053)."""
         return runs(request).levels()
+
+    @app.get("/levels/state", response_model=list[ChannelLevel])
+    def level_state(request: Request) -> list[ChannelLevel]:
+        """Every level-setting or level-sensing channel of the stand now: its setpoint, the held level
+        and its readback (ADR 0057). Read by the Levels widget; polled, never stored."""
+        return runs(request).level_state()
 
     @app.post("/levels", response_model=list[FixedLevel])
     def set_levels(body: list[FixedLevel], request: Request) -> list[FixedLevel]:

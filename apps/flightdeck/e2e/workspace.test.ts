@@ -45,7 +45,7 @@ it("lays out control | plot | empty, wears the slate theme as custom properties,
   await open(page);
   expect(await widgets(page, "left")).toEqual(["sweep", "control"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
-  expect(await widgets(page, "right")).toEqual(["pulse", "history"]);
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);
   expect(await page.textContent(".col.center .pane .title")).toBe("Plot 1");
   expect(await page.textContent(".col.center .pane .src")).toMatch(/^live · synthetic/);
   await page.locator(".col.center .pane [data-menu]").click();
@@ -82,12 +82,12 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await open(page);
   const right = page.locator(".col.right .pane");
   expect(await right.first().locator("[data-close]").isDisabled()).toBe(false); // two panes: either may close
-  await right.nth(1).locator("[data-split]").click();
-  expect(await widgets(page, "right")).toEqual(["pulse", "history", "empty"]);
-  expect(await page.locator(".col.right .gutter.h").count()).toBe(2);
+  await right.nth(2).locator("[data-split]").click();
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history", "empty"]);
+  expect(await page.locator(".col.right .gutter.h").count()).toBe(3);
   // the new pane can take the control panel only once the left pane gives it up: it is single-instance
-  const options = await right.nth(2).locator(".picker option").allTextContents();
-  expect(options).toEqual(["Empty", "History"]);
+  const options = await right.nth(3).locator(".picker option").allTextContents();
+  expect(options).toEqual(["Empty", "History", "Virtual gates"]);
   // the centre splits into a second plot pane that follows the stream too, with its own renderer and cut
   await page.locator(".col.center .pane [data-split]").first().click();
   expect(await page.locator(".col.center .pane .title").allTextContents()).toEqual(["Plot 1", "Plot 2"]);
@@ -103,14 +103,14 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await page.keyboard.press("Escape");
   await page.reload();
   await page.waitForFunction(() => /\(complete\)/.test(document.querySelector("#status")?.textContent ?? ""));
-  expect(await widgets(page, "right")).toEqual(["pulse", "history", "empty"]);
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history", "empty"]);
   expect(await widgets(page, "center")).toEqual(["plot", "plot"]);
   await page.locator(".col.center .pane").nth(1).locator("[data-close]").click();
-  await page.locator(".col.right .pane").nth(2).locator("[data-close]").click();
-  expect(await widgets(page, "right")).toEqual(["pulse", "history"]);
+  await page.locator(".col.right .pane").nth(3).locator("[data-close]").click();
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v2")!) as { right: unknown[] });
-  expect(stored.right).toHaveLength(2);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v3")!) as { right: unknown[] });
+  expect(stored.right).toHaveLength(3);
   await page.close();
 });
 

@@ -16,7 +16,7 @@ from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitt
 from qdt_lab.stream import Frame, Source, StreamServer
 from qdt_registry import Registry
 from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
-from qdt_schemas.control import Run
+from qdt_schemas.control import ChannelLevel, Run
 from qdt_schemas.data import AttrValue, Dataset
 from qdt_schemas.stand import StandConfig
 
@@ -67,8 +67,51 @@ class RunManager:
         self._stops: dict[str, threading.Event] = {}
         self._lock = asyncio.Lock()
         self._levels: dict[str, float] = {}
+        self._live: Mapping[str, Any] | None = None
 
-    # --- the stand's operating point (ADR 0053) ---------------------------------------------------
+    # --- the stand's operating point (ADR 0053, 0057) ---------------------------------------------
+
+    def live_backends(self) -> Mapping[str, Any]:
+        """The instruments as the stand's standing state: built once and kept, so a level set now is
+        the level read back later. On hardware these are the same objects every run uses; on the
+        simulator a run builds its own seeded device, and this set is the one the operating point and
+        the readbacks live on (ADR 0057)."""
+        if self._live is None:
+            self._live = self._backends({})
+        return self._live
+
+    def level_state(self) -> list[ChannelLevel]:
+        """Every channel on an instrument that sets or senses levels: its setpoint, the held level and
+        its readback; None where the instrument has no such capability or refuses the channel."""
+        out: list[ChannelLevel] = []
+        backends = self.live_backends()
+        for channel in self.stand.channels:
+            caps = self.stand.instrument(channel.instrument).capabilities
+            if "level_source" not in caps and "level_sense" not in caps:
+                continue
+            backend = backends.get(channel.instrument)
+            setpoint = readback = None
+            if backend is not None and "level_source" in caps:
+                try:
+                    setpoint = float(backend.get(channel.channel))
+                except (KeyError, ValueError):
+                    setpoint = None
+            if backend is not None and "level_sense" in caps:
+                try:
+                    readback = float(backend.sense(channel.channel))
+                except (KeyError, ValueError):
+                    readback = None
+            out.append(
+                ChannelLevel(
+                    channel=channel.logical,
+                    instrument=channel.instrument,
+                    quantity=channel.quantity,
+                    setpoint=setpoint,
+                    held=self._levels.get(channel.logical),
+                    readback=readback,
+                )
+            )
+        return out
 
     def levels(self) -> list[FixedLevel]:
         """The operating point the server holds for the stand: DC levels every sweep inherits unless
@@ -84,7 +127,7 @@ class RunManager:
                 raise ValueError(
                     f"channel {lv.channel!r} is on {channel.instrument!r}, which is not a LevelSource"
                 )
-        backends = self._backends({})
+        backends = self.live_backends()
         for lv in levels:
             channel = self.stand.channel(lv.channel)
             backends[channel.instrument].set(channel.channel, lv.value)

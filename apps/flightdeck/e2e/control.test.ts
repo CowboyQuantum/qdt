@@ -124,14 +124,27 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   const box = (await page.locator(".pane canvas.overlay").first().boundingBox())!;
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   // the map's x axis is the inner (P2) axis, so P2 is listed first
-  await page.waitForFunction(() => /clicked: P2 = .* · P1 = /.test(document.querySelector("#setpoint")?.textContent ?? ""));
-  await page.click("#set-levels");
-  await page.waitForFunction(() => /held: P1 = .* · P2 = /.test(document.querySelector("#held-levels")?.textContent ?? ""));
+  const levels = page.locator(".pane[data-widget=levels]");
+  await page.waitForFunction(() => /clicked: P2 = .* · P1 = /.test(document.querySelector(".pane[data-widget=levels] .offer")?.textContent ?? ""));
+  await levels.locator("[data-offer]").click();
+  await page.waitForFunction(() => /held: P1 = .* · P2 = /.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""));
+  // the table shows the stand (ADR 0057): P1's setpoint is what was set, its readback is None (a simulated
+  // gate is not sensed), the sensor's readback is a current
+  await page.waitForFunction(() => /0\.10/.test(document.querySelector(".pane[data-widget=levels] tr[data-channel=P1] td.setpoint")?.textContent ?? ""));
+  expect(await levels.locator("tr[data-channel=P1] td.readback").textContent()).toBe("—");
+  expect(await levels.locator("tr[data-channel=sensor] td.readback").textContent()).toMatch(/ A$/);
   const held = (await (await page.request.get(`http://127.0.0.1:${API_PORT}/levels`)).json()) as { channel: string; value: number }[];
   expect(held.map((l) => l.channel).sort()).toEqual(["P1", "P2"]);
   for (const l of held) expect(Math.abs(l.value - 0.105)).toBeLessThan(0.01); // the middle of the 0.03..0.18 window
-  await page.click("#clear-levels");
-  await page.waitForFunction(() => /held: nothing/.test(document.querySelector("#held-levels")?.textContent ?? ""));
+  // inline set with limit refusal (a browser setting, ±1 by default) and the settling state
+  await levels.locator("tr[data-channel=P1] input[name=set_P1]").fill("5");
+  await levels.locator("tr[data-channel=P1] button", { hasText: "set" }).click();
+  expect(await levels.locator("tr[data-channel=P1] .badge").textContent()).toMatch(/beyond the limit/);
+  await levels.locator("tr[data-channel=P1] input[name=set_P1]").fill("0.02");
+  await levels.locator("tr[data-channel=P1] input[name=set_P1]").press("Enter");
+  await page.waitForFunction(() => /held: P1 = 0\.02 V/.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""));
+  await levels.locator("[data-release]").click();
+  await page.waitForFunction(() => /held: nothing/.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""));
 
   // the view options are client-side: switching to the derivative and swapping axes keeps the view alive
   const view = await plotMenu(page);

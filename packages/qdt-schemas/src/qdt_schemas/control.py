@@ -8,7 +8,8 @@ to and the estimates it promises. Users run methods; they do not author them (AD
 
 Both are rendered by the UI and never stored in it (`docs/FINISH_LINE.md`). Frozen at schema_version 1
 by ADR 0036; `TuneUp` (ADR 0050) is added beside them: the lifecycle of a tune-up over calibration
-nodes, the DAG state the finish line asks the UI to render.
+nodes, the DAG state the finish line asks the UI to render. `ChannelLevel` (ADR 0057, Step 6b) is
+added beside them: one channel's setpoint, held level and readback, the rows of the Levels widget.
 """
 
 from typing import Literal
@@ -160,6 +161,36 @@ class Run(QdtModel):
         if self.state == "queued" and self.started_at is not None:
             raise ValueError("a queued run has no started_at")
         return self
+
+
+class ChannelLevel(QdtModel):
+    """One channel of the stand as the server sees it now (ADR 0057): what its LevelSource holds, what
+    the server holds for it as the operating point (ADR 0053), and what its LevelSense reads. A row of
+    the Levels widget; never stored."""
+
+    channel: str = Field(min_length=1, description="Logical channel (ChannelMap.logical).")
+    instrument: str = Field(min_length=1, description="Instrument id (ChannelMap.instrument).")
+    quantity: Literal["voltage", "current"] = Field(
+        description="The channel's quantity (ChannelMap.quantity); levels are in its SI unit."
+    )
+    setpoint: float | None = Field(
+        default=None,
+        description=(
+            "The level the instrument reports it applies (LevelSource.get); None when the instrument is "
+            "not a LevelSource or refused the channel."
+        ),
+    )
+    held: float | None = Field(
+        default=None,
+        description="The level the server holds for this channel as the operating point; None when not held.",
+    )
+    readback: float | None = Field(
+        default=None,
+        description=(
+            "What the instrument senses on the channel (LevelSense.sense); None when the instrument "
+            "declares no level_sense or refuses to sense this channel (a simulated gate, say)."
+        ),
+    )
 
 
 class TuneUp(QdtModel):

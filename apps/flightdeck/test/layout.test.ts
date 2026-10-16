@@ -22,11 +22,12 @@ import {
   type Layout,
 } from "../src/workspace/layout";
 
-const KNOWN = ["plot", "control", "empty", "history", "sweep", "pulse"];
+const KNOWN = ["plot", "control", "empty", "history", "sweep", "pulse", "levels", "gates"];
 /** The default layout with one pane per column: the split/close arithmetic reads best from there. */
 const single = () => {
   let l = defaultLayout();
   l = close(l, l.left[1]!.id);
+  l = close(l, l.right[2]!.id);
   l = close(l, l.right[1]!.id);
   return l;
 };
@@ -38,12 +39,12 @@ describe("default layout", () => {
     const l = defaultLayout();
     expect(l.left.map((p) => p.widget)).toEqual(["sweep", "control"]);
     expect(l.center.map((p) => p.widget)).toEqual(["plot"]);
-    expect(l.right.map((p) => p.widget)).toEqual(["pulse", "history"]);
+    expect(l.right.map((p) => p.widget)).toEqual(["pulse", "levels", "history"]);
     expect(l.widths.left + l.widths.right).toBeLessThan(0.6);
     expect(sum(l.left)).toBeCloseTo(1);
     expect(sum(l.right)).toBeCloseTo(1);
     const ids = [...l.left, ...l.center, ...l.right].map((p) => p.id);
-    expect(new Set(ids).size).toBe(5);
+    expect(new Set(ids).size).toBe(6);
   });
 });
 
@@ -201,7 +202,7 @@ describe("persistence", () => {
       },
     };
     expect(() => saveLayout(l, broken)).not.toThrow();
-    expect(loadLayout(KNOWN, broken).right).toHaveLength(2);
+    expect(loadLayout(KNOWN, broken).right).toHaveLength(3);
     expect(loadLayout(KNOWN, null).center).toHaveLength(1);
   });
 });

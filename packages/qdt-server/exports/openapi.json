@@ -417,6 +417,82 @@
         "title": "CapturedWaveform",
         "type": "object"
       },
+      "ChannelLevel": {
+        "additionalProperties": false,
+        "description": "One channel of the stand as the server sees it now (ADR 0057): what its LevelSource holds, what\nthe server holds for it as the operating point (ADR 0053), and what its LevelSense reads. A row of\nthe Levels widget; never stored.",
+        "properties": {
+          "channel": {
+            "description": "Logical channel (ChannelMap.logical).",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "held": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The level the server holds for this channel as the operating point; None when not held.",
+            "title": "Held"
+          },
+          "instrument": {
+            "description": "Instrument id (ChannelMap.instrument).",
+            "minLength": 1,
+            "title": "Instrument",
+            "type": "string"
+          },
+          "quantity": {
+            "description": "The channel's quantity (ChannelMap.quantity); levels are in its SI unit.",
+            "enum": [
+              "voltage",
+              "current"
+            ],
+            "title": "Quantity",
+            "type": "string"
+          },
+          "readback": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the instrument senses on the channel (LevelSense.sense); None when the instrument declares no level_sense or refuses to sense this channel (a simulated gate, say).",
+            "title": "Readback"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "setpoint": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The level the instrument reports it applies (LevelSource.get); None when the instrument is not a LevelSource or refused the channel.",
+            "title": "Setpoint"
+          }
+        },
+        "required": [
+          "channel",
+          "instrument",
+          "quantity"
+        ],
+        "title": "ChannelLevel",
+        "type": "object"
+      },
       "ChannelMap": {
         "additionalProperties": false,
         "description": "Maps a logical channel name to a physical instrument channel.",
@@ -3830,6 +3906,29 @@
           }
         },
         "summary": "Set Levels"
+      }
+    },
+    "/levels/state": {
+      "get": {
+        "description": "Every level-setting or level-sensing channel of the stand now: its setpoint, the held level\nand its readback (ADR 0057). Read by the Levels widget; polled, never stored.",
+        "operationId": "level_state_levels_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelLevel"
+                  },
+                  "title": "Response Level State Levels State Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Level State"
       }
     },
     "/methods": {

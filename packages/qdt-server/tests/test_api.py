@@ -436,6 +436,28 @@ def test_a_capture_runs_through_the_server_and_the_exponential_reads_its_droop(c
     assert bad.status_code == 400 and "linear coordinates" in bad.json()["detail"]
 
 
+def test_level_state_reports_setpoints_held_levels_and_readbacks(client):
+    """ADR 0057: GET /levels/state lists every channel an instrument sets or senses, with the level the
+    instrument reports, the level the server holds, and a readback where the instrument senses the
+    channel (the simulated device senses its sensor, never a gate: readback None there)."""
+    rows = {r["channel"]: r for r in client.get("/levels/state").json()}
+    assert "P1" in rows and "sensor" in rows and "scope1" not in rows  # the scope sets no level
+    assert rows["P1"]["quantity"] == "voltage" and rows["P1"]["held"] is None
+    assert rows["P1"]["readback"] is None  # a simulated gate refuses to be sensed
+    assert isinstance(rows["sensor"]["readback"], float)  # the sensor current at the operating point
+    client.post("/levels", json=[{"channel": "P1", "value": 0.05}])
+    rows = {r["channel"]: r for r in client.get("/levels/state").json()}
+    assert rows["P1"]["held"] == 0.05 and rows["P1"]["setpoint"] == 0.05  # set now, read back later
+    before = rows["sensor"]["readback"]
+    client.post("/levels", json=[{"channel": "P1", "value": 0.12}])
+    rows = {r["channel"]: r for r in client.get("/levels/state").json()}
+    assert rows["P1"]["setpoint"] == 0.12
+    assert rows["sensor"]["readback"] != before  # the live device moved with the gate
+    client.delete("/levels")
+    rows = {r["channel"]: r for r in client.get("/levels/state").json()}
+    assert rows["P1"]["held"] is None and rows["P1"]["setpoint"] == 0.12  # released, not zeroed
+
+
 def test_the_server_holds_an_operating_point_that_sweeps_inherit(client):
     """ADR 0053 (click-to-set): POST /levels sets channels on the stand now and holds them; a compiled
     sweep carries them unless it moves the channel itself; DELETE releases them."""

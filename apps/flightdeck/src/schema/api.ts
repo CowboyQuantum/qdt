@@ -8,6 +8,7 @@ export interface QdtControlApi {
   CalibrationNode?: CalibrationNode;
   Call?: Call;
   CapturedWaveform?: CapturedWaveform;
+  ChannelLevel?: ChannelLevel;
   ChannelMap?: ChannelMap;
   DataVariable?: DataVariable;
   Dataset?: Dataset;
@@ -989,6 +990,44 @@ export interface InputBinding {
    * Dotted path into this node's `definition` that takes the value, e.g. 'axes.0.couplings.P2' or 'stage.sequence.body.0.level.scale'.
    */
   target: string;
+}
+/**
+ * One channel of the stand as the server sees it now (ADR 0057): what its LevelSource holds, what
+ * the server holds for it as the operating point (ADR 0053), and what its LevelSense reads. A row of
+ * the Levels widget; never stored.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "ChannelLevel".
+ */
+export interface ChannelLevel {
+  /**
+   * Logical channel (ChannelMap.logical).
+   */
+  channel: string;
+  /**
+   * The level the server holds for this channel as the operating point; None when not held.
+   */
+  held?: number | null;
+  /**
+   * Instrument id (ChannelMap.instrument).
+   */
+  instrument: string;
+  /**
+   * The channel's quantity (ChannelMap.quantity); levels are in its SI unit.
+   */
+  quantity: "voltage" | "current";
+  /**
+   * What the instrument senses on the channel (LevelSense.sense); None when the instrument declares no level_sense or refuses to sense this channel (a simulated gate, say).
+   */
+  readback?: number | null;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * The level the instrument reports it applies (LevelSource.get); None when the instrument is not a LevelSource or refused the channel.
+   */
+  setpoint?: number | null;
 }
 /**
  * Maps a logical channel name to a physical instrument channel.
