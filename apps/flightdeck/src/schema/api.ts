@@ -319,6 +319,12 @@ export interface CalibrationNode {
    */
   description?: string;
   /**
+   * Logical channel → output name: when the node is accepted, the server holds that output as the channel's operating point (ADR 0053, 0062), so the stand sits where the node decided.
+   */
+  holds?: {
+    [k: string]: string;
+  };
+  /**
    * Values of `definition` filled from upstream outputs before the node runs; unique targets.
    */
   inputs?: InputBinding[];
@@ -1009,13 +1015,25 @@ export interface Segment {
  */
 export interface InputBinding {
   /**
+   * Fallback for a retune (ADR 0062): a logical channel whose level the server holds as the operating point; its value stands in for the upstream output when the upstream node is not in the tune-up, so the node can run on its own.
+   */
+  held?: string | null;
+  /**
    * The upstream node; must be in `depends_on`.
    */
   node_id: string;
   /**
+   * Added after scaling, in the target's unit, e.g. ±half a window around a peak (ADR 0062).
+   */
+  offset?: number;
+  /**
    * The name in that node's `NodeOutcome.outputs`.
    */
   output: string;
+  /**
+   * The target takes `scale · output + offset` (ADR 0062); 1 by default.
+   */
+  scale?: number;
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
