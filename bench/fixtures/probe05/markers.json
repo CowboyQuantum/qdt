@@ -1,0 +1,160 @@
+{
+  "fem": 1,
+  "run_at": "2026-10-16T19:27:21.086351+00:00",
+  "qdac": {
+    "trigger_in": "ext1",
+    "levels_v": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "spacing_s": 0.1,
+    "repeats": [
+      {
+        "level_before_first_marker_v": -0.2593755641137394,
+        "moved_at_init": false,
+        "steps_found": 5,
+        "latency_s": [
+          -6.250000000002087e-05,
+          3.7499999999968114e-05,
+          -2.5000000000052758e-05,
+          7.499999999993623e-05,
+          1.2499999999970868e-05
+        ],
+        "settle_1pct_s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "final_levels_v": [
+          -0.005955982853797524,
+          0.2456492911715407,
+          0.49642066617253655,
+          0.7475078857013479,
+          NaN
+        ]
+      },
+      {
+        "level_before_first_marker_v": -0.25921292775240157,
+        "moved_at_init": false,
+        "steps_found": 5,
+        "latency_s": [
+          -6.250000000002087e-05,
+          3.7499999999968114e-05,
+          -2.5000000000052758e-05,
+          7.499999999993623e-05,
+          1.2499999999970868e-05
+        ],
+        "settle_1pct_s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "final_levels_v": [
+          -0.005927946379608096,
+          0.24562051036617807,
+          0.49641371908158693,
+          0.7475875291368772,
+          NaN
+        ]
+      },
+      {
+        "level_before_first_marker_v": -0.25926465876893695,
+        "moved_at_init": false,
+        "steps_found": 5,
+        "latency_s": [
+          -6.250000000002087e-05,
+          3.7499999999968114e-05,
+          -2.5000000000052758e-05,
+          7.499999999993623e-05,
+          1.2499999999970868e-05
+        ],
+        "settle_1pct_s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "final_levels_v": [
+          -0.006006101152791023,
+          0.24557882782048052,
+          0.4963663299968952,
+          0.7475351778443641,
+          NaN
+        ]
+      }
+    ],
+    "latency_s_median": 1.2499999999970868e-05,
+    "steps_per_markers": [
+      "5/5",
+      "5/5",
+      "5/5"
+    ],
+    "moved_at_init": false
+  },
+  "marker": {
+    "marker_high_v": 3.272705078125,
+    "marker_low_v": -0.006103515625,
+    "marker_width_s": 4.012500000000001e-07,
+    "marker_edge_s": 6.250000000000046e-09,
+    "analog_edge_s": 9.125000000000008e-08,
+    "analog_plateau_v": 0.2508300815962,
+    "marker_to_analog_s": 8.500000000000003e-08,
+    "repeats": 5
+  },
+  "pacing": {
+    "rows": [
+      {
+        "spacing_s": 0.5,
+        "records": 10,
+        "elapsed_s": 10.573305292004079,
+        "s_per_record_median": 0.49733425000158604,
+        "markers_per_record_median": 0.9946685000031721,
+        "error": null
+      },
+      {
+        "spacing_s": 0.2,
+        "records": 10,
+        "elapsed_s": 6.337589041999308,
+        "s_per_record_median": 0.40873479199944995,
+        "markers_per_record_median": 2.0436739599972498,
+        "error": null
+      },
+      {
+        "spacing_s": 0.1,
+        "records": 10,
+        "elapsed_s": 4.830007375006971,
+        "s_per_record_median": 0.377771291998215,
+        "markers_per_record_median": 3.77771291998215,
+        "error": null
+      },
+      {
+        "spacing_s": 0.05,
+        "records": 10,
+        "elapsed_s": 4.232817249998334,
+        "s_per_record_median": 0.32788370799971744,
+        "markers_per_record_median": 6.557674159994349,
+        "error": null
+      },
+      {
+        "spacing_s": 0.02,
+        "records": 10,
+        "elapsed_s": 3.6919470419961726,
+        "s_per_record_median": 0.3142210410005646,
+        "markers_per_record_median": 15.71105205002823,
+        "error": null
+      }
+    ],
+    "segmented_mode_readback": "SEGM",
+    "segmented_error": "+0,\"No error\"",
+    "rearm_s": 0.3142210410005646,
+    "floor_s": 0.5
+  }
+}

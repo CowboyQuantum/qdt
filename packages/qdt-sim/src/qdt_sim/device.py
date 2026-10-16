@@ -176,7 +176,7 @@ class SimulatedDevice:
 
     def _play_point(self, channel: str, i: int) -> None:
         values = self._lists[channel]
-        i = min(i, len(values) - 1)
+        i = i % len(values)  # past the end the list starts again (Probe 05)
         self._armed[channel] = i
         self._dc[channel] = values[i]
 

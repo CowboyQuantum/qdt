@@ -18,17 +18,20 @@ SCPI commands used (from the QDAC-II manual; confirm on the first bench run):
     sens{n}:aper {s}            current-sensor aperture in seconds (sent once, if declared)
     read? (@{n})                measure channel n's current (amperes)
 
-List mode (`load`; the commands of the manual's DC list, to be confirmed by Probe 05 on the bench):
+List mode (`load`; confirmed on the bench by Probe 05, 2026-10-16, firmware 14-1.70):
 
     sour{n}:dc:volt:mode list   the channel's DC generator plays a list
     sour{n}:list:volt v1,v2,..  the points
     sour{n}:list:tmod step      stepped: one point per trigger (not dwell-timed)
-    sour{n}:list:coun 1         play the list once; the last point holds
+    sour{n}:list:coun 1         one pass; a trigger after the last point starts the list again
     sour{n}:list:dir up         first point first
     sour{n}:dc:trig:sour {t}    the trigger input: ext1..ext4, or bus
-    sour{n}:dc:init             arm: wait for the first trigger
+    sour{n}:dc:init:cont on     arm, and re-arm after every trigger (`dc:init` alone arms for one
+                                trigger: the first point played and nothing after it, Probe 05)
     *TRG                        the bus trigger (`advance`, when trigger_in is bus)
-    sour{n}:dc:abor             leave the list (`release`), then mode fix and the held level
+    sour{n}:volt?               in list mode reports the point last played (Probe 05)
+    sour{n}:dc:init:cont off, sour{n}:dc:abor   leave the list (`release`), then mode fix and the
+                                level the channel is at
 
 The transport is `ScpiTransport`; pyvisa is imported lazily by `open_visa`, so this module imports
 without the extra.
@@ -68,8 +71,7 @@ class QDac2:
         self._integration = {c.channel: c.integration_s for c in channels if c.integration_s}
         self._fixed: set[int] = set()
         self._aperture: dict[int, float] = {}
-        self._lists: dict[int, tuple[tuple[float, ...], int]] = {}  # armed lists: (values, index)
-        self._level: dict[int, float] = {}  # the level the driver believes each channel holds
+        self._lists: dict[int, tuple[float, ...]] = {}  # armed lists
 
     @classmethod
     def from_config(cls, instrument: InstrumentConfig, channels: tuple[ChannelMap, ...]) -> "QDac2":
@@ -100,13 +102,10 @@ class QDac2:
             self._t.write(f"sour{n}:dc:volt:mode fix")
             self._fixed.add(n)
         self._t.write(f"sour{n}:volt {value:.9g}")
-        self._level[n] = value
 
     def get(self, channel: str) -> float:
         n = self._number(channel, "voltage", "voltage")
-        if n in self._lists:  # in list mode the setpoint query reports the generator, not the point
-            return self._level.get(n, 0.0)
-        return float(self._t.query(f"sour{n}:volt?"))
+        return float(self._t.query(f"sour{n}:volt?"))  # in list mode: the point last played
 
     # --- TriggeredLevelSource (ADR 0064) -----------------------------------------------------------
 
@@ -117,10 +116,9 @@ class QDac2:
             raise ValueError("a list needs at least one point")
         if any(not abs(v) <= MAX_VOLTS for v in points):
             raise ValueError(f"a list point on {channel!r} is outside +/-{MAX_VOLTS} V")
-        if n not in self._level:
-            self._level[n] = float(self._t.query(f"sour{n}:volt?"))
         w = self._t.write
         if n in self._lists:
+            w(f"sour{n}:dc:init:cont off")
             w(f"sour{n}:dc:abor")
         w(f"sour{n}:dc:volt:mode list")
         self._fixed.discard(n)
@@ -129,8 +127,8 @@ class QDac2:
         w(f"sour{n}:list:coun 1")
         w(f"sour{n}:list:dir up")
         w(f"sour{n}:dc:trig:sour {self._trigger}")
-        w(f"sour{n}:dc:init")
-        self._lists[n] = (points, -1)
+        w(f"sour{n}:dc:init:cont on")
+        self._lists[n] = points
 
     def advance(self, channel: str) -> None:
         n = self._number(channel, "voltage", "voltage")
@@ -141,21 +139,19 @@ class QDac2:
                 f"the list on {channel!r} advances on {self._trigger}, which the host cannot fire; "
                 "the sequencer's marker line does"
             )
-        self._t.write("*TRG")
-        for m, (points, i) in self._lists.items():  # the bus trigger reaches every armed channel
-            i = min(i + 1, len(points) - 1)
-            self._lists[m] = (points, i)
-            self._level[m] = points[i]
+        self._t.write("*TRG")  # reaches every channel armed on bus
 
     def release(self, channel: str) -> None:
         n = self._number(channel, "voltage", "voltage")
         if n not in self._lists:
             return
         del self._lists[n]
+        level = float(self._t.query(f"sour{n}:volt?"))  # the point the channel is at
+        self._t.write(f"sour{n}:dc:init:cont off")
         self._t.write(f"sour{n}:dc:abor")
         self._t.write(f"sour{n}:dc:volt:mode fix")
         self._fixed.add(n)
-        self._t.write(f"sour{n}:volt {self._level.get(n, 0.0):.9g}")
+        self._t.write(f"sour{n}:volt {level:.9g}")
 
     def sense(self, channel: str) -> float:
         n = self._number(channel, "current", "current")

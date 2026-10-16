@@ -11,14 +11,15 @@ local `*.stand.json` (gitignored; shape in `docs/examples/example_stand/bench.st
 
 | Role (protocol) | Instrument | Backend key | Address variable | Notes |
 |---|---|---|---|---|
-| `LevelSource` (+ `LevelSense` current readout) | QDAC-II, Ethernet or its rear USB port | `qdac2` | `QDT_QDAC2_ADDRESS` | `TCPIP::<host>::5025::SOCKET`, or `ASRL/dev/cu.usbserial-NNNN::INSTR` (921600 baud, set by the driver; ADR 0043). The LAN address is set over USB: `syst:comm:lan:dhcp 0`, `:ipad "<ip>"`, `:smask`, `:gat`, `:upd`, then a power cycle with the cable in. Channels used: TODO |
-| `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings. Conformance on hardware 18/18 (2026-10-15): the suite's waveform is 0.1 V (direct mode is ±0.5 V) and its record grid starts at the trigger (the input opens its readout window there; pre-trigger samples are a scope's ability, not the protocol's) |
-| `WaveformSense` | Keysight InfiniiVision (X or HD3 series; an HD304MSO on the bench) | `infiniivision` | `QDT_SCOPE_ADDRESS` | `TCPIP::<host>::5025::SOCKET` (the VXI-11 `::INSTR` form refuses connections intermittently on the HD3; the socket form never did); it self-assigns a 169.254 address without DHCP. Trigger sweep must be AUTO, vertical scale set on the front panel. `:TIMebase:REFerence LEFT` is one division in from the left edge; the driver accounts for it |
+| `LevelSource` (+ `LevelSense` current readout, + `TriggeredLevelSource` list mode) | QDAC-II, Ethernet or its rear USB port | `qdac2` | `QDT_QDAC2_ADDRESS` | `TCPIP::<host>::5025::SOCKET`, or `ASRL/dev/cu.usbserial-NNNN::INSTR` (921600 baud, set by the driver; ADR 0043). The LAN address is set over USB: `syst:comm:lan:dhcp 0`, `:ipad "<ip>"`, `:smask`, `:gat`, `:upd`, then a power cycle with the cable in. A loaded list advances on `settings["trigger_in"]` (`ext1`..`ext4`, a rear trigger *input* BNC from the OPX's `do2`; ADR 0064; confirmed by Probe 05, 2026-10-16: `dc:init:cont on` re-arms per trigger, `volt?` reports the point, a trigger past the end restarts the list, latency under 0.2 ms; ADR 0065). Channels used: ch01 (`P1`), ch02 (`P2`) |
+| `Sequencer`, `WaveformSource`, `WaveformSense` | OPX1000 (LF-FEM) | `qua` | `QDT_OPX_ADDRESS` | FEM slot and output mode in settings. Conformance on hardware 18/18 (2026-10-15): the suite's waveform is 0.1 V (direct mode is ±0.5 V) and its record grid starts at the trigger (the input opens its readout window there; pre-trigger samples are a scope's ability, not the protocol's). **Marker lines (ADR 0063, 0064):** `do1` → the scope's AUX TRIG IN (`scope_trigger`), `do2` → the QDAC-II's ext1 input (`dac_trigger`), `do3` → scope ch3 for Probe 05; a 400 ns marker (`MARKER_NS`) plays at a shot capture and at the top of a triggered axis. Probe 05 (2026-10-16): 3.27 V into 1 MΩ, 1.93 V into 50 Ω, 401 ns; the marker leads the analog edge by 85 ns (`MARKER_TO_ANALOG_NS`, recorded, not applied). **The FEM's digital I/O adapter must be screwed on**: without it the config is accepted and the simulator shows the markers, but nothing reaches the connectors |
+| `WaveformSense` | Keysight InfiniiVision (X or HD3 series; an HD304MSO on the bench) | `infiniivision` | `QDT_SCOPE_ADDRESS` | `TCPIP::<host>::5025::SOCKET` (the VXI-11 `::INSTR` form refuses connections intermittently on the HD3; the socket form never did); it self-assigns a 169.254 address without DHCP. Trigger sweep must be AUTO, vertical scale set on the front panel. `:TIMebase:REFerence LEFT` is one division in from the left edge; the driver accounts for it. With `settings["trigger_from"]` (the OPX's `do1` on its AUX TRIG IN) the driver sets EXT, rising edge at `trigger_level_v` (default 1.0 V), NORMal at `arm` (ADR 0063); a shot capture that triggers itself needs NORMal on the front panel. **Acquisition is `:SINGle`, a wait for `:AER?`, a poll of `:RSTate?` (the HD3 has no `:OPERegister`), never `:DIGitize`**; with the sweep AUTO a trigger is forced after half a second (`:SINGle` waits for a real trigger even in AUTO, unlike `:DIGitize`); segmented memory for several records (ADR 0065, Probe 05). A `:DIGitize` left waiting wedges the parser until a device clear, which only HiSLIP can send (`TCPIP::<host>::hislip0::INSTR`, pyvisa `clear()`). Segment readout is 0.3–0.5 s each over the socket |
 | `LevelSource` + `LevelSense` on one terminal | Keithley 2400-series | `keithley2400` | `QDT_SMU_ADDRESS` | legacy or 2450-style SCPI picked from `*IDN?` |
 
 **QDAC-II quirks seen on the bench (firmware 14-1.70):**
 - After a power cycle or a LAN change the analog outputs can stay at 0 V while the firmware reports every
-  setpoint applied (DAC code programmed, `LAST?` equal to `VOLT?`, no error). A `*RST` brought them back.
+  setpoint applied (DAC code programmed, `LAST?` equal to `VOLT?`, no error). A `*RST` brought them back
+  (seen again 2026-10-16 after the power cycle that followed the ch02 finding; ch01 then worked).
   Verify one channel with a meter or the scope at the start of a bench session; the driver never resets
   on its own, because a reset zeroes every channel.
 - **Settling after `set` (Probe 04, 2026-10-15):** the output edge follows `set()`'s return by less than
@@ -135,14 +136,35 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
   axis, `captured = [{channel: scope1, start_s, stop_s, num, records}]`, the OPX pulse train played
   beside it; the scope's trigger is set on the instrument (level, edge, source), not by the sweep. The
   stand file lists the scope with `waveform_sense` and a voltage channel on its input. The measurement's
-  honest shape is one shot, `step(rf, …); capture(scope1, …)` (ADR 0060); the OPX driver refuses it until
-  it emits a trigger line to the scope, so on the bench L2-3 stays the per-point form above for now.
+  honest shape is one shot, `step(rf, …); capture(scope1, …)` (ADR 0060); since ADR 0063 the OPX runs
+  it: `bench/test_l2_paced.py` posts the one-shot form (`step(P2_pulse, 0.25 V, 16 ns); capture(scope1,
+  29 µs); wait(50 ms)`), the scope triggering itself on the analog edge (AC, NORMal sweep) when its stand
+  entry has no `trigger_from`, on the OPX's marker when it has. The per-point form above stays as the
+  reference it is compared against. Not yet run: the 2026-10-16 session had ao1 direct into the scope for
+  Probe 05, not through the combiner.
 - **Oracle:** V(t) = A·e^(−t/τ) after the edge. τ is the bias tee's low-frequency time constant,
   1/(2π f_low) from its datasheet.
 - **Fit:** a single exponential (`qdt_analysis.exponential.fit_exponential`, ADR 0046) → `tau`, `amplitude`,
   `offset` with standard errors; `span` keeps the pulse's falling edge out of the window.
 - **Pass:** τ within the bias tee's specification. This also exercises `WaveformSense` on a real
   waveform.
+
+### L2-4: a triggered staircase (the sequencer paces the DAC; ADR 0064, 0065)
+```
+OPX do2 ──► QDAC-II ext1 (input)      OPX do1 ──► scope AUX TRIG IN
+QDAC ch01 ──► scope ch2 (DC, 1 MΩ; no board)
+```
+- **Sweep:** a triggered axis `V` on `P1`, −1 … +1 V in 5 points, with a stage on the OPX whose shot
+  is `capture(scope<n>, 2 ms, 200); wait(50 ms)`. The QDAC is loaded once (`QDac2.load`), the OPX's
+  outer loop plays a marker on `do2` per point and waits the channel's settle, the shot's marker on
+  `do1` triggers one segment of the scope's segmented acquisition (ADR 0065).
+- **Oracle:** the plane fit over the (V, time) map has `slope_row` 1 (the level arrives as is into
+  1 MΩ) within the scope's gain accuracy, and the fit sees every row (no missed trigger).
+- **Run 2026-10-16 (session 21, `bench/reports/2026-10-16-step6.md`): passes** through
+  `qdt-server --stand` after Probe 05 and ADR 0065: five records at −1, −0.5, 0, 0.5, 1 V (means
+  −1.016, −0.509, −0.003, +0.500, +1.005 V direct on the executor), the sweep in 4 s with a 50 ms shot,
+  the DAC holding its last point. `QDT_L2_STAIRCASE=1 QDT_L2_STAIRCASE_SCOPE_CHANNEL=2` with QDAC ch01 on
+  scope ch2. The first attempt, through one `:DIGitize` per record, missed every second marker.
 
 ### To fill in before Step 5 builds the L2 suite (human)
 - **Bias tee model:** low-frequency cutoff, DC-port resistance, insertion loss, and maximum DC

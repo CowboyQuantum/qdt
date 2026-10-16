@@ -51,10 +51,11 @@ from ..protocols import (
 from ..stream.frame import Frame
 from .compile import RECORD_DIM, REPEAT_DIM, SHOT_DIM
 
-CAPTURE_ARM_GRACE_S = 0.05
+CAPTURE_ARM_GRACE_S = 0.5
 """Seconds between starting to drain a shot capture's records (which is when a real scope arms its
 acquisition) and starting the sequencer that triggers it: the scope's arm must be in place before the
-first marker. Probe 05 measures what the bench's scope needs; the simulated scope needs nothing."""
+first marker. The bench's scope takes 0.45 s per record through `:DIGitize` (Probe 05, 2026-10-16);
+the simulated scope needs nothing and pays this per program run."""
 
 
 def resolve_parameters(

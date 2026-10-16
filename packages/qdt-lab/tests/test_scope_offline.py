@@ -58,3 +58,32 @@ def test_from_config_reads_the_trigger_line_and_its_level(monkeypatch):
     assert InfiniiVisionX.from_config(with_level, ()).external_trigger_level_v == 0.8
     untriggered = inst.model_copy(update={"settings": {"address": inst.settings["address"]}})
     assert InfiniiVisionX.from_config(untriggered, ()).external_trigger_level_v is None
+
+
+def _records(n: int) -> Dataset:
+    return record_dataset().model_copy(
+        update={"dims": (Dimension(name="record", size=n), Dimension(name="time", size=100))}
+    )
+
+
+def test_several_records_are_one_segmented_acquisition_when_the_scope_has_the_mode():
+    """ADR 0063: one `:SINGle` catches every trigger in hardware; segments are read by index. An
+    instrument without the mode falls back to one `:SINGle` per record. Never `:DIGitize`."""
+    scope = emulated()
+    frames = list(scope.arm("ch00", _records(4), "v").frames())
+    em = scope._t
+    assert len(frames) == 4 and em.singles == 1 and em.acquire_mode == "SEGM"
+    assert em.segment_count == 4
+    assert [c for c in em.log if c.startswith(":ACQuire:SEGMented:INDex")] == [
+        f":ACQuire:SEGMented:INDex {k}" for k in (1, 2, 3, 4)
+    ]
+    assert not any(c.startswith(":DIGitize") for c in em.log)
+    assert [f.chunk.region[0].start for f in frames] == [0, 1, 2, 3]
+
+    plain = emulated(segmented=False)
+    frames = list(plain.arm("ch00", _records(3), "v").frames())
+    assert len(frames) == 3 and plain._t.singles == 3 and plain._t.acquire_mode == "RTIM"
+
+    one = emulated()
+    list(one.arm("ch00", _records(1), "v").frames())
+    assert one._t.singles == 1 and one._t.acquire_mode == "RTIM"  # a single record stays real-time

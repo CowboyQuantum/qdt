@@ -41,17 +41,25 @@ _TRIGGER = {  # the external trigger a scope with `trigger_from` is set to at ar
 
 
 class InfiniiVisionEmulator:
-    """Tracks the timebase and waveform settings; each `:DIGitize CHANnel<n>` captures record k =
-    `signal(t, k)` on t = position - range/10 + i*range/points (LEFT reference: one division in from the
-    left edge, as the instrument does; xreference 0), quantized to int16 codes of
-    `yincrement` volts (yorigin 0, yreference 0). `points` caps the raw points; fewer are captured when
-    `:WAVeform:POINts` asks for fewer."""
+    """Tracks the timebase and waveform settings; each `:SINGle` captures record k = `signal(t, k)`
+    on t = position - range/10 + i*range/points (LEFT reference: one division in from the left edge,
+    as the instrument does; xreference 0), quantized to int16 codes of `yincrement` volts (yorigin 0,
+    yreference 0), for the waveform source channel; in segmented mode one `:SINGle` captures
+    `:ACQuire:SEGMented:COUNt` records at once and `:ACQuire:SEGMented:INDex k` selects one. `:RSTate?`
+    reads STOP at once (an emulated trigger is instant). `points` caps
+    the raw points; fewer are captured when `:WAVeform:POINts` asks for fewer. `segmented=False`
+    emulates an instrument without the mode (`:ACQuire:MODE?` stays RTIM)."""
 
     def __init__(
-        self, signal: Signal | None = None, points: int = 2000, yincrement: float = 1e-4
+        self,
+        signal: Signal | None = None,
+        points: int = 2000,
+        yincrement: float = 1e-4,
+        segmented: bool = True,
     ) -> None:
         self.signal: Signal = signal or ring_down
         self.points, self.yincrement = points, yincrement
+        self.supports_segmented = segmented
         self.log: list[str] = []
         self.range: float = 1e-3
         self.position: float = 0.0
@@ -60,8 +68,12 @@ class InfiniiVisionEmulator:
         self.requested_points: int = points
         self.settings: dict[str, str] = {}
         self.trigger: dict[str, str] = {}
+        self.acquire_mode: str = "RTIM"
+        self.segment_count: int = 1
         self.records = 0
-        self._capture: tuple[int, float, float, np.ndarray] | None = None
+        self.singles = 0
+        self._captures: list[tuple[float, float, np.ndarray]] = []
+        self._index = 0
         self.closed = False
 
     def write(self, command: str) -> None:
@@ -92,22 +104,38 @@ class InfiniiVisionEmulator:
             self.source = int(m.group(1))
         elif head == ":WAVeform:POINts" and arg.isdigit():
             self.requested_points = int(arg)
-        elif head == ":DIGitize" and (m := re.fullmatch(r"CHANnel([1-4])", arg)):
-            self._digitize(int(m.group(1)))
+        elif head == ":ACQuire:MODE" and arg in ("SEGMented", "RTIMe"):
+            self.acquire_mode = "SEGM" if arg == "SEGMented" and self.supports_segmented else "RTIM"
+        elif head == ":ACQuire:SEGMented:COUNt" and arg.isdigit():
+            self.segment_count = int(arg)
+        elif head == ":ACQuire:SEGMented:INDex" and arg.isdigit():
+            k = int(arg)
+            if self.acquire_mode != "SEGM" or not 1 <= k <= len(self._captures):
+                raise ValueError(f"no segment {k} ({len(self._captures)} acquired)")
+            self._index = k - 1
+        elif command == ":SINGle":
+            self._single()
+        elif command in (":STOP", ":TRIGger:FORCe"):
+            pass
         else:
             raise ValueError(f"emulator does not understand {command!r}")
 
-    def _digitize(self, channel: int) -> None:
+    def _single(self) -> None:
         if self.reference != "LEFT":
             raise ValueError("emulator captures only with :TIMebase:REFerence LEFT")
+        self.singles += 1
         n = min(self.points, self.requested_points)
         xinc = self.range / n
         left_edge = self.position - self.range * 0.1
         t = left_edge + np.arange(n) * xinc
-        volts = np.asarray(self.signal(t, self.records), dtype=np.float64)
-        codes = np.clip(np.round(volts / self.yincrement), -32768, 32767).astype(np.int16)
-        self._capture = (channel, xinc, left_edge, codes)
-        self.records += 1
+        count = self.segment_count if self.acquire_mode == "SEGM" else 1
+        self._captures = []
+        for _ in range(count):
+            volts = np.asarray(self.signal(t, self.records), dtype=np.float64)
+            codes = np.clip(np.round(volts / self.yincrement), -32768, 32767).astype(np.int16)
+            self._captures.append((xinc, left_edge, codes))
+            self.records += 1
+        self._index = 0
 
     def query(self, command: str) -> str:
         self._check_open()
@@ -116,8 +144,16 @@ class InfiniiVisionEmulator:
             return "KEYSIGHT TECHNOLOGIES,DSOX3024T,0,0.0"
         if command == "*OPC?":
             return "1"
+        if command == ":AER?":
+            return "+1"  # armed at once
+        if command == ":RSTate?":
+            return "STOP"  # an emulated acquisition completes at once
+        if command == ":TRIGger:SWEep?":
+            return self.trigger.get(":TRIGger:SWEep", "AUTO")
+        if command == ":ACQuire:MODE?":
+            return self.acquire_mode
         if command == ":WAVeform:PREamble?":
-            _, xinc, xorig, codes = self._served()
+            xinc, xorig, codes = self._served()
             return f"1,0,{codes.size},1,{xinc:.12e},{xorig:.12e},0,{self.yincrement:.12e},0.0,0"
         raise ValueError(f"emulator does not understand query {command!r}")
 
@@ -131,12 +167,12 @@ class InfiniiVisionEmulator:
         missing = set(_SETTINGS) - set(self.settings)
         if missing:
             raise ValueError(f"waveform transfer not configured: {sorted(missing)}")
-        return self._served()[3].copy()
+        return self._served()[2].copy()
 
-    def _served(self) -> tuple[int, float, float, np.ndarray]:
-        if self._capture is None or self._capture[0] != self.source:
-            raise ValueError(f"no capture on :WAVeform:SOURce CHANnel{self.source}")
-        return self._capture
+    def _served(self) -> tuple[float, float, np.ndarray]:
+        if not self._captures:
+            raise ValueError("no acquisition: send :SINGle first")
+        return self._captures[self._index]
 
     def close(self) -> None:
         self.closed = True

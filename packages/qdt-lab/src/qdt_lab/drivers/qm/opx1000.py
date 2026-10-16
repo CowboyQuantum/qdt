@@ -51,9 +51,13 @@ CONTROLLER = "con1"
 CLOCK_NS = 4
 MIN_PULSE_NS = 16
 MARKER_NS = 400
-"""Length of the marker pulse on a digital output: long enough for any trigger input's minimum pulse
-width (Probe 05 confirms the bench's); it plays on its own element, so the analog timeline is not
-delayed by it unless a capture window is shorter than it."""
+"""Length of the marker pulse on a digital output: 3.27 V into 1 MΩ, 1.93 V into 50 Ω, 401 ns on the
+bench (Probe 05, 2026-10-16); it plays on its own element, so the analog timeline is not delayed by
+it unless a capture window is shorter than it."""
+MARKER_TO_ANALOG_NS = 85
+"""A marker's rising edge leads the analog edge played in the same shot by this much at the
+connectors (Probe 05: 5 of 5 repeats). Recorded, not applied (ADR 0065): a shot capture's record
+starts at the marker; the op's analog effect lands this much later."""
 SAMPLE_RATE = 1e9  # LF-FEM native rate assumed for arbitrary waveforms and raw ADC traces
 TIME_OF_FLIGHT_NS = 180
 """Readout latency, so a record starts on the edge of a pulse played at the same time (Probe 02: the
