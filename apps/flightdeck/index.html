@@ -2,77 +2,148 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Flight Deck</title>
     <style>
-      :root { color-scheme: dark; }
-      body { margin: 0; font: 13px system-ui, sans-serif; background: #181818; color: #ddd; }
-      header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #222; }
-      #title { font-weight: 600; }
-      main { display: flex; gap: 12px; align-items: flex-start; }
-      #stage { position: relative; width: min(60vw, 86vh); aspect-ratio: 1; margin: 12px; flex: none; }
-      #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
-      #status { padding: 0 12px; font-variant-numeric: tabular-nums; }
-      #message { padding: 0 12px; min-height: 1.2em; color: #9c9; }
-      #message.error { color: #f77; }
-      #control { flex: 1; min-width: 320px; max-width: 480px; margin: 12px 12px 12px 0; display: flex; flex-direction: column; gap: 6px; }
-      #control h3 { margin: 10px 0 2px; font-size: 13px; color: #aaa; }
+      /* Tokens: the `slate` theme's values so the first paint is right; a theme file overrides them all
+         (ADR 0054, src/workspace/theme.ts). Nothing but these properties and the deco-* classes is themeable. */
+      :root {
+        color-scheme: dark;
+        --bg: #1a212c; --panel: #242d3a; --panel-2: #2c3644; --line: #36414f; --line-strong: #4a5868;
+        --text: #d9e0ea; --text-2: #95a2b3; --text-3: #6c788a;
+        --live: #f2b544; --live-ink: #1a212c; --ok: #7ccb9a; --warn: #e8865a; --sel: #5fa8f5;
+        --sans: "IBM Plex Sans", system-ui, sans-serif;
+        --mono: "IBM Plex Mono", ui-monospace, monospace;
+        --fs: 14px; --r: 6px; --pane-r: 8px;
+        --colL: 30%; --colR: 18%;
+        box-sizing: border-box;
+      }
+      html, body { height: 100%; margin: 0; }
+      body { background: var(--bg); color: var(--text); font: var(--fs)/1.45 var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+      *, *::before, *::after { box-sizing: inherit; }
+      button, select, input, textarea { font: inherit; color: inherit; }
+      button { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 3px 10px; cursor: pointer; }
+      button:hover { border-color: var(--line-strong); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button:focus-visible, select:focus-visible, input:focus-visible, .gutter:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+      button.primary { background: var(--live); color: var(--live-ink); border-color: transparent; font-weight: 500; }
+      button.icon { padding: 1px 7px; color: var(--text-2); background: transparent; }
+      select, input[type="number"], input[type="text"] { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; }
+      input[type="number"], input[type="text"] { font-family: var(--mono); font-size: 0.93em; }
+      .error { color: var(--warn); }
+      .hint { color: var(--text-3); font-size: 0.86em; }
+
+      /* ---- decorations: switched on by a theme's flags (closed list in theme.ts) ---- */
+      html.deco-caps .strip h1 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+      html.deco-caps .strip .kv { font-size: 0.86em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+      html.deco-caps .strip .kv b { color: var(--text); letter-spacing: 0; text-transform: none; }
+      html.deco-caps .pill, html.deco-caps button:not(.icon) { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.86em; }
+      html.deco-caps .pane-head .title, html.deco-caps .pane-head .picker { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.86em; font-weight: 600; }
+      html.deco-caps h3, html.deco-caps legend { text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8em; font-weight: 600; }
+      html.deco-brackets .pane::before, html.deco-brackets .pane::after { content: ""; position: absolute; width: 10px; height: 10px; pointer-events: none; z-index: 2; }
+      html.deco-brackets .pane::before { top: -1px; left: -1px; border-top: 2px solid var(--text-2); border-left: 2px solid var(--text-2); }
+      html.deco-brackets .pane::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--text-2); border-right: 2px solid var(--text-2); }
+      html.deco-graticule .ws { background: linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 48px, linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/48px 100%; background-color: var(--bg); }
+      html.deco-graticule .pane { background: color-mix(in srgb, var(--panel) 92%, transparent); }
+      html.deco-glow button.primary { box-shadow: 0 0 14px color-mix(in srgb, var(--live) 35%, transparent); }
+      html.deco-glow .pill.live .dot { box-shadow: 0 0 10px var(--live); }
+      html.deco-glow .progress i { box-shadow: 0 0 8px var(--live); }
+      html.deco-flat .pane-head { background: transparent; }
+      html.deco-flat .pane-head .picker { background: transparent; border-color: transparent; padding-left: 0; }
+      html.deco-flat .menu { box-shadow: 0 0 0 1px var(--line), 0 12px 30px rgba(0, 0, 0, 0.6); background: var(--bg); }
+      html.deco-flat select, html.deco-flat input[type="number"], html.deco-flat input[type="text"] { background: var(--bg); }
+
+      /* ---- top strip ---- */
+      .strip { display: flex; align-items: center; gap: 14px; padding: 6px 14px; border-bottom: 1px solid var(--line); background: var(--panel); flex: 0 0 auto; flex-wrap: wrap; }
+      .strip h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+      .strip .kv { color: var(--text-2); }
+      .strip .kv b { color: var(--text); font-weight: 500; }
+      .strip .spacer { flex: 1; }
+      .strip #status { font-variant-numeric: tabular-nums; font-size: 0.93em; }
+      .strip #message { min-height: 1.2em; color: var(--ok); font-size: 0.93em; }
+      .strip #message.error { color: var(--warn); }
+      .strip #file { width: 14em; font-size: 0.86em; }
+      .pill { display: inline-flex; align-items: center; gap: 6px; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--line); }
+      .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+      .pill.live .dot { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 25%, transparent); }
+      .pill.live { border-color: color-mix(in srgb, var(--live) 50%, var(--line)); }
+      .progress { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+      .progress i { display: block; height: 100%; background: var(--live); width: 0; }
+      .strip-progress { width: 120px; display: inline-block; vertical-align: middle; }
+      .menu { position: fixed; top: 44px; right: 14px; z-index: 5; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--pane-r); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 240px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); font-size: 0.93em; }
+      .menu .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .menu .item { text-align: left; flex: 1; }
+
+      /* ---- workspace: three columns, each a vertical stack of panes ---- */
+      .ws { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--colL) 6px 1fr 6px var(--colR); padding: 8px; gap: 0; }
+      .col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+      .pane { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--pane-r); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; flex: 1 1 0; }
+      .col.center .pane { border-color: var(--line-strong); }
+      .pane-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 10px; border-bottom: 1px solid var(--line); background: var(--panel-2); flex-wrap: wrap; }
+      .pane-head .title, .pane-head .picker { font-weight: 500; font-size: 0.93em; }
+      .pane-head .sub { color: var(--text-3); font-size: 0.86em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pane-head .right { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: 0 0 auto; flex-wrap: wrap; }
+      .pane-head .slot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.86em; color: var(--text-2); }
+      .pane-head .slot select { max-width: 11em; }
+      .pane-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
+      .gutter { position: relative; cursor: col-resize; touch-action: none; flex: 0 0 6px; }
+      .gutter.h { cursor: row-resize; height: 6px; }
+      .gutter::after { content: ""; position: absolute; inset: 0; margin: auto; width: 2px; height: 28px; border-radius: 2px; background: var(--line-strong); opacity: 0.6; }
+      .gutter.h::after { width: 28px; height: 2px; }
+      .gutter:hover::after, .gutter.active::after, .gutter:focus-visible::after { background: var(--sel); opacity: 1; }
+      body.resizing { user-select: none; cursor: col-resize; }
+      body.resizing.h { cursor: row-resize; }
+      .empty { padding: 14px; color: var(--text-3); }
+
+      /* ---- widget: plot ---- */
+      .plot { display: flex; flex-direction: column; height: 100%; }
+      .plot .stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+      .plot .square { position: relative; }
+      .plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+
+      /* ---- widget: control (the Step 4b panel, mounted unchanged this session) ---- */
+      #control { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; font-size: 0.93em; }
+      #control h3 { margin: 10px 0 2px; font-size: 1em; color: var(--text-2); }
       #control label { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
-      #control input, #control select { background: #111; color: #ddd; border: 1px solid #444; padding: 2px 4px; font: inherit; width: 55%; }
+      #control input, #control select { width: 55%; }
       #control .axis { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; gap: 4px; }
       #control .axis input, #control .axis select { width: 100%; }
-      #control .axis.head { color: #888; grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; }
+      #control .axis.head { color: var(--text-3); grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; }
       #control ul { margin: 0; padding-left: 16px; max-height: 160px; overflow: auto; }
       #control li { display: flex; gap: 6px; align-items: center; }
-      #control button { font: inherit; background: #333; color: #ddd; border: 1px solid #555; padding: 2px 8px; cursor: pointer; }
       #control #params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
-      #control #params label { font-size: 12px; }
-      #control fieldset { border: 1px solid #333; margin: 4px 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
+      #control #params label { font-size: 0.93em; }
+      #control fieldset { border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
       #control fieldset[hidden] { display: none; }
-      #control legend { color: #aaa; font-size: 12px; }
+      #control legend { color: var(--text-2); font-size: 0.93em; }
       #control .op-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-end; }
-      #control .op-row label { display: flex; flex-direction: column; align-items: stretch; gap: 0; font-size: 10px; color: #888; flex: 1 1 60px; }
+      #control .op-row label { display: flex; flex-direction: column; align-items: stretch; gap: 0; font-size: 0.8em; color: var(--text-3); flex: 1 1 60px; }
       #control .op-row label input, #control .op-row label select { width: 100%; }
       #control .op-row select.op { width: auto; }
-      #control .op-row .index { color: #666; width: 1.2em; }
+      #control .op-row .index { color: var(--text-3); width: 1.2em; }
       #control .op-row button { padding: 0 5px; }
       #control .level-row { display: flex; gap: 4px; align-items: center; }
       #control .level-row select, #control .level-row input { width: auto; flex: 1 1 80px; }
       #control .level-row button { padding: 0 5px; }
-      #control #level-errors { color: #e88; font-size: 12px; }
+      #control #level-errors, #control #sequence-errors { color: var(--warn); font-size: 0.93em; }
       #control .buttons { display: flex; gap: 4px; flex-wrap: wrap; }
       #control .buttons select { width: auto; }
-      #control .hint { color: #777; font-size: 11px; }
-      #control #symbols label { font-size: 12px; }
-      #control #sequence-errors { color: #e88; font-size: 12px; }
-      #control #estimates { font: 12px ui-monospace, monospace; white-space: pre; margin: 0; }
-      #datasets, #transform, #variable, #minus { background: #111; color: #ddd; border: 1px solid #444; font: inherit; }
+      #control #symbols label { font-size: 0.93em; }
+      #control #estimates { font: 0.93em var(--mono); white-space: pre; margin: 0; }
+
+      @media (max-width: 900px) {
+        .ws { display: flex; flex-direction: column; overflow: auto; gap: 8px; }
+        .gutter { display: none; }
+        .col { gap: 8px; }
+        .col.center { order: -1; }
+        .pane { min-height: 340px; flex: 0 0 auto; }
+      }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
     </style>
   </head>
   <body>
-    <header>
-      <span id="title">Flight Deck</span>
-      <label>dataset <select id="datasets"></select></label>
-      <label>variable <select id="variable"></select></label>
-      <label>minus <select id="minus"></select></label>
-      <label>view <select id="transform">
-        <option value="raw">raw</option>
-        <option value="d_col">d/d(inner axis)</option>
-        <option value="d_row">d/d(outer axis)</option>
-        <option value="grad">|gradient|</option>
-      </select></label>
-      <label><input id="swap" type="checkbox" /> swap axes</label>
-      <label>replay <input id="file" type="file" accept=".qdtrec" /></label>
-    </header>
-    <div id="status">connecting…</div>
-    <div id="message"></div>
-    <main>
-      <div id="stage">
-        <canvas id="plot" width="1024" height="1024"></canvas>
-        <canvas id="overlay" width="1024" height="1024"></canvas>
-      </div>
-      <aside id="control"></aside>
-    </main>
+    <header class="strip"></header>
+    <main class="ws" id="ws"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
