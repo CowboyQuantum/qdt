@@ -12,5 +12,6 @@ One file per roadmap step, fixed headings. `STATUS.md` points at the current one
 | 4b | [Control path: craft, run and analyse from Flight Deck](04b-control-path.md) | DONE (ADR 0032, 0034–0036) |
 | 5 | [Instrument drivers (the last mile)](05-instrument-drivers-last-mile.md) | DONE (ADR 0040–0047) |
 | 6 | [Closed-loop tuning](06-closed-loop-tuning.md) | IN PROGRESS (opened 2026-10-15) |
+| 6b | [Flight Deck workspace](06b-flightdeck-workspace.md) | NOT STARTED |
 | 7 | [Other sources onto the substrate](07-other-sources.md) | NOT STARTED |
 | 8 | [Frameworks extraction](08-frameworks.md) | NOT STARTED |

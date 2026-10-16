@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flight Deck — layout prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#1A212C; --panel:#242D3A; --panel-2:#2C3644; --line:#36414F; --line-strong:#4A5868;
+  --text:#D9E0EA; --text-2:#95A2B3; --text-3:#6C788A;
+  --live:#F2B544; --live-ink:#1A212C; --ok:#7CCB9A; --warn:#E8865A; --sel:#5FA8F5;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:6px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --bg:#E9ECF1; --panel:#F7F8FA; --panel-2:#FFFFFF; --line:#D4DAE3; --line-strong:#B9C2CE;
+  --text:#1E2630; --text-2:#55606E; --text-3:#8A94A3; --live:#C98A12; --live-ink:#FFFFFF; --sel:#2B7CD3;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    color-scheme: light;
+    --bg:#E9ECF1; --panel:#F7F8FA; --panel-2:#FFFFFF; --line:#D4DAE3; --line-strong:#B9C2CE;
+    --text:#1E2630; --text-2:#55606E; --text-3:#8A94A3; --live:#C98A12; --live-ink:#FFFFFF; --sel:#2B7CD3;
+  }
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+
+/* ---- theme decorations: switched on by flags in a theme file, independent of the colour tokens ---- */
+:root{--pane-r:8px}
+html.deco-caps .strip h1{font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+html.deco-caps .strip .kv{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3)}
+html.deco-caps .strip .kv b{color:var(--text);letter-spacing:0;text-transform:none}
+html.deco-caps .pill,html.deco-caps button:not(.icon),html.deco-caps .chip,html.deco-caps .badge{text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+html.deco-caps .pane-head .title,html.deco-caps .pane-head select{text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:600}
+html.deco-caps h4,html.deco-caps .glabel,html.deco-caps table th{text-transform:uppercase;letter-spacing:.1em;font-size:10.5px;font-weight:600;color:var(--text-3)}
+html.deco-caps .plot .axes{text-transform:uppercase;letter-spacing:.08em;font-size:10.5px}
+html.deco-brackets .pane::before,html.deco-brackets .pane::after{content:"";position:absolute;width:10px;height:10px;pointer-events:none;z-index:2}
+html.deco-brackets .pane::before{top:-1px;left:-1px;border-top:2px solid var(--text-2);border-left:2px solid var(--text-2)}
+html.deco-brackets .pane::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--text-2);border-right:2px solid var(--text-2)}
+html.deco-brackets .pane.live-pane::before,html.deco-brackets .pane.live-pane::after{border-color:var(--live)}
+html.deco-graticule .ws{background:linear-gradient(var(--line) 1px,transparent 1px) 0 0/100% 48px,linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/48px 100%;background-color:var(--bg)}
+html.deco-graticule .pane{background:color-mix(in srgb,var(--panel) 92%,transparent)}
+html.deco-graticule .plot .stage>div:first-child{background:linear-gradient(var(--line) 1px,transparent 1px) 0 0/100% 24px,linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/24px 100%}
+html.deco-glow button.primary{box-shadow:0 0 14px color-mix(in srgb,var(--live) 35%,transparent)}
+html.deco-glow .pill.live .dot{box-shadow:0 0 10px var(--live)}
+html.deco-glow .progress i{box-shadow:0 0 8px var(--live)}
+html.deco-flat .pane-head{background:transparent}
+html.deco-flat .pane-head select{background:transparent;border-color:transparent;padding-left:0}
+html.deco-flat .menu{box-shadow:0 0 0 1px var(--line),0 12px 30px rgba(0,0,0,.6);background:var(--bg)}
+html.deco-flat select,html.deco-flat input[type=number],html.deco-flat input[type=text],html.deco-flat .sweep .plan{background:var(--bg)}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:var(--fs,14px)/1.45 var(--sans);display:flex;flex-direction:column;overflow:hidden}
+*{box-sizing:inherit}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:4px 10px;cursor:pointer}
+button:hover{border-color:var(--line-strong)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+button.primary{background:var(--live);color:var(--live-ink);border-color:transparent;font-weight:500}
+button.icon{padding:2px 7px;color:var(--text-2);background:transparent}
+select{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:3px 6px}
+input[type=number],input[type=text]{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:3px 6px;font-family:var(--mono);font-size:13px;width:6.5em}
+input[type=text]{width:9em}
+
+/* ---- top strip ---- */
+.strip{display:flex;align-items:center;gap:18px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto;flex-wrap:wrap}
+.strip h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.01em}
+.strip .kv{color:var(--text-2)} .strip .kv b{color:var(--text);font-weight:500}
+.strip .spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;border:1px solid var(--line)}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:var(--text-3)}
+.pill.live .dot{background:var(--live);box-shadow:0 0 0 3px color-mix(in srgb,var(--live) 25%,transparent)}
+.pill.live{border-color:color-mix(in srgb,var(--live) 50%,var(--line))}
+.strip-progress{width:120px;display:inline-block;vertical-align:middle}
+.pane{position:relative}
+.menu{position:absolute;top:34px;right:8px;z-index:5;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:var(--pane-r);padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:220px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px}
+.menu .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.menu select{max-width:140px}
+
+/* ---- workspace: three columns, each a vertical stack ---- */
+.ws{flex:1;min-height:0;display:grid;grid-template-columns:var(--colL,24%) 6px 1fr 6px var(--colR,24%);padding:8px;gap:0}
+.col{display:flex;flex-direction:column;min-height:0;min-width:0}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--pane-r);display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;flex:1 1 0}
+.pane.live-pane{border-color:color-mix(in srgb,var(--live) 45%,var(--line))}
+.col.center .pane{border-color:var(--line-strong)}
+.pane-head{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 10px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.pane-head select{font-weight:500;font-size:13px}
+.pane-head .title{font-weight:500;font-size:13px}
+.pane-head .sub{color:var(--text-3);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pane-head .right{margin-left:auto;display:flex;gap:4px;align-items:center;flex:0 0 auto}
+.pane-body{flex:1;min-height:0;overflow:auto;position:relative}
+.gutter{background:transparent;position:relative;cursor:col-resize;touch-action:none;flex:0 0 6px}
+.gutter.h{cursor:row-resize;height:6px}
+.gutter::after{content:"";position:absolute;inset:0;margin:auto;width:2px;height:28px;border-radius:2px;background:var(--line-strong);opacity:.6}
+.gutter.h::after{width:28px;height:2px}
+.gutter:hover::after,.gutter.active::after{background:var(--sel);opacity:1}
+body.resizing{user-select:none;cursor:col-resize}
+body.resizing.h{cursor:row-resize}
+
+/* ---- widget: plot ---- */
+.plot{display:flex;flex-direction:column;height:100%}
+.plot .stage{position:relative;min-width:0;display:flex;flex-direction:column;flex:1;min-height:0}
+.plot canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+.plot .axes{position:absolute;left:8px;bottom:6px;font-size:11.5px;color:var(--text-2);background:color-mix(in srgb,var(--panel) 75%,transparent);padding:2px 6px;border-radius:4px}
+.plot .cursor{position:absolute;pointer-events:none;border-left:1px dashed var(--live);top:0;bottom:0}
+.plot .cut{height:84px;border-top:1px solid var(--line);flex:0 0 auto}
+.progress{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--live);width:0}
+
+/* ---- widget: history ---- */
+.hist{display:flex;flex-direction:column;height:100%;font-size:13px}
+.hist .bar{display:flex;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
+.hist .bar input[type=text]{width:100%;font-family:var(--sans);font-size:12.5px}
+.hist .list{flex:1;min-height:0;overflow:auto}
+table.ht{border-collapse:collapse;width:100%}
+table.ht th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:500;color:var(--text-2);padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.ht td{padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.ht td.id{font-family:var(--mono);font-size:12px;color:var(--text-3)}
+table.ht tr.open td.id{color:var(--sel)}
+
+/* ---- widget: pulse ---- */
+.pulse{display:flex;flex-direction:column;height:100%}
+.pulse .ops{padding:8px 10px;border-bottom:1px solid var(--line);overflow:auto;flex:1 1 auto;min-height:0}
+table.ops-t{border-collapse:collapse;width:100%;font-size:13px}
+table.ops-t th{text-align:left;font-weight:500;color:var(--text-2);padding:2px 6px;border-bottom:1px solid var(--line)}
+table.ops-t td{padding:3px 6px;border-bottom:1px solid var(--line)}
+table.ops-t input,table.ops-t select{width:100%;min-width:0}
+table.ops-t .x{color:var(--text-3);background:none;border:none;padding:0 4px}
+.timeline{position:relative;overflow:auto;padding:8px 10px;flex:0 0 auto}
+.timeline svg{display:block}
+
+/* ---- widget: sweep ---- */
+.sweep{padding:10px 12px;display:flex;flex-direction:column;gap:12px;font-size:13px}
+.sweep h4{margin:0;font-size:12.5px;font-weight:600;color:var(--text-2)}
+table.axes{border-collapse:collapse;width:100%}
+table.axes th{text-align:left;font-weight:500;color:var(--text-2);padding:2px 6px;border-bottom:1px solid var(--line)}
+table.axes td{padding:3px 6px;border-bottom:1px solid var(--line)}
+.sweep .plan{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;color:var(--text-2)}
+.sweep .actions{display:flex;gap:8px;align-items:center}
+.chk{display:inline-flex;gap:6px;align-items:center}
+
+/* ---- widget: matrix ---- */
+.matrix{padding:10px 12px;display:flex;flex-direction:column;gap:10px;font-size:13px;height:100%}
+.matrix .grid{display:grid;gap:3px;font-family:var(--mono);font-size:12.5px}
+.matrix .cell{background:var(--panel-2);border:1px solid var(--line);border-radius:4px;text-align:center}
+.matrix .cell input{width:100%;background:transparent;border:none;text-align:center;padding:5px 0}
+.matrix .lab{color:var(--text-2);display:flex;align-items:center;justify-content:center}
+.matrix .foot{color:var(--text-3);font-size:12.5px}
+
+/* ---- widget: operating point ---- */
+.dc{display:flex;flex-direction:column;height:100%;font-size:13px}
+.dc .filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
+.dc .filters .group{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.dc .filters .glabel{color:var(--text-3);font-size:12px;margin-right:2px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;background:transparent;color:var(--text-2)}
+.chip.on{border-color:var(--sel);color:var(--text);background:color-mix(in srgb,var(--sel) 14%,transparent)}
+.dc .filters input[type=text]{width:8em;font-family:var(--sans);font-size:12.5px}
+.dc .tbl{flex:1;min-height:0;overflow:auto}
+table.dct{border-collapse:collapse;width:100%}
+table.dct th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:500;color:var(--text-2);padding:5px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+table.dct th.num,table.dct td.num{text-align:right;font-family:var(--mono);font-size:12.5px}
+table.dct th .arrow{color:var(--sel);font-size:11px;margin-left:3px}
+table.dct td{padding:3px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.dc.compact .sec{display:none}
+.dc.compact table.dct td,.dc.compact table.dct th{padding-left:5px;padding-right:5px}
+.dc.compact .typeTag{display:inline;color:var(--text-3);font-size:11.5px;margin-left:6px}
+.dc .typeTag{display:none}
+table.dct tr.pinned td:first-child{color:var(--live)}
+table.dct td input[type=number]{width:6em;text-align:right}
+table.dct .pin{background:none;border:none;color:var(--text-3);padding:0 4px;font-size:14px;line-height:1}
+table.dct .pin.on{color:var(--live)}
+.dc .foot{padding:6px 10px;border-top:1px solid var(--line);color:var(--text-3);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.badge{display:inline-block;padding:0 6px;border-radius:4px;font-size:11.5px;border:1px solid var(--line);color:var(--text-2)}
+.badge.settling{border-color:var(--live);color:var(--live)}
+.badge.limit{border-color:var(--warn);color:var(--warn)}
+
+/* ---- widget: code ---- */
+.code{display:grid;grid-template-columns:1fr 190px;height:100%}
+.code textarea{resize:none;border:none;background:var(--panel);padding:10px 12px;font-family:var(--mono);font-size:12.5px;line-height:1.5;height:100%;width:100%;outline:none}
+.code .api{border-left:1px solid var(--line);padding:10px;font-size:12.5px;overflow:auto}
+.code .api h4{margin:0 0 6px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+.code .api code{font-family:var(--mono);font-size:12px;display:block;padding:2px 0}
+.code .lint{margin-top:10px;padding:6px 8px;border-radius:var(--r);border:1px solid var(--line);color:var(--text-2)}
+.code .lint.bad{border-color:color-mix(in srgb,var(--warn) 60%,var(--line));color:var(--warn)}
+
+@media (max-width: 900px){
+  .ws{display:flex;flex-direction:column;overflow:auto;gap:8px}
+  .gutter{display:none}
+  .col{gap:8px}
+  .col.center{order:-1}
+  .pane{min-height:340px;flex:0 0 auto}
+  .plot{grid-template-columns:1fr}
+  .code{grid-template-columns:1fr}.code .api{border-left:none;border-top:1px solid var(--line)}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important;animation:none !important} }
+</style>
+</head>
+<body>
+
+<header class="strip">
+  <h1>Flight Deck</h1>
+  <span class="kv">stand <b>bench-01</b></span>
+  <span class="kv">device <b>D7-L3</b></span>
+  <span class="kv">source <b id="srcName">simulated</b></span>
+  <span class="pill" id="livePill"><span class="dot"></span><span id="liveText">idle</span></span>
+  <span class="kv" id="nextRun"></span>
+  <button class="primary" id="runBtn">Run</button>
+  <span class="spacer"></span>
+  <span class="kv" id="rate">—</span>
+  <span class="progress strip-progress" id="stripProg"><i></i></span>
+  <button id="themeBtn" title="Toggle theme">Theme</button>
+</header>
+
+<main class="ws" id="ws">
+  <div class="col" data-col="L"></div>
+  <div class="gutter" id="gutL" role="separator" aria-orientation="vertical" aria-label="Resize left column"></div>
+  <div class="col center" data-col="C"></div>
+  <div class="gutter" id="gutR" role="separator" aria-orientation="vertical" aria-label="Resize right column"></div>
+  <div class="col" data-col="R"></div>
+</main>
+
+<script>
+// ---------------------------------------------------------------- widgets & state
+const WIDGETS = {
+  plot:   {label:"Plot",        sub:"live stream or a stored record"},
+  sweep:  {label:"Sweep editor",sub:"axes, stage, compile"},
+  pulse:  {label:"Pulse editor",sub:"per-shot sequence for the next sweep"},
+  matrix: {label:"Virtual gates", sub:"coupling matrix"},
+  dc:     {label:"Operating point", sub:"DC setpoints and readbacks by gate"},
+  code:   {label:"Script",      sub:"measurement scripting, staged for review"},
+  history:{label:"History",     sub:"stored records; open one in a plot"},
+};
+let paneSeq=1; const mkPane=(w)=>({id:"p"+(paneSeq++), w, size:1, view:{deriv:false,cursorX:0.55,ds:"live"}});
+const state = {
+  cols:{L:[mkPane("sweep")], C:[mkPane("plot")], R:[mkPane("pulse")]},
+  colL:24, colR:24, theme:null,
+  axes:[{ch:"P1",start:-0.30,stop:0.30,n:160},{ch:"P2",start:-0.30,stop:0.30,n:160}],
+  couplings:true, shots:200, stage:"charge_sense",
+  ops:[
+    {op:"step",ch:"P1",dur:200,val:"{eps_init}"},
+    {op:"step",ch:"P2",dur:200,val:"{eps_init}"},
+    {op:"ramp",ch:"P1",dur:400,val:"{eps}"},
+    {op:"wait",ch:"",  dur:100,val:""},
+    {op:"measure",ch:"SD",dur:2000,val:"charge"},
+  ],
+  M:[[1,0,-0.18,0.05],[0,1,0.05,-0.18],[-0.21,0.04,1,0],[0.04,-0.21,0,1]],
+  gates:["P1","P2","B1","B2"],
+  dc:[
+    ["P1","plunger","qdac","ch01",0.212],["P2","plunger","qdac","ch02",0.188],["P3","plunger","qdac","ch03",0.240],["P4","plunger","qdac","ch04",0.231],
+    ["B1","barrier","qdac","ch05",0.410],["B2","barrier","qdac","ch06",0.395],["B3","barrier","qdac","ch07",0.402],["B4","barrier","qdac","ch08",0.388],["B5","barrier","qdac","ch09",0.420],
+    ["S1","sensor","qdac","ch10",0.615],["S2","sensor","qdac","ch11",0.598],["SB1","sensor","qdac","ch12",0.330],["SB2","sensor","qdac","ch13",0.342],
+    ["R1","reservoir","qdac","ch14",0.900],["R2","reservoir","qdac","ch15",0.900],
+    ["A1","accumulation","qdac","ch16",1.200],["A2","accumulation","qdac","ch17",1.200],
+    ["SC1","screening","qdac","ch18",0.000],["SC2","screening","qdac","ch19",0.000],
+    ["SD","ohmic bias","smu","out",0.0005],["BG","back gate","smu2","out",-2.000],
+  ].map(([name,type,inst,ch,v])=>({name,type,inst,ch,set:v,read:v+(Math.random()-0.5)*2e-4,limit:type==="accumulation"?1.5:type==="back gate"?5:1.0,pinned:["P1","P2","S1"].includes(name),status:"ok"})),
+  dcView:{types:new Set(),insts:new Set(),q:"",pinnedOnly:false,nearLimit:false,sort:{key:"name",dir:1}},
+  code:`# Measurement script — runs under the qdt executor.\n# Only the calls listed on the right are available.\n\nsweep = qdt.sweep(\n    axes=[("P1", -0.3, 0.3, 160), ("P2", -0.3, 0.3, 160)],\n    stage="charge_sense", shots=200,\n)\nrun = qdt.run(sweep, device="D7-L3")\nrec = qdt.wait(run)\nqdt.analyze(rec, method="plane_fit")\n`,
+  records:[
+    {id:"c1f0…9a2e",t:"10:42",kind:"P1×P2 160²"},
+    {id:"8b77…d13c",t:"10:21",kind:"P1×P2 240²"},
+    {id:"f03a…41e7",t:"09:58",kind:"B1 line 400"},
+    {id:"2e9c…b0d4",t:"yesterday",kind:"P1×P2 160² (cooldown 11)"},
+  ],
+  streaming:false,
+};
+// datasets: id -> {nx, ny, data, rows, x0,x1,y0,y1, label}
+const DS={};
+try{ const s=JSON.parse(localStorage.getItem("fd-proto-layout3")||"null");
+  if(s){ state.colL=s.colL||24; state.colR=s.colR||24; state.theme=s.theme||null;
+    for(const c of ["L","C","R"]) if(Array.isArray(s.cols?.[c])&&s.cols[c].length) state.cols[c]=s.cols[c].map(p=>{const q=mkPane(c==="C"?"plot":(p.w in WIDGETS&&p.w!=="plot"?p.w:"sweep")); q.size=p.size||1; return q;}); } }catch(e){}
+function saveLayout(){ try{ localStorage.setItem("fd-proto-layout3",JSON.stringify({colL:state.colL,colR:state.colR,theme:state.theme,cols:Object.fromEntries(Object.entries(state.cols).map(([c,ps])=>[c,ps.map(p=>({w:p.w,size:p.size}))]))})); }catch(e){} }
+
+// ---------------------------------------------------------------- layout
+const ws=document.getElementById("ws");
+function applyLayout(){
+  ws.style.setProperty("--colL",state.colL+"%"); ws.style.setProperty("--colR",state.colR+"%");
+}
+function clampSides(){ state.colL=Math.min(45,Math.max(12,state.colL)); state.colR=Math.min(45,Math.max(12,state.colR)); if(state.colL+state.colR>75){ const o=state.colL+state.colR-75; state.colL-=o/2; state.colR-=o/2; } }
+function dragCol(gutter, side){
+  gutter.addEventListener("pointerdown",e=>{
+    gutter.setPointerCapture(e.pointerId); gutter.classList.add("active"); document.body.classList.add("resizing");
+    const move=ev=>{ const r=ws.getBoundingClientRect(); const p=(ev.clientX-r.left)/r.width*100; if(side==="L") state.colL=p; else state.colR=100-p; clampSides(); applyLayout(); resizeCanvases(); };
+    const up=()=>{ gutter.classList.remove("active"); document.body.classList.remove("resizing"); gutter.removeEventListener("pointermove",move); gutter.removeEventListener("pointerup",up); saveLayout(); };
+    gutter.addEventListener("pointermove",move); gutter.addEventListener("pointerup",up);
+  });
+  gutter.tabIndex=0;
+  gutter.addEventListener("keydown",e=>{ const d=e.key==="ArrowLeft"?-2:e.key==="ArrowRight"?2:0; if(!d)return; e.preventDefault(); if(side==="L") state.colL+=d; else state.colR-=d; clampSides(); applyLayout(); resizeCanvases(); saveLayout(); });
+}
+dragCol(document.getElementById("gutL"),"L"); dragCol(document.getElementById("gutR"),"R");
+// ---------------------------------------------------------------- themes: a theme is a JSON file (tokens + flags); built-ins use the same format
+const TOKEN_KEYS=["bg","panel","panel-2","line","line-strong","text","text-2","text-3","live","live-ink","ok","warn","sel"];
+const THEMES={
+  slate:{name:"slate",scheme:"dark",tokens:{bg:"#1A212C",panel:"#242D3A","panel-2":"#2C3644",line:"#36414F","line-strong":"#4A5868",text:"#D9E0EA","text-2":"#95A2B3","text-3":"#6C788A",live:"#F2B544","live-ink":"#1A212C",ok:"#7CCB9A",warn:"#E8865A",sel:"#5FA8F5"},
+    type:{sans:'"IBM Plex Sans",system-ui,sans-serif',mono:'"IBM Plex Mono",ui-monospace,monospace',size:"14px"},shape:{radius:"6px",paneRadius:"8px"},flags:[]},
+  paper:{name:"paper",scheme:"light",tokens:{bg:"#E9ECF1",panel:"#F7F8FA","panel-2":"#FFFFFF",line:"#D4DAE3","line-strong":"#B9C2CE",text:"#1E2630","text-2":"#55606E","text-3":"#8A94A3",live:"#C98A12","live-ink":"#FFFFFF",ok:"#2E8B57",warn:"#C25A1E",sel:"#2B7CD3"},
+    type:{sans:'"IBM Plex Sans",system-ui,sans-serif',mono:'"IBM Plex Mono",ui-monospace,monospace',size:"14px"},shape:{radius:"6px",paneRadius:"8px"},flags:[]},
+  steel:{name:"steel",scheme:"dark",tokens:{bg:"#070809",panel:"#0D0F12","panel-2":"#13161A",line:"#22272D","line-strong":"#39414A",text:"#E8EAEC","text-2":"#9AA3AD","text-3":"#5F6873",live:"#FF5E1F","live-ink":"#0B0C0E",ok:"#9FE3B4",warn:"#FFB454",sel:"#E8EAEC"},
+    type:{sans:'"IBM Plex Mono",ui-monospace,monospace',mono:'"IBM Plex Mono",ui-monospace,monospace',size:"12.5px"},shape:{radius:"2px",paneRadius:"0px"},flags:["caps","brackets","graticule","glow","flat"]},
+};
+const FLAGS=["caps","brackets","graticule","glow","flat"];
+function validateTheme(t){ const errs=[]; if(!t||typeof t!=="object") return ["not an object"]; if(!t.tokens) errs.push("missing tokens"); else for(const k of TOKEN_KEYS) if(!/^#[0-9a-fA-F]{6}$/.test(t.tokens[k]||"")) errs.push(`tokens.${k} must be #rrggbb`); if(t.flags&&t.flags.some(f=>!FLAGS.includes(f))) errs.push("unknown flag; allowed: "+FLAGS.join(", ")); if(t.scheme&&!["dark","light"].includes(t.scheme)) errs.push("scheme must be dark|light"); return errs; }
+function applyTheme(t){
+  const r=document.documentElement; for(const k of TOKEN_KEYS) r.style.setProperty("--"+k,t.tokens[k]);
+  r.style.setProperty("--sans",t.type?.sans||THEMES.slate.type.sans); r.style.setProperty("--mono",t.type?.mono||THEMES.slate.type.mono); r.style.setProperty("--fs",t.type?.size||"14px");
+  r.style.setProperty("--r",t.shape?.radius||"6px"); r.style.setProperty("--pane-r",t.shape?.paneRadius||"8px"); r.style.colorScheme=t.scheme||"dark";
+  r.dataset.theme=t.scheme||"dark"; r.className=(t.flags||[]).map(f=>"deco-"+f).join(" ");
+  state.theme=t.name; document.getElementById("themeBtn").textContent="Theme: "+t.name;
+}
+function exportTheme(){ const t=THEMES[state.theme]||CUSTOM[state.theme]; const blob=new Blob([JSON.stringify(t,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`flightdeck-theme-${t.name}.json`; a.click(); }
+const CUSTOM={}; try{ Object.assign(CUSTOM,JSON.parse(localStorage.getItem("fd-proto-themes")||"{}")); }catch(e){}
+function saveCustom(){ try{ localStorage.setItem("fd-proto-themes",JSON.stringify(CUSTOM)); }catch(e){} }
+document.getElementById("themeBtn").onclick=e=>{
+  e.stopPropagation(); const old=document.querySelector(".menu.theme"); if(old){ old.remove(); return; }
+  const m=document.createElement("div"); m.className="menu theme"; m.style.top="44px"; m.style.right="14px"; m.style.position="fixed";
+  const all={...THEMES,...CUSTOM};
+  m.innerHTML=`<div class="row" style="color:var(--text-3);font-size:12px"><span>built in</span></div>${Object.values(THEMES).map(t=>`<button data-th="${t.name}" style="text-align:left">${t.name}${state.theme===t.name?" \u2713":""}</button>`).join("")}
+    ${Object.keys(CUSTOM).length?`<div class="row" style="color:var(--text-3);font-size:12px"><span>uploaded</span></div>${Object.values(CUSTOM).map(t=>`<div class="row"><button data-th="${t.name}" style="flex:1;text-align:left">${t.name}${state.theme===t.name?" \u2713":""}</button><button class="icon" data-rm="${t.name}" title="Remove">\u2715</button></div>`).join("")}`:""}
+    <div class="row" style="gap:6px"><button data-load style="flex:1">Load theme file\u2026</button><button data-export style="flex:1">Export current</button></div>
+    <div class="row" style="color:var(--text-3);font-size:11.5px"><span>JSON: name, scheme, tokens (13 colours), type, shape, flags [${FLAGS.join(", ")}]</span></div>
+    <div data-err style="color:var(--warn);font-size:12px"></div>`;
+  document.body.appendChild(m); m.addEventListener("click",ev=>ev.stopPropagation());
+  m.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>{ applyTheme(all[b.dataset.th]); saveLayout(); renderAll(); m.remove(); });
+  m.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ delete CUSTOM[b.dataset.rm]; saveCustom(); if(!THEMES[state.theme]&&!CUSTOM[state.theme]) applyTheme(THEMES.slate); m.remove(); document.getElementById("themeBtn").click(); });
+  m.querySelector("[data-export]").onclick=exportTheme;
+  m.querySelector("[data-load]").onclick=()=>{ const inp=document.createElement("input"); inp.type="file"; inp.accept="application/json,.json"; inp.onchange=async()=>{ const f=inp.files[0]; if(!f) return; try{ const t=JSON.parse(await f.text()); t.name=t.name||f.name.replace(/\.json$/,""); const errs=validateTheme(t); if(errs.length){ m.querySelector("[data-err]").textContent=errs.join("; "); return; } CUSTOM[t.name]=t; saveCustom(); applyTheme(t); saveLayout(); renderAll(); m.remove(); }catch(err){ m.querySelector("[data-err]").textContent="not valid JSON"; } }; inp.click(); };
+  const close=()=>{ m.remove(); document.removeEventListener("click",close); }; setTimeout(()=>document.addEventListener("click",close),0);
+};
+applyTheme(THEMES[state.theme]||CUSTOM[state.theme]||(matchMedia("(prefers-color-scheme: light)").matches?THEMES.paper:THEMES.slate));
+
+// vertical gutters inside a column resize the two adjacent panes
+function dragRow(gutter, col, i){
+  gutter.addEventListener("pointerdown",e=>{
+    gutter.setPointerCapture(e.pointerId); gutter.classList.add("active"); document.body.classList.add("resizing","h");
+    const panes=state.cols[col], a=panes[i], b=panes[i+1]; const total=a.size+b.size;
+    const el=gutter.parentElement; const pa=el.querySelector(`[data-pane="${a.id}"]`), pb=el.querySelector(`[data-pane="${b.id}"]`);
+    const top=pa.getBoundingClientRect().top, bottom=pb.getBoundingClientRect().bottom;
+    const move=ev=>{ let f=(ev.clientY-top)/(bottom-top); f=Math.min(.85,Math.max(.15,f)); a.size=total*f; b.size=total*(1-f); applyRows(col); resizeCanvases(); };
+    const up=()=>{ gutter.classList.remove("active"); document.body.classList.remove("resizing","h"); gutter.removeEventListener("pointermove",move); gutter.removeEventListener("pointerup",up); saveLayout(); };
+    gutter.addEventListener("pointermove",move); gutter.addEventListener("pointerup",up);
+  });
+}
+function applyRows(col){ for(const p of state.cols[col]){ const el=document.querySelector(`[data-pane="${p.id}"]`); if(el) el.style.flexGrow=p.size; } }
+
+// ---------------------------------------------------------------- columns & panes
+function renderColumn(col){
+  const host=document.querySelector(`[data-col="${col}"]`); host.innerHTML="";
+  const panes=state.cols[col];
+  panes.forEach((p,i)=>{
+    if(i>0){ const g=document.createElement("div"); g.className="gutter h"; g.setAttribute("role","separator"); g.setAttribute("aria-orientation","horizontal"); host.appendChild(g); dragRow(g,col,i-1); }
+    const sec=document.createElement("section"); sec.className="pane"; sec.dataset.pane=p.id; sec.style.flexGrow=p.size; host.appendChild(sec);
+    renderPane(col,p,sec);
+  });
+}
+function renderPane(col,p,sec){
+  sec=sec||document.querySelector(`[data-pane="${p.id}"]`); const w=p.w;
+  const colEl=document.querySelector(`[data-col="${col}"]`); const n=state.cols[col].length; const canSplit=(colEl.clientHeight||window.innerHeight)/(n+1)>=180;
+  sec.classList.toggle("live-pane", w==="plot" && state.streaming && p.view.ds==="live");
+  const picker = col==="C"
+    ? `<span class="title">Plot ${state.cols.C.indexOf(p)+1}</span>`
+    : `<select aria-label="Widget for this pane">${Object.entries(WIDGETS).filter(([k])=>k!=="plot").map(([k,v])=>`<option value="${k}"${k===w?" selected":""}>${v.label}</option>`).join("")}</select>`;
+  sec.innerHTML=`<div class="pane-head">${picker}<span class="sub">${WIDGETS[w].sub}</span>
+      <span class="right"><span data-head></span>
+        <button class="icon" data-split title="${canSplit?"Split: add a pane below":"No room for another pane at this height"}" aria-label="Add a pane below" ${canSplit?"":"disabled"}>+</button>
+        <button class="icon" data-close title="Close this pane" aria-label="Close this pane" ${state.cols[col].length<2?"disabled":""}>✕</button></span></div>
+    <div class="pane-body" data-body></div>`;
+  const sel=sec.querySelector("select"); if(sel) sel.onchange=e=>{ p.w=e.target.value; saveLayout(); renderPane(col,p); };
+  sec.querySelector("[data-split]").onclick=()=>{ const i=state.cols[col].indexOf(p); const np=mkPane(col==="C"?"plot":"matrix"); np.size=p.size/2; p.size=p.size/2; state.cols[col].splice(i+1,0,np); saveLayout(); renderColumn(col); };
+  sec.querySelector("[data-close]").onclick=()=>{ const ps=state.cols[col]; if(ps.length<2) return; const i=ps.indexOf(p); ps.splice(i,1); const nb=ps[Math.max(0,i-1)]; nb.size+=p.size; saveLayout(); renderColumn(col); };
+  RENDER[w](sec.querySelector("[data-body]"), sec.querySelector("[data-head]"), p);
+}
+function renderAll(){ for(const c of ["L","C","R"]) renderColumn(c); updateStrip(); }
+function rerenderWidget(kind){ for(const c of ["L","C","R"]) for(const p of state.cols[c]) if(p.w===kind) renderPane(c,p); updateStrip(); }
+function updateStrip(){
+  const pts=state.axes.map(a=>a.n).join("×"), chs=state.axes.map(a=>a.ch).join("×");
+  document.getElementById("nextRun").innerHTML=state.streaming?`running <b>${chs} ${pts}</b>`:`next <b>${chs} ${pts}</b> · ${state.stage} · ${state.shots} shots${state.couplings?" · virtual gates":""}`;
+  const b=document.getElementById("runBtn"); b.textContent=state.streaming?"Stop":"Run"; b.classList.toggle("primary",!state.streaming);
+}
+document.getElementById("runBtn").onclick=()=>{ if(state.streaming){ state.streaming=false; setLive(false,"stopped"); rerenderWidget("plot"); } else startStream(); };
+function setLive(on,text){ const p=document.getElementById("livePill"); p.classList.toggle("live",on); document.getElementById("liveText").textContent=text; }
+
+// ---------------------------------------------------------------- synthetic double-dot stability diagram
+function honeycomb(x,y){
+  const a=1.0, c=0.35, ex=x*a+y*c, ey=y*a+x*c;
+  const n1=Math.round(ex*6), n2=Math.round(ey*6);
+  const f1=Math.abs(ex*6-n1), f2=Math.abs(ey*6-n2);
+  const sens=0.6*Math.exp(-((f1-0.5)**2)/0.004)+0.6*Math.exp(-((f2-0.5)**2)/0.004);
+  const inter=0.25*Math.exp(-(((ex+ey)*6-Math.round((ex+ey)*6))**2)/0.02);
+  return 0.9-0.25*(n1+n2)*0.05+sens*0.4-inter+0.03*(Math.random()-0.5);
+}
+function makeDS(id,nx,ny,label){ return DS[id]={id,nx,ny,data:new Float32Array(nx*ny),rows:0,x0:state.axes[0].start,x1:state.axes[0].stop,y0:state.axes[1].start,y1:state.axes[1].stop,label}; }
+function startStream(){
+  const ax=state.axes; const ds=makeDS("live",ax[0].n,ax[1].n,"live");
+  state.streaming=true; setLive(true,"streaming"); rerenderWidget("plot");
+  const t0=performance.now(); let pts=0;
+  const tick=()=>{
+    if(!state.streaming) return;
+    for(let k=0;k<2 && ds.rows<ds.ny;k++){
+      const j=ds.rows, y=ds.y0+(ds.y1-ds.y0)*j/(ds.ny-1);
+      for(let i=0;i<ds.nx;i++){ const x=ds.x0+(ds.x1-ds.x0)*i/(ds.nx-1); ds.data[j*ds.nx+i]=honeycomb(state.couplings?x:x+0.3*y, state.couplings?y:y+0.3*x); }
+      ds.rows++; pts+=ds.nx;
+    }
+    const dt=(performance.now()-t0)/1000; document.getElementById("rate").textContent=`${(pts/Math.max(dt,.001)/1e3).toFixed(0)} kpts/s · row ${ds.rows}/${ds.ny}`; document.querySelector("#stripProg i").style.width=(100*ds.rows/ds.ny)+"%";
+    drawPlots();
+    if(ds.rows>=ds.ny){ state.streaming=false; const id="3d8e…"+Math.random().toString(16).slice(2,6); DS[id]={...ds,id,label:`record ${id}`}; state.records.unshift({id,t:"now",kind:`${ax[0].ch}×${ax[1].ch} ${ax[0].n}²`}); setLive(false,`complete · stored as ${id}`); rerenderWidget("plot"); rerenderWidget("history"); return; }
+    setTimeout(tick,30);
+  };
+  tick();
+}
+function recordDS(r){
+  if(DS[r.id]) return DS[r.id];
+  const n=r.kind.includes("240")?240:160; const ds=makeDS(r.id,n,n,`record ${r.id}`); ds.x0=-0.3;ds.x1=0.3;ds.y0=-0.3;ds.y1=0.3;
+  for(let j=0;j<n;j++)for(let i=0;i<n;i++){ const x=-0.3+0.6*i/(n-1), y=-0.3+0.6*j/(n-1); ds.data[j*n+i]=honeycomb(x+(r.kind.includes("cooldown")?0.04:0), y); }
+  ds.rows=n; return ds;
+}
+
+// ---------------------------------------------------------------- widget: plot (per-pane view)
+function cmap(v){ v=Math.min(1,Math.max(0,v)); const s=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]]; const t=v*4, i=Math.min(3,Math.floor(t)), f=t-i; return [0,1,2].map(k=>Math.round(s[i][k]+(s[i+1][k]-s[i][k])*f)); }
+function drawPlots(){ for(const c of ["L","C","R"]) for(const p of state.cols[c]) if(p.w==="plot"){ const sec=document.querySelector(`[data-pane="${p.id}"]`); if(!sec) continue; const m=sec.querySelector("canvas.map"), cut=sec.querySelector("canvas.cutc"); if(m) drawMap(m,p); if(cut) drawCut(cut,p); } }
+function drawMap(canvas,p){
+  const ds=DS[p.view.ds]; const ctx=canvas.getContext("2d"); if(!ds){ canvas.width=1;canvas.height=1;ctx.clearRect(0,0,1,1); return; }
+  const nx=ds.nx, ny=ds.ny; if(canvas.width!==nx||canvas.height!==ny){ canvas.width=nx; canvas.height=ny; }
+  const img=ctx.createImageData(nx,ny); let lo=Infinity,hi=-Infinity; const src=new Float32Array(nx*ny);
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){ let v=ds.data[j*nx+i]; if(p.view.deriv&&i>0) v=(ds.data[j*nx+i]-ds.data[j*nx+i-1])*12; src[j*nx+i]=v; if(j<ds.rows){ if(v<lo)lo=v; if(v>hi)hi=v; } }
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){ const q=4*((ny-1-j)*nx+i); if(j>=ds.rows){ img.data[q+3]=0; continue; } const [r,g,b]=cmap((src[j*nx+i]-lo)/(hi-lo||1)); img.data[q]=r;img.data[q+1]=g;img.data[q+2]=b;img.data[q+3]=255; }
+  ctx.putImageData(img,0,0);
+}
+function drawCut(canvas,p){
+  const ds=DS[p.view.ds]; const ctx=canvas.getContext("2d"); const w=canvas.width=canvas.clientWidth*devicePixelRatio, h=canvas.height=canvas.clientHeight*devicePixelRatio; ctx.clearRect(0,0,w,h); if(!ds) return;
+  const i=Math.round(p.view.cursorX*(ds.nx-1)); const col=[]; for(let j=0;j<ds.rows;j++) col.push(ds.data[j*ds.nx+i]); if(col.length<2) return;
+  const lo=Math.min(...col), hi=Math.max(...col); ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue("--live").trim(); ctx.lineWidth=1.5*devicePixelRatio; ctx.beginPath();
+  col.forEach((v,j)=>{ const x=j/(ds.ny-1)*w, y=h-8-(v-lo)/(hi-lo||1)*(h-16); j?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+}
+function resizeCanvases(){ drawPlots(); }
+let rsT; addEventListener("resize",()=>{ resizeCanvases(); clearTimeout(rsT); rsT=setTimeout(renderAll,150); });
+
+const RENDER={};
+RENDER.plot=(body,head,p)=>{
+  const ds=DS[p.view.ds]; const live=p.view.ds==="live";
+  const srcLabel = live ? (state.streaming?"live":"live (idle — press Run)") : (ds?ds.label:"—");
+  head.innerHTML=`<button class="icon" data-menu title="View settings" aria-label="View settings" aria-expanded="false">⚙</button>`;
+  body.innerHTML=`<div class="plot">
+    <div class="stage">
+      <div style="position:relative;flex:1;min-height:0"><canvas class="map" aria-label="2D map"></canvas><div class="cursor" style="left:${p.view.cursorX*100}%"></div>
+        <div class="axes">P2 (V) ↑ &nbsp; P1 (V) → &nbsp; ${srcLabel}${p.view.deriv?" · d/dP1":""}</div></div>
+      <canvas class="cutc cut" aria-label="line cut"></canvas>
+    </div></div>`;
+  const sec=body.closest(".pane");
+  head.querySelector("[data-menu]").onclick=e=>{
+    e.stopPropagation(); const open=sec.querySelector(".menu"); if(open){ open.remove(); return; }
+    const m=document.createElement("div"); m.className="menu"; m.innerHTML=`
+      <div class="row"><span>source</span><select data-src><option value="live" ${live?"selected":""}>live stream</option>${state.records.map(r=>`<option value="${r.id}" ${p.view.ds===r.id?"selected":""}>${r.t} · ${r.kind}</option>`).join("")}</select></div>
+      <div class="row"><span>variable</span><select><option>sensor I</option><option>sensor Q</option><option>I − Q</option></select></div>
+      <div class="row"><span>colormap</span><select><option>viridis</option><option>magma</option><option>grey</option></select></div>
+      <div class="row"><span>derivative d/dP1</span><input type="checkbox" data-deriv ${p.view.deriv?"checked":""}></div>
+      <div class="row"><span>cut at P1</span><span style="font-family:var(--mono);font-size:12px">${ds?(ds.x0+(ds.x1-ds.x0)*p.view.cursorX).toFixed(3):"—"} V</span></div>
+      <div class="row" style="color:var(--text-3);font-size:12px"><span>click the map to move the cut</span></div>`;
+    sec.appendChild(m); head.querySelector("[data-menu]").setAttribute("aria-expanded","true");
+    m.querySelector("[data-src]").onchange=ev=>{ const id=ev.target.value; if(id!=="live"){ const r=state.records.find(r=>r.id===id); recordDS(r); } p.view.ds=id; renderPane(colOf(p),p); rerenderWidget("history"); };
+    m.querySelector("[data-deriv]").onchange=ev=>{ p.view.deriv=ev.target.checked; renderPane(colOf(p),p); };
+    m.addEventListener("click",ev=>ev.stopPropagation());
+    const close=()=>{ m.remove(); document.removeEventListener("click",close); }; setTimeout(()=>document.addEventListener("click",close),0);
+  };
+  if(window.ResizeObserver){ new ResizeObserver(()=>drawPlots()).observe(body); }
+  const stage=body.querySelector("canvas.map").parentElement;
+  stage.onclick=e=>{ const r=stage.getBoundingClientRect(); p.view.cursorX=(e.clientX-r.left)/r.width; renderPane(colOf(p),p); };
+  requestAnimationFrame(()=>drawPlots());
+};
+
+// ---------------------------------------------------------------- widget: history
+const histView={q:""};
+RENDER.history=(body,head)=>{
+  head.innerHTML=``;
+  const plots=state.cols.C; const q=histView.q.toLowerCase();
+  const rows=state.records.filter(r=>!q||(r.id+" "+r.kind+" "+r.t).toLowerCase().includes(q));
+  const openIn=r=>plots.map(pp=>pp.view.ds===r.id?`Plot ${plots.indexOf(pp)+1}`:null).filter(Boolean).join(", ");
+  body.innerHTML=`<div class="hist">
+    <div class="bar"><input type="text" placeholder="find by id, axes or time" value="${histView.q}" data-hq aria-label="Find record"></div>
+    <div class="list"><table class="ht"><thead><tr><th>when</th><th>sweep</th><th>record</th><th>shown in</th><th></th></tr></thead><tbody>
+      ${rows.map(r=>`<tr class="${openIn(r)?"open":""}"><td>${r.t}</td><td>${r.kind}</td><td class="id">${r.id}</td><td style="color:var(--text-2)">${openIn(r)||"—"}</td>
+        <td><select data-open="${r.id}" aria-label="Open ${r.id} in a plot"><option value="">open in…</option>${plots.map((pp,i)=>`<option value="${pp.id}">Plot ${i+1}</option>`).join("")}<option value="new">new plot pane</option></select></td></tr>`).join("")}
+    </tbody></table>${rows.length?"":`<div style="padding:14px 10px;color:var(--text-3)">No records match.</div>`}</div>
+  </div>`;
+  body.querySelector("[data-hq]").oninput=e=>{ histView.q=e.target.value; rerenderWidget("history"); setTimeout(()=>{ const i=document.querySelector(".hist [data-hq]"); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} },0); };
+  body.querySelectorAll("[data-open]").forEach(sel=>sel.onchange=()=>{ const r=state.records.find(r=>r.id===sel.dataset.open); recordDS(r); let target;
+    if(sel.value==="new"){ target=mkPane("plot"); const last=state.cols.C[state.cols.C.length-1]; target.size=last.size/2; last.size=last.size/2; state.cols.C.push(target); target.view.ds=r.id; saveLayout(); renderColumn("C"); }
+    else { target=state.cols.C.find(pp=>pp.id===sel.value); if(!target) return; target.view.ds=r.id; renderPane("C",target); }
+    rerenderWidget("history"); });
+};
+function colOf(p){ for(const c of ["L","C","R"]) if(state.cols[c].includes(p)) return c; return "C"; }
+
+// ---------------------------------------------------------------- widget: sweep
+RENDER.sweep=(body,head)=>{
+  head.innerHTML=``;
+  const axesRows=state.axes.map((a,i)=>`<tr>
+    <td><select data-ax="${i}" data-f="ch">${["P1","P2","B1","B2","SD"].map(c=>`<option ${c===a.ch?"selected":""}>${c}</option>`).join("")}</select></td>
+    <td><input type="number" step="0.01" value="${a.start}" data-ax="${i}" data-f="start"></td>
+    <td><input type="number" step="0.01" value="${a.stop}" data-ax="${i}" data-f="stop"></td>
+    <td><input type="number" step="1" value="${a.n}" data-ax="${i}" data-f="n"></td>
+    <td style="color:var(--text-3)">${i===0?"inner":"outer"}</td></tr>`).join("");
+  const pts=state.axes.reduce((p,a)=>p*a.n,1), est=(pts*state.shots*2.6e-6).toFixed(1);
+  body.innerHTML=`<div class="sweep">
+    <div><h4>Axes</h4><table class="axes"><tr><th>channel</th><th>start (V)</th><th>stop (V)</th><th>points</th><th>nesting</th></tr>${axesRows}</table>
+      <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="addAx" ${state.axes.length>=2?"disabled":""}>Add axis</button>
+      <label class="chk"><input type="checkbox" id="coup" ${state.couplings?"checked":""}> apply virtual-gate couplings</label></div></div>
+    <div><h4>Stage</h4><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <label>sequence <select id="stage"><option ${state.stage==="charge_sense"?"selected":""}>charge_sense</option><option>pulsed_gate</option><option>readout_only</option></select></label>
+      <label>shots <input type="number" id="shots" value="${state.shots}" step="10"></label>
+      <label>reduce <select><option>mean</option><option>difference</option><option>none (keep shots)</option></select></label></div></div>
+    <div><h4>Plan</h4><div class="plan">${pts.toLocaleString()} points × ${state.shots} shots
+sequence ${state.stage} (${state.ops.length} ops, ${state.ops.reduce((s,o)=>s+(+o.dur||0),0)} ns/shot)
+couplings ${state.couplings?"on (4×4)":"off"} · est. ${est} s · result ${state.axes.map(a=>a.n).join("×")} float32</div></div>
+    <div class="actions"><button id="compile">Compile</button><span id="compMsg" style="color:var(--text-3)"></span></div>
+  </div>`;
+  body.querySelectorAll("[data-ax]").forEach(el=>el.onchange=()=>{ const a=state.axes[+el.dataset.ax]; const f=el.dataset.f; a[f]=f==="ch"?el.value:+el.value; rerenderWidget("sweep"); });
+  body.querySelector("#coup").onchange=e=>{ state.couplings=e.target.checked; rerenderWidget("sweep"); };
+  body.querySelector("#shots").onchange=e=>{ state.shots=+e.target.value; rerenderWidget("sweep"); };
+  body.querySelector("#stage").onchange=e=>{ state.stage=e.target.value; rerenderWidget("sweep"); };
+  body.querySelector("#addAx").onclick=()=>{ state.axes.push({ch:"B1",start:-0.1,stop:0.1,n:40}); rerenderWidget("sweep"); };
+  body.querySelector("#compile").onclick=()=>{ body.querySelector("#compMsg").textContent="compiled: plan 7e2a… ok"; };
+};
+
+// ---------------------------------------------------------------- widget: pulse
+RENDER.pulse=(body,head)=>{
+  head.innerHTML=`<button id="addOp" style="font-size:12.5px;padding:2px 8px">Add op</button>`;
+  head.querySelector("#addOp").onclick=()=>{ state.ops.push({op:"wait",ch:"",dur:100,val:""}); rerenderWidget("pulse"); rerenderWidget("sweep"); };
+  const rows=state.ops.map((o,i)=>`<tr>
+    <td><select data-op="${i}" data-f="op">${["step","ramp","wait","drive","measure","call"].map(k=>`<option ${k===o.op?"selected":""}>${k}</option>`).join("")}</select></td>
+    <td><select data-op="${i}" data-f="ch"><option value="">—</option>${["P1","P2","B1","B2","SD","RF"].map(c=>`<option ${c===o.ch?"selected":""}>${c}</option>`).join("")}</select></td>
+    <td><input type="number" value="${o.dur}" data-op="${i}" data-f="dur"></td>
+    <td><input type="text" value="${o.val}" data-op="${i}" data-f="val" placeholder="value or {symbol}"></td>
+    <td><button class="x" data-del="${i}" aria-label="Remove">✕</button></td></tr>`).join("");
+  body.innerHTML=`<div class="pulse"><div class="ops"><table class="ops-t"><tr><th>op</th><th>channel</th><th>ns</th><th>value</th><th></th></tr>${rows}</table></div><div class="timeline"></div></div>`;
+  const tl=body.querySelector(".timeline");
+  const drawTimeline=()=>{
+    const used=["P1","P2","B1","B2","SD","RF"].filter(c=>state.ops.some(o=>o.ch===c));
+    const lanes=used.length?used:["—"];
+    const total=Math.max(1,state.ops.reduce((s,o)=>s+(+o.dur||0),0));
+    const W=Math.max(320,tl.clientWidth-20), L=46, H=38, top=18, bottom=22;
+    let t=0, segs=[]; for(const o of state.ops){ const d=+o.dur||0; segs.push({...o,t0:t,t1:t+d}); t+=d; }
+    const x=v=>L+(W-L-8)*v/total;
+    const esc=s=>String(s).replace(/</g,"&lt;");
+    let svg=`<svg width="${W}" height="${top+lanes.length*H+bottom}" viewBox="0 0 ${W} ${top+lanes.length*H+bottom}" role="img" aria-label="pulse timeline" style="font-family:var(--mono)">`;
+    segs.forEach(s=>{ svg+=`<line x1="${x(s.t1)}" x2="${x(s.t1)}" y1="${top-6}" y2="${top+lanes.length*H-6}" stroke="var(--line)" stroke-dasharray="2 3"/>`; });
+    segs.filter(s=>s.op==="wait").forEach(s=>svg+=`<rect x="${x(s.t0)}" y="${top-6}" width="${x(s.t1)-x(s.t0)}" height="${lanes.length*H}" fill="color-mix(in srgb,var(--text-3) 12%,transparent)"/><text x="${(x(s.t0)+x(s.t1))/2}" y="${top+lanes.length*H+14}" font-size="11" fill="var(--text-3)" text-anchor="middle">wait ${s.dur}</text>`);
+    lanes.forEach((ln,k)=>{ const y=top+k*H, base=y+H-10, hi=y+8;
+      svg+=`<text x="6" y="${y+H/2+4}" font-size="13" font-weight="500" fill="var(--text)">${ln}</text><line x1="${L}" x2="${W-8}" y1="${base}" y2="${base}" stroke="var(--line-strong)"/>`;
+      segs.filter(s=>s.ch===ln).forEach(s=>{ const x0=x(s.t0), x1=x(s.t1), w=x1-x0;
+        if(s.op==="step") svg+=`<path d="M${x0} ${base} V${hi} H${x1}" fill="none" stroke="var(--sel)" stroke-width="2"/>`;
+        else if(s.op==="ramp") svg+=`<line x1="${x0}" y1="${base}" x2="${x1}" y2="${hi}" stroke="var(--sel)" stroke-width="2"/>`;
+        else if(s.op==="drive"){ const n=Math.max(6,Math.round(w/6)); svg+=`<path d="${Array.from({length:n+1},(_,i)=>`${i?"L":"M"}${x0+w*i/n} ${(hi+base)/2+(i%2?9:-9)}`).join(" ")}" fill="none" stroke="var(--ok)" stroke-width="1.8"/>`; }
+        else if(s.op==="measure") svg+=`<rect x="${x0}" y="${hi-2}" width="${w}" height="${base-hi+2}" rx="3" fill="color-mix(in srgb,var(--live) 28%,transparent)" stroke="var(--live)" stroke-width="1.5"/>`;
+        else if(s.op==="call") svg+=`<rect x="${x0}" y="${hi-2}" width="${w}" height="${base-hi+2}" rx="3" fill="none" stroke="var(--text-2)" stroke-dasharray="4 3"/>`;
+        const label=`${s.op}${s.val?" "+esc(s.val):""}`; svg+=`<text x="${x0+4}" y="${hi-5}" font-size="11" fill="var(--text-2)">${label}</text>`;
+      });
+    });
+    svg+=`<text x="${L}" y="${top+lanes.length*H+14}" font-size="11" fill="var(--text-3)">0 ns</text><text x="${W-8}" y="${top+lanes.length*H+14}" font-size="11" fill="var(--text-3)" text-anchor="end">${total} ns per shot</text></svg>`;
+    tl.innerHTML=svg;
+  };
+  drawTimeline();
+  if(window.ResizeObserver){ new ResizeObserver(()=>drawTimeline()).observe(tl); }
+  body.querySelectorAll("[data-op]").forEach(el=>el.onchange=()=>{ const o=state.ops[+el.dataset.op]; o[el.dataset.f]=el.dataset.f==="dur"?+el.value:el.value; rerenderWidget("pulse"); rerenderWidget("sweep"); });
+  body.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ state.ops.splice(+b.dataset.del,1); rerenderWidget("pulse"); rerenderWidget("sweep"); });
+};
+
+// ---------------------------------------------------------------- widget: matrix
+RENDER.matrix=(body,head)=>{
+  head.innerHTML=`<label class="chk" style="font-size:12.5px"><input type="checkbox" id="inv"> inverse</label>`;
+  const n=state.gates.length;
+  const cells=[`<div class="lab"></div>`,...state.gates.map(g=>`<div class="lab">${g}</div>`)];
+  for(let i=0;i<n;i++){ cells.push(`<div class="lab">v${state.gates[i]}</div>`); for(let j=0;j<n;j++){ const v=state.M[i][j]; const a=Math.min(1,Math.abs(v)); const col=v>0?`color-mix(in srgb,var(--sel) ${Math.round(a*60)}%,var(--panel-2))`:`color-mix(in srgb,var(--warn) ${Math.round(a*60)}%,var(--panel-2))`; cells.push(`<div class="cell" style="background:${i===j?"var(--panel-2)":col}"><input value="${v.toFixed(2)}" data-m="${i},${j}"></div>`);} }
+  body.innerHTML=`<div class="matrix"><div class="grid" style="grid-template-columns:52px repeat(${n},1fr)">${cells.join("")}</div>
+    <div class="foot">Rows are virtual gates, columns physical. Off-diagonal entries are cross-capacitance corrections; the sweep editor applies this matrix when couplings are on.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="primary" id="applyM">Apply to stand</button><button id="resetM">Identity</button><button>Fit from last map</button></div></div>`;
+  body.querySelectorAll("[data-m]").forEach(inp=>inp.onchange=()=>{ const [i,j]=inp.dataset.m.split(",").map(Number); state.M[i][j]=+inp.value||0; rerenderWidget("matrix"); });
+  body.querySelector("#resetM").onclick=()=>{ state.M=state.M.map((r,i)=>r.map((_,j)=>i===j?1:0)); rerenderWidget("matrix"); };
+  body.querySelector("#applyM").onclick=()=>{ state.couplings=true; rerenderWidget("sweep"); updateStrip(); };
+};
+
+// ---------------------------------------------------------------- widget: operating point
+RENDER.dc=(body,head)=>{
+  const V=state.dcView; const rows=state.dc;
+  const types=[...new Set(rows.map(r=>r.type))], insts=[...new Set(rows.map(r=>r.inst))];
+  head.innerHTML=`<label class="chk" style="font-size:12.5px"><input type="checkbox" data-pinned ${V.pinnedOnly?"checked":""}> pinned only</label>`;
+  head.querySelector("[data-pinned]").onchange=e=>{ V.pinnedOnly=e.target.checked; rerenderWidget("dc"); };
+  // filtering: every active group must match (AND across groups, OR within a group)
+  let shown=rows.filter(r=>(!V.types.size||V.types.has(r.type))&&(!V.insts.size||V.insts.has(r.inst))&&(!V.pinnedOnly||r.pinned)&&(!V.nearLimit||Math.abs(r.set)>0.8*r.limit)&&(!V.q||(r.name+" "+r.ch).toLowerCase().includes(V.q.toLowerCase())));
+  const key=V.sort.key, dir=V.sort.dir; const val=r=>key==="delta"?Math.abs(r.read-r.set):key==="pinned"?(r.pinned?0:1):r[key];
+  shown=shown.slice().sort((a,b)=>{ const x=val(a), y=val(b); return (typeof x==="number"?x-y:String(x).localeCompare(String(y)))*dir; });
+  const th=(k,label,num,sec)=>`<th class="${num?"num":""}${sec?" sec":""}" data-sort="${k}">${label}${key===k?`<span class="arrow">${dir>0?"▲":"▼"}</span>`:""}</th>`;
+  body.innerHTML=`<div class="dc">
+    <div class="filters">
+      <input type="text" placeholder="find gate or channel" value="${V.q}" data-q aria-label="Find">
+      <span class="group"><span class="glabel">type</span>${types.map(t=>`<button class="chip ${V.types.has(t)?"on":""}" data-type="${t}">${t}</button>`).join("")}</span>
+      <span class="group"><span class="glabel">instrument</span>${insts.map(t=>`<button class="chip ${V.insts.has(t)?"on":""}" data-inst="${t}">${t}</button>`).join("")}</span>
+      <span class="group"><button class="chip ${V.nearLimit?"on":""}" data-near>near limit</button><button class="chip" data-clear>clear</button></span>
+    </div>
+    <div class="tbl"><table class="dct"><thead><tr>${th("pinned","",false)}${th("name","gate")}${th("type","type",false,true)}${th("ch","channel",false,true)}${th("set","setpoint (V)",true)}${th("read","readback (V)",true,true)}${th("delta","Δ (µV)",true,true)}${th("status","status")}</tr></thead><tbody>
+      ${shown.map(r=>`<tr class="${r.pinned?"pinned":""}">
+        <td><button class="pin ${r.pinned?"on":""}" data-pin="${r.name}" title="Pin" aria-label="Pin ${r.name}">${r.pinned?"●":"○"}</button></td>
+        <td>${r.name}<span class="typeTag">${r.type}</span></td><td class="sec" style="color:var(--text-2)">${r.type}</td><td class="sec" style="color:var(--text-3);font-family:var(--mono);font-size:12px">${r.inst}/${r.ch}</td>
+        <td class="num"><input type="number" step="0.001" value="${r.set.toFixed(3)}" data-set="${r.name}" ${r.status==="settling"?"disabled":""}></td>
+        <td class="num sec">${r.read.toFixed(4)}</td><td class="num sec">${((r.read-r.set)*1e6).toFixed(0)}</td>
+        <td><span class="badge ${r.status}">${r.status==="ok"?(Math.abs(r.set)>0.8*r.limit?"near limit":"ok"):r.status}</span></td></tr>`).join("")}
+    </tbody></table>${shown.length?"":`<div style="padding:14px 10px;color:var(--text-3)">No gates match these filters. Clear a filter to see more.</div>`}</div>
+    <div class="foot"><span>${shown.length} of ${rows.length} gates · sorted by ${key}</span><span>${rows.filter(r=>r.pinned).length} pinned</span></div>
+  </div>`;
+  const dcEl=body.querySelector(".dc"); const fitDc=()=>dcEl.classList.toggle("compact", body.clientWidth<560); fitDc();
+  if(window.ResizeObserver){ new ResizeObserver(fitDc).observe(body); }
+  body.querySelector("[data-q]").oninput=e=>{ V.q=e.target.value; rerenderWidget("dc"); setTimeout(()=>{ const i=document.querySelector(".dc [data-q]"); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length);} },0); };
+  body.querySelectorAll("[data-type]").forEach(b=>b.onclick=()=>{ const t=b.dataset.type; V.types.has(t)?V.types.delete(t):V.types.add(t); rerenderWidget("dc"); });
+  body.querySelectorAll("[data-inst]").forEach(b=>b.onclick=()=>{ const t=b.dataset.inst; V.insts.has(t)?V.insts.delete(t):V.insts.add(t); rerenderWidget("dc"); });
+  body.querySelector("[data-near]").onclick=()=>{ V.nearLimit=!V.nearLimit; rerenderWidget("dc"); };
+  body.querySelector("[data-clear]").onclick=()=>{ V.types.clear(); V.insts.clear(); V.q=""; V.nearLimit=false; V.pinnedOnly=false; rerenderWidget("dc"); };
+  body.querySelectorAll("th[data-sort]").forEach(h=>h.onclick=()=>{ const k=h.dataset.sort; if(V.sort.key===k) V.sort.dir*=-1; else V.sort={key:k,dir:1}; rerenderWidget("dc"); });
+  body.querySelectorAll("[data-pin]").forEach(b=>b.onclick=()=>{ const r=rows.find(r=>r.name===b.dataset.pin); r.pinned=!r.pinned; rerenderWidget("dc"); });
+  body.querySelectorAll("[data-set]").forEach(inp=>inp.onchange=()=>{ const r=rows.find(r=>r.name===inp.dataset.set); const v=+inp.value; if(Math.abs(v)>r.limit){ inp.value=r.set.toFixed(3); r.status="limit"; rerenderWidget("dc"); setTimeout(()=>{ r.status="ok"; rerenderWidget("dc"); },1200); return; } r.set=v; r.status="settling"; rerenderWidget("dc"); setTimeout(()=>{ r.read=v+(Math.random()-0.5)*2e-4; r.status="ok"; rerenderWidget("dc"); },600); });
+};
+
+// ---------------------------------------------------------------- widget: code
+RENDER.code=(body,head)=>{
+  head.innerHTML=`<button id="stageBtn" style="font-size:12.5px;padding:2px 8px">Stage for review</button>`;
+  body.innerHTML=`<div class="code"><textarea spellcheck="false" aria-label="measurement script">${state.code.replace(/</g,"&lt;")}</textarea>
+    <aside class="api"><h4>Available</h4>
+      <code>qdt.sweep(axes, stage, shots)</code><code>qdt.run(sweep, device)</code><code>qdt.wait(run)</code><code>qdt.analyze(rec, method)</code><code>qdt.set(channel, value)</code><code>qdt.records(query)</code>
+      <h4 style="margin-top:12px">Not available</h4><code>open(), import, sockets</code><code>driver access</code>
+      <div class="lint" id="lint">Checks run on stage: allowed calls only, no I/O, every sweep bound to a device.</div></aside></div>`;
+  const ta=body.querySelector("textarea"); ta.oninput=()=>{ state.code=ta.value; };
+  head.querySelector("#stageBtn").onclick=()=>{ const bad=/\b(import|open\(|socket)/.test(state.code); const l=body.querySelector("#lint"); l.classList.toggle("bad",bad); l.textContent=bad?"Blocked: the script uses something outside the allowed API.":"Staged as script a91c… — runs through the executor like a sweep from the editor."; };
+};
+
+// ---------------------------------------------------------------- boot
+applyLayout(); recordDS(state.records[0]); renderAll(); setLive(false,"idle");
+</script>
+</body>
+</html>
