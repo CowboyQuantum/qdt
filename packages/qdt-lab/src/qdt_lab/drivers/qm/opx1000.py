@@ -341,7 +341,9 @@ class Opx1000:
             qm = self._ensure()
             prog, plan = flat_index_program(program)
         elif "sequence" in body:
-            if any(op.op == "capture" for op in PulseSequence.model_validate(body["sequence"]).expand()):
+            if any(
+                op.op == "capture" for op in PulseSequence.model_validate(body["sequence"]).expand()
+            ):
                 raise ValueError(
                     "a capture inside the shot needs a trigger line from the OPX to the scope, which "
                     "this driver does not emit yet (ADR 0060); capture per point instead"

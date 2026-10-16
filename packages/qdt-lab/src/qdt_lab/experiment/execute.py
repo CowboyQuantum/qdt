@@ -181,7 +181,9 @@ class Executor:
                     for companion, per_volt in a.couplings.items():
                         settle = max(
                             settle,
-                            set_level(companion, held.get(companion, 0.0) + per_volt * current[a.name]),
+                            set_level(
+                                companion, held.get(companion, 0.0) + per_volt * current[a.name]
+                            ),
                         )
                 if settle > 0:
                     self._sleep(settle)
@@ -203,7 +205,9 @@ class Executor:
                     for c in definition.stage.captures():
                         ch = plan.channel(c.channel)
                         slab = shot_capture_slab(plan, c)
-                        armed.append((c, self._backends[ch.instrument].arm(ch.channel, slab, c.result)))
+                        armed.append(
+                            (c, self._backends[ch.instrument].arm(ch.channel, slab, c.result))
+                        )
                     for f in sequencer.run(self._compiled, params, self._slab).frames():
                         yield Frame(
                             DatasetChunk(
@@ -346,7 +350,9 @@ def shot_capture_slab(plan: ExecutionPlan, capture: Capture) -> Dataset:
         dims=(Dimension(name=RECORD_DIM, size=shots), Dimension(name=tdim, size=capture.num)),
         coords=(coord,),
         data_vars=(
-            DataVariable(name=capture.result, dims=(RECORD_DIM, tdim), unit=var.unit, dtype=var.dtype),
+            DataVariable(
+                name=capture.result, dims=(RECORD_DIM, tdim), unit=var.unit, dtype=var.dtype
+            ),
         ),
         source=plan.dataset.source,
         created_at=plan.dataset.created_at,

@@ -614,12 +614,25 @@ def test_a_shot_capture_is_one_record_per_shot_on_a_time_axis_from_the_capture()
     from qdt_lab.experiment.execute import shot_capture_slab
     from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
 
-    plan = compile_sweep(step_response(shots=3), pulsed_scope_stand(), {"simulated": SimulatedEmitter()})
+    plan = compile_sweep(
+        step_response(shots=3), pulsed_scope_stand(), {"simulated": SimulatedEmitter()}
+    )
     assert [(d.name, d.size) for d in plan.dataset.dims] == [("shot", 3), ("time", 200)]
     (coord,) = plan.dataset.coords
-    assert (coord.dim, coord.start, coord.stop, coord.num, coord.unit) == ("time", 0.0, 8e-3, 200, "s")
-    assert [(v.name, v.dims, v.unit) for v in plan.dataset.data_vars] == [("trace", ("shot", "time"), "V")]
-    assert {(c.logical, c.role) for c in plan.channels} == {("rf", "sequencer"), ("scope1", "waveform_sense")}
+    assert (coord.dim, coord.start, coord.stop, coord.num, coord.unit) == (
+        "time",
+        0.0,
+        8e-3,
+        200,
+        "s",
+    )
+    assert [(v.name, v.dims, v.unit) for v in plan.dataset.data_vars] == [
+        ("trace", ("shot", "time"), "V")
+    ]
+    assert {(c.logical, c.role) for c in plan.channels} == {
+        ("rf", "sequencer"),
+        ("scope1", "waveform_sense"),
+    }
     assert plan.stage_program.results == ()  # the sequencer fills nothing: the scope does
     slab = shot_capture_slab(plan, plan.definition.stage.captures()[0])
     assert [(d.name, d.size) for d in slab.dims] == [("record", 3), ("time", 200)]
@@ -634,12 +647,13 @@ def test_a_shot_capture_is_one_record_per_shot_on_a_time_axis_from_the_capture()
             return super().arm(channel, dataset, variable)
 
     scope = SpyScope(noise=0.0, response=exponential_decay(2e-3, 0.2))
-    frames = list(
-        Executor(plan, {"seq": SimulatedSequencer(), "scope": scope}).run().frames()
-    )
+    frames = list(Executor(plan, {"seq": SimulatedSequencer(), "scope": scope}).run().frames())
     assert scope.armed == [("1", (3, 200))]
     assert [f.chunk.variables for f in frames] == [("trace",)] * 3
-    assert [(s.dim, s.start, s.stop) for s in frames[1].chunk.region] == [("shot", 1, 2), ("time", 0, 200)]
+    assert [(s.dim, s.start, s.stop) for s in frames[1].chunk.region] == [
+        ("shot", 1, 2),
+        ("time", 0, 200),
+    ]
     assert frames[-1].chunk.final and not any(f.chunk.final for f in frames[:-1])
     out = assemble(plan.dataset, frames)
     t = np.linspace(0.0, 8e-3, 200)
@@ -649,12 +663,22 @@ def test_a_shot_capture_is_one_record_per_shot_on_a_time_axis_from_the_capture()
 def test_a_shot_capture_at_every_stepped_point_with_one_shot_has_no_shot_dimension():
     from qdt_lab.simulated import SimulatedWaveformSense, low_pass_step
 
-    plan = compile_sweep(step_response(axis=True), pulsed_scope_stand(), {"simulated": SimulatedEmitter()})
+    plan = compile_sweep(
+        step_response(axis=True), pulsed_scope_stand(), {"simulated": SimulatedEmitter()}
+    )
     assert [(d.name, d.size) for d in plan.dataset.dims] == [("V", 3), ("time", 200)]
     assert plan.dataset.data_vars[0].dims == ("V", "time")
-    dac, scope = SimulatedLevelSource(), SimulatedWaveformSense(noise=0.0, response=low_pass_step(3e-3, 1.0))
-    frames = list(Executor(plan, {"dac": dac, "seq": SimulatedSequencer(), "scope": scope}).run().frames())
-    assert [(s.dim, s.start, s.stop) for s in frames[2].chunk.region] == [("V", 2, 3), ("time", 0, 200)]
+    dac, scope = (
+        SimulatedLevelSource(),
+        SimulatedWaveformSense(noise=0.0, response=low_pass_step(3e-3, 1.0)),
+    )
+    frames = list(
+        Executor(plan, {"dac": dac, "seq": SimulatedSequencer(), "scope": scope}).run().frames()
+    )
+    assert [(s.dim, s.start, s.stop) for s in frames[2].chunk.region] == [
+        ("V", 2, 3),
+        ("time", 0, 200),
+    ]
     assert dac.get("ch00") == 1.0  # the axis was stepped before each shot
     out = assemble(plan.dataset, frames)
     assert out["trace"].shape == (3, 200) and not np.isnan(out["trace"].values).any()
@@ -665,7 +689,9 @@ def test_a_shot_capture_on_the_sequencers_own_input_is_refused_for_now():
         update={
             "instruments": (
                 InstrumentConfig(id="dac", backend="simulated", capabilities=("level_source",)),
-                InstrumentConfig(id="seq", backend="simulated", capabilities=("sequencer", "waveform_sense")),
+                InstrumentConfig(
+                    id="seq", backend="simulated", capabilities=("sequencer", "waveform_sense")
+                ),
             ),
             "channels": (
                 ChannelMap(logical="V", instrument="dac", channel="ch00", quantity="voltage"),
