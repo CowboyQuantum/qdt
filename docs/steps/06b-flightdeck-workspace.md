@@ -125,3 +125,12 @@ gone). `src/widgets/gates.ts`: the coupling matrix per browser; the Sweep widget
 sweep + control | plot | pulse + levels + history (`flightdeck.layout.v3`). e2e: click the map → the Levels widget
 offers → set → held and setpoint in the table → inline set refused beyond the limit, accepted within → release.
 Next: deliverable 5, Methods + Tune-up widgets, `panel.ts` deleted, `control.test.ts` fully migrated.
+Session 5 (2026-10-16): **Analysis and Tune-up widgets; the panel deleted** (deliverable 5, ADR 0058).
+`src/widgets/analysis.ts` (record picker over `/records` or History's per-row "analyse" through `analysis:record`;
+method and parameters over the pure `control/methods.ts`; run, estimates, show overlays, show output) and
+`src/widgets/tuneup.ts` (nodes, options, start/stop, the DAG state; `tuneupLines` moved, still pure). `control/panel.ts`
+and `widgets/control.ts` deleted; no ids in form widgets; `e2e/control.test.ts` drives every widget by pane. Default
+layout sweep + analysis + tune-up | plot | pulse + levels + history (`flightdeck.layout.v4`). Exit criteria met:
+`panel.ts` gone with every capability a widget; two plot panes show live and a record with independent cuts (e2e);
+exactly one Run bound to a compiled plan with identity and stale marker; layout persists and `+` refuses below the
+minimum height. Left: deliverable 6, the Script widget placeholder, then the step closes.

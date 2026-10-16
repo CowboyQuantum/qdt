@@ -38,12 +38,12 @@ async function open(page: Page): Promise<void> {
 
 const widgets = (page: Page, col: string) => page.locator(`.col.${col} .pane`).evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.widget));
 
-it("lays out control | plot | empty, wears the slate theme as custom properties, and shows the stream in the strip", async () => {
+it("lays out the default workspace, wears the slate theme as custom properties, and shows the stream in the strip", async () => {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, colorScheme: "dark" });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await open(page);
-  expect(await widgets(page, "left")).toEqual(["sweep", "control"]);
+  expect(await widgets(page, "left")).toEqual(["sweep", "analysis", "tuneup"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
   expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);
   expect(await page.textContent(".col.center .pane .title")).toBe("Plot 1");
@@ -85,7 +85,7 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await right.nth(2).locator("[data-split]").click();
   expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history", "empty"]);
   expect(await page.locator(".col.right .gutter.h").count()).toBe(3);
-  // the new pane can take the control panel only once the left pane gives it up: it is single-instance
+  // the new pane may take any widget that is not a busy single (every form widget is open already)
   const options = await right.nth(3).locator(".picker option").allTextContents();
   expect(options).toEqual(["Empty", "History", "Virtual gates"]);
   // the centre splits into a second plot pane that follows the stream too, with its own renderer and cut
@@ -109,7 +109,7 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await page.locator(".col.right .pane").nth(3).locator("[data-close]").click();
   expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v3")!) as { right: unknown[] });
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v4")!) as { right: unknown[] });
   expect(stored.right).toHaveLength(3);
   await page.close();
 });

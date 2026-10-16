@@ -158,7 +158,7 @@
       .matrix .lab { color: var(--text-2); display: flex; align-items: center; justify-content: center; padding: 2px; }
       .matrix .lab.stage { color: var(--text-3); text-decoration: line-through; }
 
-      /* ---- form widgets: sweep, pulse, and what is left of the Step 4b panel ---- */
+      /* ---- form widgets: sweep, pulse, analysis, tune-up ---- */
       .form-widget { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; font-size: 0.93em; }
       .form-widget h3 { margin: 10px 0 2px; font-size: 1em; color: var(--text-2); }
       .form-widget label { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
@@ -168,8 +168,14 @@
       .form-widget .axis.head { color: var(--text-3); grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; }
       .form-widget ul { margin: 0; padding-left: 16px; max-height: 160px; overflow: auto; }
       .form-widget li { display: flex; gap: 6px; align-items: center; }
-      .form-widget #params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
-      .form-widget #params label { font-size: 0.93em; }
+      .form-widget .params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+      .form-widget .params label { font-size: 0.93em; }
+      .form-widget .nodes label { justify-content: flex-start; font-size: 0.93em; }
+      .form-widget .nodes input { width: auto; }
+      .form-widget .tuneup-head { color: var(--text-2); margin-top: 4px; }
+      .form-widget ol.dag { margin: 2px 0; padding-left: 18px; max-height: none; }
+      .form-widget ol.dag li { display: list-item; }
+      .form-widget .outputs { font: 0.86em var(--mono); color: var(--text-3); }
       .form-widget fieldset { border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
       .form-widget fieldset[hidden] { display: none; }
       .form-widget legend { color: var(--text-2); font-size: 0.93em; }
@@ -182,7 +188,6 @@
       .form-widget .level-row { display: flex; gap: 4px; align-items: center; }
       .form-widget .level-row select, .form-widget .level-row input { width: auto; flex: 1 1 80px; }
       .form-widget .level-row button { padding: 0 5px; }
-      .form-widget #level-errors, .form-widget #sequence-errors { color: var(--warn); font-size: 0.93em; }
       .form-widget .buttons { display: flex; gap: 4px; flex-wrap: wrap; }
       .form-widget .buttons select { width: auto; }
       .form-widget .plan { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; font: 0.86em var(--mono); white-space: pre-wrap; color: var(--text-2); margin: 0; }
@@ -191,8 +196,8 @@
       .strip #plan.stale b { color: var(--warn); }
       .strip .stale-mark { color: var(--warn); }
       .strip #run-state { font-size: 0.93em; }
-      .form-widget #symbols label { font-size: 0.93em; }
-      .form-widget #estimates { font: 0.93em var(--mono); white-space: pre; margin: 0; }
+      .form-widget .symbols label { font-size: 0.93em; }
+      .form-widget .estimates { font: 0.93em var(--mono); white-space: pre; margin: 0; min-height: 1.2em; }
 
       @media (max-width: 900px) {
         .ws { display: flex; flex-direction: column; overflow: auto; gap: 8px; }

@@ -109,6 +109,9 @@ class LevelsWidget {
   private sort: { key: SortKey; dir: 1 | -1 } = { key: "channel", dir: 1 };
   private limit = DEFAULT_LIMIT;
   private settling = new Set<string>();
+  /** Why a channel's last set was refused, until the next set or a keystroke. */
+  private readonly notes = new Map<string, string>();
+  private readonly rowEls = new Map<string, RowEls>();
   private offer: { levels: FixedLevel[]; skipped: string[]; text: string } | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly tbody: HTMLTableSectionElement;
@@ -228,7 +231,10 @@ class LevelsWidget {
   }
 
   private async set(levels: FixedLevel[]): Promise<void> {
-    for (const l of levels) this.settling.add(l.channel);
+    for (const l of levels) {
+      this.settling.add(l.channel);
+      this.notes.delete(l.channel);
+    }
     this.render();
     try {
       await this.ctx.api.setLevels(levels);
@@ -320,6 +326,8 @@ class LevelsWidget {
     );
   }
 
+  /** Rows are kept per channel and updated in place: a poll never replaces an input the user is typing in,
+   * and a refusal note stays until the next set. The order changes only when the sort or filter does. */
   private render(): void {
     // the filter chips follow the rows (a new instrument, a new quantity) without losing their state
     if (this.filterBar.querySelectorAll(".chip").length !== new Set(this.rows.map((r) => r.quantity)).size + new Set(this.rows.map((r) => r.instrument)).size + 2) this.renderFilters();
@@ -328,55 +336,34 @@ class LevelsWidget {
       th.classList.toggle("sorted", th.dataset.sort === this.sort.key);
       th.setAttribute("aria-sort", th.dataset.sort === this.sort.key ? (this.sort.dir === 1 ? "ascending" : "descending") : "none");
     }
-    this.tbody.replaceChildren(
-      ...shown.map((r) => {
-        const unit = unitOf(r.quantity);
-        const pin = h("button", { type: "button", className: `pin${this.pinned.has(r.channel) ? " on" : ""}`, text: this.pinned.has(r.channel) ? "★" : "☆", title: "pin", attrs: { "aria-pressed": String(this.pinned.has(r.channel)) } });
-        pin.addEventListener("click", () => {
-          if (this.pinned.has(r.channel)) this.pinned.delete(r.channel);
-          else this.pinned.add(r.channel);
-          this.savePins();
-          this.render();
-        });
-        const settable = r.setpoint !== null && r.setpoint !== undefined;
-        const input = h("input", { type: "number", name: `set_${r.channel}`, step: "any", placeholder: unit, disabled: !settable, attrs: { "aria-label": `Set ${r.channel}` } });
-        const button = h("button", { type: "button", text: "set", disabled: !settable });
-        const badge = h("span", { className: "badge", hidden: true });
-        if (this.settling.has(r.channel)) {
-          badge.hidden = false;
-          badge.className = "badge settling";
-          badge.textContent = "settling";
-        }
-        const apply = () => {
-          const why = checkSet(input.value, this.limit);
-          if (why) {
-            badge.hidden = false;
-            badge.className = "badge limit";
-            badge.textContent = why;
-            return;
-          }
-          void this.set([{ channel: r.channel, value: Number(input.value) }]);
-        };
-        button.addEventListener("click", apply);
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            apply();
-          }
-        });
-        return h(
-          "tr",
-          { className: `${this.pinned.has(r.channel) ? "pinned" : ""}${nearLimit(r, this.limit) ? " near" : ""}`, attrs: { "data-channel": r.channel } },
-          h("td", {}, pin),
-          h("td", { text: r.channel }, h("span", { className: "typeTag", text: ` ${r.quantity}` })),
-          h("td", { text: r.instrument }),
-          h("td", { className: "num setpoint", text: fmt(r.setpoint, unit) }),
-          h("td", { className: "num held", text: fmt(r.held, unit) }),
-          h("td", { className: "num readback", text: fmt(r.readback, unit) }),
-          h("td", {}, input, button, badge),
-        );
-      }),
-    );
+    const trs = shown.map((r) => {
+      const unit = unitOf(r.quantity);
+      let e = this.rowEls.get(r.channel);
+      if (!e) {
+        e = this.createRow(r);
+        this.rowEls.set(r.channel, e);
+      }
+      const pinned = this.pinned.has(r.channel);
+      e.pin.textContent = pinned ? "★" : "☆";
+      e.pin.classList.toggle("on", pinned);
+      e.pin.setAttribute("aria-pressed", String(pinned));
+      e.tr.className = `${pinned ? "pinned" : ""}${nearLimit(r, this.limit) ? " near" : ""}`;
+      e.instrument.textContent = r.instrument;
+      e.setpoint.textContent = fmt(r.setpoint, unit);
+      e.held.textContent = fmt(r.held, unit);
+      e.readback.textContent = fmt(r.readback, unit);
+      const settable = r.setpoint !== null && r.setpoint !== undefined;
+      e.input.disabled = !settable;
+      e.input.placeholder = unit;
+      e.button.disabled = !settable;
+      const note = this.settling.has(r.channel) ? "settling" : (this.notes.get(r.channel) ?? "");
+      e.badge.hidden = !note;
+      e.badge.className = `badge${this.settling.has(r.channel) ? " settling" : note ? " limit" : ""}`;
+      e.badge.textContent = note;
+      return e.tr;
+    });
+    const current = [...this.tbody.children];
+    if (current.length !== trs.length || current.some((tr, i) => tr !== trs[i])) this.tbody.replaceChildren(...trs);
     const held = this.rows.filter((r) => r.held !== null && r.held !== undefined);
     this.foot.replaceChildren(
       h("span", { className: "held-summary", text: held.length ? `held: ${held.map((r) => `${r.channel} = ${Number(r.held!.toPrecision(5))} ${unitOf(r.quantity)}`).join(" · ")}` : "held: nothing (the stand is where the last sweep left it)" }),
@@ -384,6 +371,67 @@ class LevelsWidget {
     );
     this.renderOffer();
   }
+
+  private createRow(r: ChannelLevel): RowEls {
+    const pin = h("button", { type: "button", className: "pin", text: "☆", title: "pin" });
+    pin.addEventListener("click", () => {
+      if (this.pinned.has(r.channel)) this.pinned.delete(r.channel);
+      else this.pinned.add(r.channel);
+      this.savePins();
+      this.render();
+    });
+    const input = h("input", { type: "number", name: `set_${r.channel}`, step: "any", attrs: { "aria-label": `Set ${r.channel}` } });
+    const button = h("button", { type: "button", text: "set" });
+    const badge = h("span", { className: "badge", hidden: true });
+    const apply = () => {
+      const why = checkSet(input.value, this.limit);
+      if (why) {
+        this.notes.set(r.channel, why);
+        this.render();
+        return;
+      }
+      this.notes.delete(r.channel);
+      void this.set([{ channel: r.channel, value: Number(input.value) }]);
+    };
+    button.addEventListener("click", apply);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        apply();
+      }
+    });
+    input.addEventListener("input", () => {
+      if (this.notes.delete(r.channel)) this.render();
+    });
+    const instrument = h("td");
+    const setpoint = h("td", { className: "num setpoint" });
+    const held = h("td", { className: "num held" });
+    const readback = h("td", { className: "num readback" });
+    const tr = h(
+      "tr",
+      { attrs: { "data-channel": r.channel } },
+      h("td", {}, pin),
+      h("td", { text: r.channel }, h("span", { className: "typeTag", text: ` ${r.quantity}` })),
+      instrument,
+      setpoint,
+      held,
+      readback,
+      h("td", {}, input, button, badge),
+    );
+    return { tr, pin, instrument, setpoint, held, readback, input, button, badge };
+  }
+}
+
+interface RowEls {
+  tr: HTMLTableRowElement;
+  pin: HTMLButtonElement;
+  instrument: HTMLTableCellElement;
+  setpoint: HTMLTableCellElement;
+  held: HTMLTableCellElement;
+  readback: HTMLTableCellElement;
+  input: HTMLInputElement;
+  button: HTMLButtonElement;
+  badge: HTMLSpanElement;
 }
 
 function describe(e: unknown): string {
