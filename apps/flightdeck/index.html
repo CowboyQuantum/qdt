@@ -120,6 +120,44 @@
       table.ht td.id { font-family: var(--mono); font-size: 0.9em; color: var(--text-3); }
       table.ht tr.open td.shown { color: var(--sel); }
 
+      /* ---- widget: levels (operating point) ---- */
+      .dc { display: flex; flex-direction: column; height: 100%; font-size: 0.93em; }
+      .dc .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+      .dc .filters .group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+      .dc .filters .glabel { color: var(--text-3); font-size: 0.86em; margin-right: 2px; display: inline-flex; gap: 4px; align-items: center; }
+      .dc .filters input[type="search"] { width: 8em; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; }
+      .dc .filters input[type="number"] { width: 5em; }
+      .chip { border: 1px solid var(--line); border-radius: 999px; padding: 0 9px; font-size: 0.86em; background: transparent; color: var(--text-2); }
+      .chip.on { border-color: var(--sel); color: var(--text); background: color-mix(in srgb, var(--sel) 14%, transparent); }
+      .dc .offer { padding: 4px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .dc .offer:empty { display: none; }
+      .dc .tbl { flex: 1; min-height: 0; overflow: auto; }
+      table.dct { border-collapse: collapse; width: 100%; }
+      table.dct th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 500; color: var(--text-2); padding: 4px 6px; border-bottom: 1px solid var(--line); cursor: pointer; white-space: nowrap; user-select: none; }
+      table.dct th.sorted { color: var(--sel); }
+      table.dct th.num, table.dct td.num { text-align: right; font-family: var(--mono); font-size: 0.93em; }
+      table.dct td { padding: 2px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+      table.dct .typeTag { color: var(--text-3); font-size: 0.86em; }
+      table.dct tr.pinned td:nth-child(2) { color: var(--live); }
+      table.dct tr.near td.setpoint { color: var(--warn); }
+      table.dct td input[type="number"] { width: 5.5em; text-align: right; }
+      table.dct .pin { background: none; border: none; color: var(--text-3); padding: 0 4px; font-size: 1em; line-height: 1; }
+      table.dct .pin.on { color: var(--live); }
+      .dc .foot { padding: 4px 10px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 0.86em; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .dc .held-summary { color: var(--text-2); }
+      .badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 0.86em; border: 1px solid var(--line); color: var(--text-2); margin-left: 4px; }
+      .badge.settling { border-color: var(--live); color: var(--live); }
+      .badge.limit { border-color: var(--warn); color: var(--warn); }
+
+      /* ---- widget: virtual gates ---- */
+      .matrix { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 0.93em; }
+      .matrix .grid { display: grid; gap: 3px; font-family: var(--mono); font-size: 0.86em; overflow: auto; }
+      .matrix .cell { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; text-align: center; }
+      .matrix .cell.diag { color: var(--text-3); padding: 4px 0; }
+      .matrix .cell input { width: 100%; background: transparent; border: none; text-align: center; padding: 4px 0; }
+      .matrix .lab { color: var(--text-2); display: flex; align-items: center; justify-content: center; padding: 2px; }
+      .matrix .lab.stage { color: var(--text-3); text-decoration: line-through; }
+
       /* ---- form widgets: sweep, pulse, and what is left of the Step 4b panel ---- */
       .form-widget { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; font-size: 0.93em; }
       .form-widget h3 { margin: 10px 0 2px; font-size: 1em; color: var(--text-2); }

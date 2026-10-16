@@ -49,6 +49,8 @@ class SweepWidget {
   private channels: ChannelMap[] = [];
   private levelRows: LevelRow[] = [];
   private sequence: { rows: OpRow[]; bindings: BindingRow[]; errors: string[] } | null = null;
+  /** axis channel → companion → V/V from the Virtual gates widget (ADR 0049); empty when none is open. */
+  private couplings: Record<string, Record<string, number>> = {};
   /** The last compile: what Run runs unless the editors changed since (then it compiles again first). */
   private compiled: { plan: ExecutionPlan; definition: SweepDefinition; options: Record<string, string | number | boolean> } | null = null;
   private stale = false;
@@ -87,6 +89,10 @@ class SweepWidget {
       ctx.bus.on("run:abort", () => void this.abort()),
       ctx.bus.on("pulse:sequence", (s) => {
         this.sequence = s;
+        this.markStale();
+      }),
+      ctx.bus.on("gates:couplings", ({ matrix }) => {
+        this.couplings = matrix;
         this.markStale();
       }),
       ctx.bus.on("layout:changed", () => this.emitAxes()),
@@ -285,12 +291,18 @@ class SweepWidget {
 
   private readForm(): { definition: SweepDefinition; options: Record<string, string | number | boolean> } {
     const v = (name: string) => this.value(name);
-    const axis = (prefix: string, name?: string): AxisForm => ({
+    const coupled = (channel: string) => {
+      const row: Record<string, number> = {};
+      for (const [other, c] of Object.entries(this.couplings[channel] ?? {})) if (other !== channel && Number.isFinite(c) && c !== 0) row[other] = c;
+      return row;
+    };
+    const axis = (prefix: string, name?: string, stepped = true): AxisForm => ({
       channel: v(`${prefix}_channel`),
       start: Number(v(`${prefix}_start`)),
       stop: Number(v(`${prefix}_stop`)),
       num: Number(v(`${prefix}_num`)),
       ...(name ? { name } : {}),
+      ...(stepped ? { couplings: coupled(v(`${prefix}_channel`)) } : {}),
     });
     const options = JSON.parse(v("options") || "{}") as Record<string, string | number | boolean>;
     const sensor = v("sensor");
@@ -326,7 +338,7 @@ class SweepWidget {
           name: v("name"),
           levels,
           outer,
-          inner: axis("inner", innerName),
+          inner: axis("inner", innerName, false), // a stage axis couples in the sequence, never as a virtual gate
           sensor,
           instrument: inner.instrument,
           shots: Number(v("shots")),

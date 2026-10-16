@@ -14,6 +14,8 @@ export interface AxisForm {
   num: number;
   /** Axis (and Dataset dimension) name; defaults to the channel name without a `_pulse` suffix. */
   name?: string;
+  /** A virtual gate (ADR 0049): other DC channels moved with this axis, volts per volt. Stepped axes only. */
+  couplings?: Readonly<Record<string, number>>;
 }
 
 /** One operating-point row as typed: a DC channel and its level (ADR 0038). */
@@ -88,13 +90,26 @@ export function checkAxis(a: AxisForm): string[] {
   return errors;
 }
 
-const axis = (a: AxisForm) => ({ name: axisName(a), channel: a.channel, start: a.start, stop: a.stop, num: a.num });
+const axis = (a: AxisForm) => ({
+  name: axisName(a),
+  channel: a.channel,
+  start: a.start,
+  stop: a.stop,
+  num: a.num,
+  ...(a.couplings && Object.keys(a.couplings).length ? { couplings: { ...a.couplings } } : {}),
+});
 
 const RESERVED = new Set(["repeat", "shot"]);
 
 function checkAxes(outer: AxisForm | null | undefined, inner: AxisForm): string[] {
   const errors = [...(outer ? checkAxis(outer) : []), ...checkAxis(inner)];
   if (outer && axisName(outer) === axisName(inner)) errors.push("outer and inner axes need different names");
+  for (const a of outer ? [outer, inner] : [inner]) {
+    for (const [other, v] of Object.entries(a.couplings ?? {})) {
+      if (other === a.channel) errors.push(`${axisName(a)}: a gate cannot couple to itself`);
+      if (!Number.isFinite(v)) errors.push(`${axisName(a)}: coupling to ${other} must be a number`);
+    }
+  }
   for (const a of outer ? [outer, inner] : [inner]) if (RESERVED.has(axisName(a))) errors.push(`"${axisName(a)}" is a reserved dimension name`);
   return errors;
 }
@@ -112,6 +127,7 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
   if (!f.instrument) errors.push("stage needs a sequencer instrument");
   if (!Number.isInteger(f.shots) || f.shots < 1) errors.push("shots must be a positive integer");
   const inner = axisName(f.inner);
+  if (f.inner.couplings && Object.keys(f.inner.couplings).length) errors.push(`${inner}: a stage axis expresses its couplings in the pulse sequence, not as a virtual gate`);
   const axes = f.outer ? [axis(f.outer), axis(f.inner)] : [axis(f.inner)];
   const axisNames = axes.map((a) => a.name);
   const symbol = `v_${inner}`;

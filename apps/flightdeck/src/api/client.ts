@@ -4,6 +4,7 @@
 import type {
   AnalysisResult,
   CalibrationNode,
+  ChannelLevel,
   DeviceRecord,
   ExecutionPlan,
   FixedLevel,
@@ -112,6 +113,10 @@ export class ApiClient {
   }
   replay(request: ReplayRequest): Promise<StreamInfo> {
     return this.call("POST", "/stream/replay", request);
+  }
+  /** Every level-setting or level-sensing channel now: setpoint, held level, readback (ADR 0057). */
+  levelState(): Promise<ChannelLevel[]> {
+    return this.call("GET", "/levels/state");
   }
   /** The DC levels the server holds for the stand; every sweep inherits them (ADR 0038, 0053). */
   levels(): Promise<FixedLevel[]> {

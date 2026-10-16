@@ -1,11 +1,10 @@
 // The control panel (Step 4b, ADR 0032), shrinking one widget per session (ADR 0054): what remains is
-// the held operating point (click-to-set, ADR 0053), the records list, a curated analysis and the
-// tune-up runner (ADR 0050). The sweep form and the pulse editor became the Sweep and Pulse widgets
-// (ADR 0056), History the records browser (ADR 0055). Talks to qdt-server through ApiClient only.
+// the records list, a curated analysis and the tune-up runner (ADR 0050). The sweep form and the pulse
+// editor became the Sweep and Pulse widgets (ADR 0056), History the records browser (ADR 0055), the
+// operating point the Levels widget (ADR 0057). Talks to qdt-server through ApiClient only.
 import { ApiClient, ApiError } from "../api/client";
-import type { AnalysisResult, CalibrationNode, ChannelMap, FixedLevel, MeasurementRecord, MethodSpec, TuneUp } from "../schema/api";
+import type { AnalysisResult, CalibrationNode, MeasurementRecord, MethodSpec, TuneUp } from "../schema/api";
 import { check, defaults, overrides, parse, type ParamValues } from "./methods";
-import { standChannels, type StandChannels } from "./sweeps";
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { text?: string } = {}, ...children: (Node | string)[]) => {
   const el = document.createElement(tag);
@@ -18,19 +17,6 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
 
 const short = (id: string) => id.slice(0, 8);
 const TUNEUP_TERMINAL = new Set(["completed", "stopped", "failed"]);
-
-/** A clicked point as the setpoint it means: the coordinates whose names are DC channels of the stand
- * become levels; the rest are reported as not settable (ADR 0053). Pure, so click-to-set is testable. */
-export function setpointFor(point: { name: string; value: number }[], dc: readonly ChannelMap[]): { levels: FixedLevel[]; skipped: string[] } {
-  const names = new Set(dc.map((c) => c.logical));
-  const levels: FixedLevel[] = [];
-  const skipped: string[] = [];
-  for (const p of point) {
-    if (names.has(p.name) && Number.isFinite(p.value)) levels.push({ channel: p.name, value: p.value });
-    else skipped.push(p.name);
-  }
-  return { levels, skipped };
-}
 
 /** One line per node of a tune-up: its status so far, its message, and an accepted node's outputs
  * (ADR 0050). Pure, so the DAG state the finish line asks for is testable without a DOM. */
@@ -50,7 +36,6 @@ export interface ControlHost {
 }
 
 export class ControlPanel {
-  private stand: StandChannels = { dc: [], pulse: [], sensors: [], waveforms: [] };
   private methods: MethodSpec[] = [];
   private nodes: CalibrationNode[] = [];
   private tuneup: TuneUp | null = null;
@@ -66,8 +51,6 @@ export class ControlPanel {
     nodes: HTMLDivElement;
     tuneupOptions: HTMLInputElement;
     tuneupState: HTMLDivElement;
-    setpoint: HTMLDivElement;
-    held: HTMLDivElement;
   };
 
   constructor(
@@ -84,23 +67,19 @@ export class ControlPanel {
       nodes: h("div", { id: "nodes" }),
       tuneupOptions: h("input", { id: "tuneup-options", name: "tuneup_options", value: '{"seed": 1, "noise": true}' }),
       tuneupState: h("div", { id: "tuneup-state" }),
-      setpoint: h("div", { id: "setpoint" }),
-      held: h("div", { id: "held-levels" }),
     };
     this.build();
   }
 
   async init(): Promise<void> {
     try {
-      const [stand, methods, nodes] = await Promise.all([this.api.stand(), this.api.methods(), this.api.nodes()]);
-      this.stand = standChannels(stand);
+      const [methods, nodes] = await Promise.all([this.api.methods(), this.api.nodes()]);
       this.methods = methods;
       this.nodes = nodes;
       this.els.method.replaceChildren(...this.methods.map((m) => h("option", { value: m.name, text: m.title })));
       this.fillParams();
       this.renderNodes();
       await this.refreshRecords();
-      await this.refreshHeld();
     } catch (e) {
       this.host.say(`server: ${describe(e)}`, true);
     }
@@ -139,60 +118,11 @@ export class ControlPanel {
       this.els.tuneupState,
     );
 
-    const operating = h(
-      "div",
-      { id: "operating" },
-      h("h3", { text: "Operating point on the stand" }),
-      h("div", { className: "hint", text: "click a point on the map to set the gates there (FINISH_LINE's one up edge, ADR 0053); every later sweep inherits the held levels unless it moves the channel itself" }),
-      this.els.setpoint,
-      this.els.held,
-    );
-
     this.root.append(
-      operating,
       h("h3", {}, "Records ", h("button", { type: "button", text: "refresh", onclick: () => void this.refreshRecords() })),
       this.els.recordsList,
       analysis,
       tuneup,
-    );
-  }
-
-  // --- click-to-set (ADR 0053): the view offers a point, the user sends it, the server holds it ------
-
-  /** Offer the point the view was clicked at as a setpoint for the stand. */
-  offerSetpoint(point: { name: string; unit: string; value: number }[]): void {
-    const { levels, skipped } = setpointFor(point, this.stand.dc);
-    const text = point.map((p) => `${p.name} = ${p.value.toPrecision(4)}${p.unit ? ` ${p.unit}` : ""}`).join(" · ");
-    this.els.setpoint.replaceChildren(
-      h("div", { className: "clicked", text: `clicked: ${text}` }),
-      ...(levels.length
-        ? [h("button", { type: "button", id: "set-levels", text: `set ${levels.map((l) => l.channel).join(", ")} on the stand`, onclick: () => void this.setLevels(levels) })]
-        : []),
-      ...(skipped.length ? [h("span", { className: "hint", text: ` (${skipped.join(", ")}: not a DC channel of the stand)` })] : []),
-    );
-  }
-
-  private async setLevels(levels: FixedLevel[]): Promise<void> {
-    try {
-      this.renderHeld(await this.api.setLevels(levels));
-      this.host.say(`set ${levels.map((l) => `${l.channel}=${l.value.toPrecision(4)}`).join(", ")} on the stand`);
-    } catch (e) {
-      this.host.say(describe(e), true);
-    }
-  }
-
-  async refreshHeld(): Promise<void> {
-    try {
-      this.renderHeld(await this.api.levels());
-    } catch (e) {
-      this.host.say(describe(e), true);
-    }
-  }
-
-  private renderHeld(levels: FixedLevel[]): void {
-    this.els.held.replaceChildren(
-      h("span", { text: levels.length ? `held: ${levels.map((l) => `${l.channel} = ${l.value.toPrecision(4)} V`).join(" · ")}` : "held: nothing (the stand is where the last sweep left it)" }),
-      ...(levels.length ? [h("button", { type: "button", id: "clear-levels", text: "release", onclick: () => void this.api.clearLevels().then((l) => this.renderHeld(l)).catch((e) => this.host.say(describe(e), true)) })] : []),
     );
   }
 
