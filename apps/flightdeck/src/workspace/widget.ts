@@ -13,8 +13,10 @@ export interface WidgetContext {
   readonly bus: ScopedBus;
   /** URL parameters the app was opened with (renderer choice, bench flag). */
   readonly params: URLSearchParams;
-  /** Layout operations a widget may ask for. More arrive with the widgets that need them. */
-  readonly layout: { addPlotPane(): void };
+  /** The pane this mount lives in; events that target a pane name it. */
+  readonly paneId: string;
+  /** Layout operations a widget may ask for: another plot pane (null when refused), the plot panes by label. */
+  readonly layout: { addPlotPane(): string | null; plotPanes(): { id: string; label: string }[] };
 }
 
 export interface Widget {
@@ -67,7 +69,7 @@ export class WidgetRegistry {
 
   /** Mount a widget into a pane with a bus scoped to that mount. A single-instance widget that is
    * already mounted gets a notice instead, so the layout can name it twice without breaking. */
-  mount(id: string, body: HTMLElement, head: HTMLElement, bus: Bus, ctx: Omit<WidgetContext, "bus">): Mounted {
+  mount(id: string, paneId: string, body: HTMLElement, head: HTMLElement, bus: Bus, ctx: Omit<WidgetContext, "bus" | "paneId">): Mounted {
     const widget = this.widgets.get(id) ?? this.widgets.get("empty");
     if (!widget) throw new Error(`no widget ${id} and no empty widget to fall back on`);
     const scoped = new ScopedBus(bus);
@@ -77,7 +79,7 @@ export class WidgetRegistry {
       return { widget, unmount: () => scoped.dispose() };
     }
     this.mounted.set(widget.id, n + 1);
-    const unmount = widget.mount(body, head, { ...ctx, bus: scoped });
+    const unmount = widget.mount(body, head, { ...ctx, bus: scoped, paneId });
     let done = false;
     return {
       widget,

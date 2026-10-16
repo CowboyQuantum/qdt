@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { viridis } from "../src/render/colormap";
 import { finiteRange, renderRGBA } from "../src/render/cpu";
+import { columnCut, displayMap, scratch } from "../src/render/display";
 import { ReplaySource } from "../src/sources/replay";
 import { consume } from "../src/sources/source";
 import { annotationPath, chooseView } from "../src/view";
@@ -42,6 +43,39 @@ describe("CPU reference render (oracle for the WebGL path)", () => {
     const rgba = renderRGBA(values, [2, 2], { min: 0, max: 2 });
     expect(Array.from(rgba.subarray(0, 4))).toEqual([40, 40, 40, 255]); // top-left = row 1, col 0 = NaN
     expect(Array.from(rgba.subarray(8, 12))).toEqual(viridis(0)); // bottom-left = row 0, col 0
+  });
+});
+
+describe("source equivalence across plot panes (ADR 0055)", () => {
+  it("two panes over the same store, each with its own scratch, compute byte-identical display maps and images", async () => {
+    const s = await store("synthetic_map_64");
+    const data = s.get("signal");
+    for (const options of [
+      { transform: "raw", swap: false },
+      { transform: "grad", swap: true },
+      { transform: "d_row", swap: false },
+    ] as const) {
+      const a = displayMap(data, false, options, scratch());
+      const b = displayMap(data, false, options, scratch());
+      expect(a.rows).toBe(b.rows);
+      expect(a.cols).toBe(b.cols);
+      expect(sha256(a.values)).toBe(sha256(b.values));
+      expect(a.range).toEqual(b.range);
+      expect(sha256(new Uint8Array(renderRGBA(a.values, [a.rows, a.cols], a.range!).buffer) as never)).toBe(
+        sha256(new Uint8Array(renderRGBA(b.values, [b.rows, b.cols], b.range!).buffer) as never),
+      );
+    }
+    const raw = displayMap(data, false, { transform: "raw", swap: false }, scratch());
+    expect(raw.values).toBe(data.values); // the raw path uploads the store's own buffer
+  });
+
+  it("the cut is one column of the display map, bottom row first, at the clamped fraction", () => {
+    const values = Float64Array.of(1, 2, 3, 4, 5, 6); // rows [1 2 3] [4 5 6]
+    const map = { values, rows: 2, cols: 3, range: { min: 1, max: 6 } };
+    expect(Array.from(columnCut(map, 0))).toEqual([1, 4]);
+    expect(Array.from(columnCut(map, 0.5))).toEqual([2, 5]);
+    expect(Array.from(columnCut(map, 1))).toEqual([3, 6]);
+    expect(Array.from(columnCut(map, 7))).toEqual([3, 6]);
   });
 });
 

@@ -28,6 +28,8 @@ export const EMPTY_WIDGET = "empty";
 export const MIN_SIDE = 0.12;
 export const MAX_SIDE = 0.45;
 export const MAX_SIDES = 0.75;
+/** Plot panes at most: each holds a WebGL2 context and browsers allow 8–16 per page (ADR 0055). */
+export const MAX_PLOT_PANES = 6;
 
 let seq = 0;
 export const newPaneId = (): string => `pane-${++seq}`;
@@ -36,7 +38,7 @@ export function defaultLayout(): Layout {
   return {
     left: [{ id: newPaneId(), widget: "control", size: 1 }],
     center: [{ id: newPaneId(), widget: PLOT_WIDGET, size: 1 }],
-    right: [{ id: newPaneId(), widget: EMPTY_WIDGET, size: 1 }],
+    right: [{ id: newPaneId(), widget: "history", size: 1 }],
     widths: { left: 0.3, right: 0.18 },
   };
 }
@@ -53,6 +55,7 @@ export function normalize(panes: Pane[]): Pane[] {
 
 /** Whether a column of pixel height `height` can take one more pane without any pane going below the minimum. */
 export function canSplit(layout: Layout, column: Column, height: number): boolean {
+  if (column === "center" && layout.center.length >= MAX_PLOT_PANES) return false;
   return height / (layout[column].length + 1) >= MIN_PANE_HEIGHT;
 }
 

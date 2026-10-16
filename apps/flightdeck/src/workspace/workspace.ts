@@ -9,6 +9,7 @@ import {
   COLUMNS,
   columnOf,
   EMPTY_WIDGET,
+  MAX_PLOT_PANES,
   type Column,
   type Layout,
   type Pane,
@@ -37,17 +38,23 @@ export class Workspace {
   private layout: Layout;
   private readonly cols: Record<Column, HTMLElement>;
   private readonly panes = new Map<string, PaneEls>();
-  private readonly ctx: Omit<WidgetContext, "bus">;
+  private readonly ctx: Omit<WidgetContext, "bus" | "paneId">;
 
   constructor(
     private readonly root: HTMLElement,
     private readonly registry: WidgetRegistry,
     private readonly bus: Bus,
-    ctx: Omit<WidgetContext, "bus" | "layout">,
+    ctx: Omit<WidgetContext, "bus" | "layout" | "paneId">,
     layout: Layout,
   ) {
     this.layout = layout;
-    this.ctx = { ...ctx, layout: { addPlotPane: () => this.addPlotPane() } };
+    this.ctx = {
+      ...ctx,
+      layout: {
+        addPlotPane: () => this.addPlotPane(),
+        plotPanes: () => this.layout.center.map((p, i) => ({ id: p.id, label: `Plot ${i + 1}` })),
+      },
+    };
     this.cols = {
       left: h("div", { className: "col left", attrs: { "data-col": "left" } }),
       center: h("div", { className: "col center", attrs: { "data-col": "center" } }),
@@ -63,10 +70,14 @@ export class Workspace {
     return this.layout;
   }
 
-  /** Another plot pane below the last one in the centre (a widget asks for this to open a record beside the live map). */
-  addPlotPane(): void {
+  /** Another plot pane below the last one in the centre (a widget asks for this to open a record beside the
+   * live map); its id, or null when the column is full or too short. */
+  addPlotPane(): string | null {
     const last = this.layout.center.at(-1);
-    if (last) this.commit(split(this.layout, last.id, PLOT_WIDGET, this.height("center")).layout);
+    if (!last) return null;
+    const { layout, pane } = split(this.layout, last.id, PLOT_WIDGET, this.height("center"));
+    this.commit(layout);
+    return pane?.id ?? null;
   }
 
   private commit(next: Layout): void {
@@ -107,7 +118,7 @@ export class Workspace {
           e.mounted.unmount();
           e.slot.replaceChildren();
           e.body.replaceChildren();
-          e.mounted = this.registry.mount(p.widget, e.body, e.slot, this.bus, this.ctx);
+          e.mounted = this.registry.mount(p.widget, p.id, e.body, e.slot, this.bus, this.ctx);
         }
         children.push(e.section);
       });
@@ -115,6 +126,7 @@ export class Workspace {
     }
     this.applyWidths();
     this.updateHeads();
+    this.bus.emit("layout:changed", {});
   }
 
   private createPane(column: Column, p: Pane): PaneEls {
@@ -133,7 +145,7 @@ export class Workspace {
       this.commit(split(this.layout, p.id, widget, this.height(column)).layout);
     });
     closeButton.addEventListener("click", () => this.commit(close(this.layout, p.id)));
-    const mounted = this.registry.mount(p.widget, body, slot, this.bus, this.ctx);
+    const mounted = this.registry.mount(p.widget, p.id, body, slot, this.bus, this.ctx);
     return { section, title, picker, sub, slot, splitButton, closeButton, body, mounted };
   }
 
@@ -153,11 +165,9 @@ export class Workspace {
           e.picker.replaceChildren(...this.registry.selectable(p.widget).map((w) => new Option(w.label, w.id)));
           e.picker.value = p.widget;
         }
-        // the centre splits into another plot pane; while the plot is single-instance that waits for the next session
-        const plot = this.registry.get(PLOT_WIDGET);
-        const plotBusy = column === "center" && !!plot?.single && this.registry.instances(PLOT_WIDGET) > 0;
-        e.splitButton.disabled = !splittable || plotBusy;
-        e.splitButton.title = plotBusy ? "One plot pane this session; more panes land next" : splittable ? "Split: add a pane below" : "No room for another pane at this height";
+        const full = column === "center" && panes.length >= MAX_PLOT_PANES;
+        e.splitButton.disabled = !splittable;
+        e.splitButton.title = full ? `${MAX_PLOT_PANES} plot panes at most (each holds a WebGL2 context)` : splittable ? "Split: add a pane below" : "No room for another pane at this height";
         e.closeButton.disabled = panes.length < 2;
         e.closeButton.title = panes.length < 2 ? "The last pane of a column stays" : "Close this pane";
       });

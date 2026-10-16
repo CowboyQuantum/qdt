@@ -1,29 +1,14 @@
-// The plot widget: the single stage of Step 1–6 as the first centre pane (ADR 0054, deliverable 1).
-// Every announced Dataset is selectable; the newest is shown as it arrives; the live map or trace,
-// the annotation overlay, the client-side view options (variable, minus, transform, swap) and the
-// stream telemetry (emitted as `stream:state` for the strip). What is drawn stays a function of the
+// The plot widget (ADR 0054, 0055): any number of panes in the centre, each with its own renderer, view
+// options and line cut over the shared Dataset stores. A pane either follows the live stream (the newest
+// Dataset as it arrives) or is pinned to one Dataset; History opens a stored record in a pane through
+// `plot:open`. The ⚙ menu holds what the old header selects did. What is drawn stays a function of the
 // Dataset stream (rule 8); a click on the map goes out as coordinate names and values (ADR 0053).
-// One instance this session: the ids `plot`/`overlay`/`datasets`/… are what the e2e tests drive; the
-// next session makes N panes over the shared stores and moves these selects into the ⚙ menu.
 import { finiteRange, type Range } from "../render/cpu";
+import { columnCut, displayMap, scratch, type DisplayMap } from "../render/display";
 import { createMapRenderer, defaultMapRenderer, type MapRenderer, RENDERERS, type RendererName } from "../render/map";
 import { drawTrace, type TraceMark } from "../render/trace";
 import type { DatasetStore } from "../stream/store";
-import {
-  annotationPath,
-  axis,
-  chooseView,
-  DEFAULT_OPTIONS,
-  difference,
-  meanAlongLeading,
-  partners,
-  pointAt,
-  transformMap,
-  transpose,
-  type Transform,
-  type ViewKind,
-  type ViewOptions,
-} from "../view";
+import { annotationPath, axis, chooseView, meanAlongLeading, partners, pointAt, type Transform, type ViewKind, type ViewOptions } from "../view";
 import { h } from "../workspace/dom";
 import type { Widget, WidgetContext } from "../workspace/widget";
 
@@ -44,12 +29,12 @@ declare global {
 }
 
 const TRANSFORM_LABEL: Record<Transform, string> = { raw: "raw", d_col: "d/d(inner)", d_row: "d/d(outer)", grad: "|gradient|" };
+const short = (id: string) => id.slice(0, 8);
 
 export const plotWidget: Widget = {
   id: "plot",
   label: "Plot",
   sub: "live stream or a stored record",
-  single: true,
   mount(body, head, ctx) {
     const pane = new PlotPane(body, head, ctx);
     return () => pane.unmount();
@@ -57,19 +42,32 @@ export const plotWidget: Widget = {
 };
 
 class PlotPane {
-  private readonly plot: HTMLCanvasElement;
+  private readonly map: HTMLCanvasElement;
   private readonly overlay: HTMLCanvasElement;
+  private readonly cutCanvas: HTMLCanvasElement;
   private readonly square: HTMLDivElement;
-  private readonly datasets: HTMLSelectElement;
-  private readonly variableSelect: HTMLSelectElement;
-  private readonly minusSelect: HTMLSelectElement;
-  private readonly transformSelect: HTMLSelectElement;
-  private readonly swapBox: HTMLInputElement;
+  private readonly src: HTMLSpanElement;
+  private readonly menuButton: HTMLButtonElement;
   private readonly bench: boolean;
   private readonly offs: (() => void)[] = [];
   private readonly resize: ResizeObserver | null;
   private renderer: MapRenderer | null = null;
   private viewAbort: AbortController | null = null;
+  private menu: HTMLElement | null = null;
+  // view state: what this pane shows and how
+  private follow = true;
+  /** The record this pane was asked to show, until its Dataset arrives (then: what it is pinned to). */
+  private pendingRef: string | null = null;
+  private pendingPlan: string | null = null;
+  private pinnedRecord: string | null = null;
+  private shown: DatasetStore | null = null;
+  private variable = "";
+  private minus = "";
+  private transform: Transform = "raw";
+  private swap = false;
+  private cut = 0.5;
+  /** Set by the running view so a menu change reaches its frame loop. */
+  private onOptions: (() => void) | null = null;
 
   constructor(
     private readonly body: HTMLElement,
@@ -77,30 +75,15 @@ class PlotPane {
     private readonly ctx: WidgetContext,
   ) {
     this.bench = ctx.params.get("bench") === "1";
-    this.datasets = h("select", { id: "datasets" });
-    this.variableSelect = h("select", { id: "variable" });
-    this.minusSelect = h("select", { id: "minus" });
-    this.transformSelect = h(
-      "select",
-      { id: "transform" },
-      new Option("raw", "raw"),
-      new Option("d/d(inner axis)", "d_col"),
-      new Option("d/d(outer axis)", "d_row"),
-      new Option("|gradient|", "grad"),
-    );
-    this.swapBox = h("input", { id: "swap", type: "checkbox" });
-    head.append(
-      h("label", {}, "dataset ", this.datasets),
-      h("label", {}, "variable ", this.variableSelect),
-      h("label", {}, "minus ", this.minusSelect),
-      h("label", {}, "view ", this.transformSelect),
-      h("label", {}, this.swapBox, " swap axes"),
-    );
-    this.plot = h("canvas", { id: "plot", width: 1024, height: 1024 });
-    this.overlay = h("canvas", { id: "overlay", width: 1024, height: 1024 });
-    this.square = h("div", { className: "square" }, this.plot, this.overlay);
+    this.src = h("span", { className: "src", text: "live" });
+    this.menuButton = h("button", { className: "icon", type: "button", text: "⚙", title: "View settings", attrs: { "data-menu": "", "aria-label": "View settings", "aria-haspopup": "menu", "aria-expanded": "false" } });
+    head.append(this.src, this.menuButton);
+    this.map = h("canvas", { className: "map", width: 1024, height: 1024 });
+    this.overlay = h("canvas", { className: "overlay", width: 1024, height: 1024 });
+    this.cutCanvas = h("canvas", { className: "cut", attrs: { "aria-label": "line cut" } });
+    this.square = h("div", { className: "square" }, this.map, this.overlay);
     const stage = h("div", { className: "stage" }, this.square);
-    body.append(h("div", { className: "plot" }, stage));
+    body.append(h("div", { className: "plot" }, stage, this.cutCanvas));
     // the map is square whatever the pane's shape: the largest square that fits the stage
     const fit = () => {
       const s = Math.max(0, Math.min(stage.clientWidth, stage.clientHeight));
@@ -111,89 +94,260 @@ class PlotPane {
     this.resize?.observe(stage);
     fit();
 
-    for (const el of [this.variableSelect, this.minusSelect]) {
-      const on = () => {
-        if (el === this.variableSelect) this.minusSelect.value = ""; // a new variable starts without a subtraction
-        const store = ctx.datasets.get(this.datasets.value);
-        if (store) this.select(store); // a different display map: restart the view, keep the stream
-      };
-      el.addEventListener("change", on);
-      this.offs.push(() => el.removeEventListener("change", on));
-    }
-    const onPick = () => {
-      const store = ctx.datasets.get(this.datasets.value);
-      if (store) this.select(store);
-    };
-    this.datasets.addEventListener("change", onPick);
-    this.offs.push(() => this.datasets.removeEventListener("change", onPick));
+    this.menuButton.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggleMenu();
+    });
 
-    // the shared stores: what is there already, then every new one (the newest is what the user asked for)
-    for (const store of ctx.datasets.all()) this.datasets.append(new Option(store.dataset.name, store.dataset.dataset_id));
+    // the shared stores: the newest now, then every new one while following; a record this pane waits for
     const newest = ctx.datasets.all().at(-1);
     if (newest) this.select(newest);
     this.offs.push(
       ctx.datasets.onStore((store) => {
-        this.datasets.append(new Option(store.dataset.name, store.dataset.dataset_id));
-        this.select(store);
+        // display only: a registry replay names its record (ADR 0027); nothing branches on where data came from
+        if (this.pendingRef && this.isRecord(store, this.pendingRef, this.pendingPlan)) {
+          this.pinnedRecord = this.pendingRef;
+          this.pendingRef = this.pendingPlan = null;
+          this.follow = false;
+          this.select(store);
+        } else if (this.follow) this.select(store);
+        this.refreshMenu();
       }),
       ctx.datasets.onSource(() => {
         this.viewAbort?.abort();
-        this.datasets.replaceChildren();
-        this.state("idle", null, "");
+        this.shown = null;
+        this.follow = true;
+        this.pendingRef = this.pendingPlan = this.pinnedRecord = null;
+        this.announce();
+        this.refreshMenu();
+      }),
+      ctx.bus.on("plot:open", ({ recordId, planId, paneId }) => {
+        if (paneId === ctx.paneId) this.openRecord(recordId, planId);
       }),
     );
+    this.announce();
   }
 
   unmount(): void {
+    this.closeMenu();
     this.viewAbort?.abort();
     for (const off of this.offs.splice(0)) off();
     this.resize?.disconnect();
     if (window.__flightdeckRenderer === this.renderer) delete window.__flightdeckRenderer;
+    this.renderer?.dispose();
     this.renderer = null;
     this.body.replaceChildren();
     this.head.replaceChildren();
-    this.state("idle", null, "");
+    if (this.follow) this.state("idle", null, "");
+    this.ctx.bus.emit("plot:view", { paneId: this.ctx.paneId, datasetId: null, registryRef: null, name: "" });
+  }
+
+  // --- what this pane shows -----------------------------------------------------------------------
+
+  /** The Dataset that is a record: a replay names it by registry ref (ADR 0027); a run still on the stream
+   * is the record's plan id, and the server then publishes only the overlays. Ids only, never a producer. */
+  private isRecord(store: DatasetStore, recordId: string, planId: string | null): boolean {
+    return store.dataset.source.registry_ref === recordId || (!!planId && store.dataset.dataset_id === planId);
+  }
+
+  /** Pin to the Dataset that is the record, now if it is on the stream already, else when it arrives. */
+  private openRecord(recordId: string, planId: string): void {
+    this.follow = false;
+    const existing = this.ctx.datasets.all().find((s) => this.isRecord(s, recordId, planId));
+    if (existing) {
+      this.pendingRef = this.pendingPlan = null;
+      this.pinnedRecord = recordId;
+      this.select(existing);
+    } else {
+      this.pendingRef = recordId;
+      this.pendingPlan = planId;
+      this.src.textContent = `opening ${short(recordId)}…`;
+    }
+    this.refreshMenu();
+  }
+
+  private announce(): void {
+    const s = this.shown;
+    const ref = s?.dataset.source.registry_ref ?? (!this.follow ? this.pinnedRecord : null);
+    this.src.textContent = s ? `${this.follow ? "live" : "pinned"} · ${ref ? `record ${short(ref)}` : s.dataset.name}` : this.pendingRef ? `opening ${short(this.pendingRef)}…` : this.follow ? "live" : "pinned";
+    this.ctx.bus.emit("plot:view", { paneId: this.ctx.paneId, datasetId: s?.dataset.dataset_id ?? null, registryRef: ref, name: s?.dataset.name ?? "" });
   }
 
   private state(state: "idle" | "live" | "complete", progress: number | null, summary: string): void {
-    this.ctx.bus.emit("stream:state", { state, progress, summary });
+    if (this.follow) this.ctx.bus.emit("stream:state", { state, progress, summary });
   }
 
   /** Show one store: the previous view's frame loop stops, the renderer and canvases are reused. */
   private select(store: DatasetStore): void {
     this.viewAbort?.abort();
     this.viewAbort = new AbortController();
-    this.datasets.value = store.dataset.dataset_id;
-    this.fillVariables(store);
+    this.shown = store;
+    const names = store.dataset.data_vars.map((v) => v.name);
+    if (!names.includes(this.variable)) this.variable = names[0] ?? "";
+    if (!partners(store.dataset, this.variable).includes(this.minus)) this.minus = "";
+    this.announce();
     this.show(store, this.viewAbort.signal);
   }
 
-  /** The variable picker keeps its choice across Datasets that have it; "minus" offers same-shape partners. */
-  private fillVariables(store: DatasetStore): void {
-    const names = store.dataset.data_vars.map((v) => v.name);
-    const had = this.variableSelect.value;
-    this.variableSelect.replaceChildren(...names.map((n) => new Option(n, n)));
-    this.variableSelect.value = names.includes(had) ? had : (names[0] ?? "");
-    const minusHad = this.minusSelect.value;
-    const others = partners(store.dataset, this.variableSelect.value);
-    this.minusSelect.replaceChildren(new Option("—", ""), ...others.map((n) => new Option(n, n)));
-    this.minusSelect.value = others.includes(minusHad) ? minusHad : "";
+  private options(): ViewOptions {
+    return { swap: this.swap, transform: this.transform };
   }
 
-  private options(): ViewOptions {
-    return { swap: this.swapBox.checked, transform: this.transformSelect.value as Transform };
+  // --- the ⚙ menu ----------------------------------------------------------------------------------
+
+  private toggleMenu(): void {
+    if (this.menu) return this.closeMenu();
+    const menu = h("div", { className: "menu plot", attrs: { role: "menu", "aria-label": "View settings" } });
+    this.menu = menu;
+    this.fillMenu();
+    const pane = this.body.closest(".pane") ?? this.body;
+    pane.append(menu);
+    this.menuButton.setAttribute("aria-expanded", "true");
+    menu.addEventListener("click", (e) => e.stopPropagation());
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.closeMenu();
+        this.menuButton.focus();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      // focus stays in the menu until it closes
+      const items = [...menu.querySelectorAll<HTMLElement>("select, input, button")].filter((el) => !el.hasAttribute("disabled"));
+      if (!items.length) return;
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+    document.addEventListener("click", this.onDocClick);
+    (menu.querySelector("select, input, button") as HTMLElement | null)?.focus();
   }
+
+  private readonly onDocClick = (): void => this.closeMenu();
+
+  private closeMenu(): void {
+    if (!this.menu) return;
+    this.menu.remove();
+    this.menu = null;
+    this.menuButton.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", this.onDocClick);
+  }
+
+  /** Rebuild the menu's option lists when the stores change while it is open. */
+  private refreshMenu(): void {
+    if (this.menu) this.fillMenu();
+  }
+
+  private fillMenu(): void {
+    const menu = this.menu!;
+    const active = document.activeElement instanceof HTMLElement && menu.contains(document.activeElement) ? (document.activeElement as HTMLInputElement | HTMLSelectElement).name : null;
+    const row = (label: string, control: HTMLElement) => h("label", { className: "row" }, label, control);
+    const stores = this.ctx.datasets.all();
+    const dataset = h(
+      "select",
+      { name: "dataset", attrs: { "aria-label": "Dataset shown in this pane" } },
+      new Option("live — follow the stream", "live"),
+      ...stores.map((s) => new Option(`${s.dataset.name}${s.dataset.source.registry_ref ? ` · record ${short(s.dataset.source.registry_ref)}` : ""}`, s.dataset.dataset_id)),
+    );
+    dataset.value = this.follow || !this.shown ? "live" : this.shown.dataset.dataset_id;
+    dataset.addEventListener("change", () => {
+      if (dataset.value === "live") {
+        this.follow = true;
+        this.pendingRef = this.pendingPlan = this.pinnedRecord = null;
+        const newest = stores.at(-1);
+        if (newest && newest !== this.shown) this.select(newest);
+        else this.announce();
+      } else {
+        this.follow = false;
+        this.pendingRef = this.pendingPlan = this.pinnedRecord = null;
+        const s = this.ctx.datasets.get(dataset.value);
+        if (s) this.select(s);
+      }
+      this.fillMenu();
+    });
+    const names = this.shown?.dataset.data_vars.map((v) => v.name) ?? [];
+    const variable = h("select", { name: "variable", disabled: !names.length }, ...names.map((n) => new Option(n, n)));
+    variable.value = this.variable;
+    variable.addEventListener("change", () => {
+      this.variable = variable.value;
+      this.minus = ""; // a new variable starts without a subtraction
+      if (this.shown) this.select(this.shown); // a different display map: restart the view, keep the stream
+      this.fillMenu();
+    });
+    const others = this.shown ? partners(this.shown.dataset, this.variable) : [];
+    const minus = h("select", { name: "minus", disabled: !others.length }, new Option("—", ""), ...others.map((n) => new Option(n, n)));
+    minus.value = this.minus;
+    minus.addEventListener("change", () => {
+      this.minus = minus.value;
+      if (this.shown) this.select(this.shown);
+    });
+    const transform = h(
+      "select",
+      { name: "transform" },
+      new Option("raw", "raw"),
+      new Option("d/d(inner axis)", "d_col"),
+      new Option("d/d(outer axis)", "d_row"),
+      new Option("|gradient|", "grad"),
+    );
+    transform.value = this.transform;
+    transform.addEventListener("change", () => {
+      this.transform = transform.value as Transform;
+      this.onOptions?.();
+    });
+    const swap = h("input", { name: "swap", type: "checkbox", checked: this.swap });
+    swap.addEventListener("change", () => {
+      this.swap = swap.checked;
+      this.onOptions?.();
+    });
+    const cutValue = h("span", { className: "mono", text: this.cutLabel() });
+    const cut = h("input", { name: "cut", type: "range", min: "0", max: "1", step: "0.01", value: String(this.cut), attrs: { "aria-label": "Line cut position" } });
+    cut.addEventListener("input", () => {
+      this.cut = Number(cut.value);
+      cutValue.textContent = this.cutLabel();
+      this.onOptions?.();
+    });
+    menu.replaceChildren(
+      row("dataset", dataset),
+      row("variable", variable),
+      row("minus", minus),
+      row("view", transform),
+      h("label", { className: "row" }, h("span", { text: "swap axes" }), swap),
+      h("label", { className: "row" }, h("span", {}, "cut at ", cutValue), cut),
+      h("div", { className: "row hint", text: "click the map to set the gates there; the cut follows the slider" }),
+    );
+    if (active) (menu.querySelector(`[name="${active}"]`) as HTMLElement | null)?.focus();
+  }
+
+  /** The cut's position in the shown map's x coordinate, for the menu. */
+  private cutLabel(): string {
+    const s = this.shown;
+    if (!s) return "—";
+    const view = chooseView(s.dataset, this.variable);
+    if (!view || view.kind !== "heatmap") return "—";
+    const x = axis(s, this.swap ? view.rowDim : view.colDim);
+    const i = Math.round(this.cut * (x.values.length - 1));
+    const v = Number(x.values[i] ?? NaN);
+    return Number.isFinite(v) ? `${x.name} = ${Number(v.toPrecision(4))}${x.unit ? ` ${x.unit}` : ""}` : "—";
+  }
+
+  // --- drawing -------------------------------------------------------------------------------------
 
   private makeRenderer(): MapRenderer {
     const name = this.ctx.params.get("renderer");
-    if (name && (RENDERERS as readonly string[]).includes(name)) return createMapRenderer(name as RendererName, this.plot);
-    return defaultMapRenderer(this.plot);
+    if (name && (RENDERERS as readonly string[]).includes(name)) return createMapRenderer(name as RendererName, this.map);
+    return defaultMapRenderer(this.map);
   }
 
   private show(store: DatasetStore, signal: AbortSignal): void {
-    const { plot, overlay, bench } = this;
-    const view = chooseView(store.dataset, this.variableSelect.value);
-    const minus = view && partners(store.dataset, view.variable).includes(this.minusSelect.value) ? this.minusSelect.value : "";
+    const { map: plot, overlay, bench } = this;
+    const view = chooseView(store.dataset, this.variable);
+    const minus = view && partners(store.dataset, view.variable).includes(this.minus) ? this.minus : "";
     let diff: Float64Array | null = null;
     const displayed = () => {
       const data = store.get(view!.variable);
@@ -203,18 +357,19 @@ class PlotPane {
       return d;
     };
     if (!view) {
+      this.cutCanvas.hidden = true;
       this.state("idle", null, `${store.dataset.name}: no v0 view for this shape`);
       return;
     }
     if (view.kind === "heatmap" && !this.renderer) this.renderer = this.makeRenderer();
     const renderer = this.renderer;
-    // the map renderer owns `plot` (a WebGL context refuses a 2-D one afterwards), so a trace draws on the
-    // 2-D overlay canvas and the map canvas is hidden under it
+    // the map renderer owns the map canvas (a WebGL context refuses a 2-D one afterwards), so a trace draws
+    // on the 2-D overlay canvas and the map canvas is hidden under it
     plot.style.visibility = view.kind === "heatmap" ? "" : "hidden";
+    this.cutCanvas.hidden = view.kind !== "heatmap";
     const state: BenchState = { renderer: view.kind === "heatmap" ? (renderer?.name ?? "cpu") : "trace", samples: [], frames: 0, complete: false, error: null };
-    if (bench) window.__flightdeck = state;
-    if (renderer) window.__flightdeckRenderer = renderer;
-    // display only: a registry replay names its record (ADR 0027); nothing branches on where data came from
+    if (bench && this.follow) window.__flightdeck = state;
+    if (renderer && this.follow) window.__flightdeckRenderer = renderer;
     const ref = store.dataset.source.registry_ref;
     const title = ref ? `record ${ref} · ${store.dataset.name}` : store.dataset.name;
 
@@ -231,6 +386,7 @@ class PlotPane {
     let latency = NaN;
     const recent: [number, number][] = []; // [time ms, points]
     let overlaysDirty = store.annotations.size > 0;
+    let cutDirty = true;
     const offAnnotation = store.onAnnotation(() => (overlaysDirty = true));
     signal.addEventListener("abort", offAnnotation, { once: true });
     const offUpdate = store.onUpdate((u) => {
@@ -246,42 +402,39 @@ class PlotPane {
     signal.addEventListener("abort", offUpdate, { once: true });
 
     let range: Range | null = null;
-    let mean: Float64Array | null = null; // display map for a stacked heatmap: mean over the stack dim
-    let derived: Float64Array | null = null; // transformed map
-    let swapped: Float64Array | null = null; // transposed map
-    let shown: ViewOptions = { ...DEFAULT_OPTIONS };
-    const onOptions = () => {
+    let mean: Float64Array | null = null; // display map for a stacked heatmap on the live path: mean over the stack dim
+    const scratchBuffers = scratch();
+    let last: DisplayMap | null = null; // what was uploaded last: the cut reads it
+    let shown: ViewOptions = this.options();
+    let cutAt = this.cut;
+    this.onOptions = () => {
       const o = this.options();
-      if (o.swap === shown.swap && o.transform === shown.transform) return;
-      shown = o;
-      range = null;
-      dirty = [0, totalRows()];
-      overlaysDirty = true;
+      if (o.swap !== shown.swap || o.transform !== shown.transform) {
+        shown = o;
+        range = null;
+        dirty = [0, totalRows()];
+        overlaysDirty = true;
+      }
+      if (this.cut !== cutAt) {
+        cutAt = this.cut;
+        cutDirty = true;
+        overlaysDirty = true;
+      }
     };
-    this.transformSelect.addEventListener("change", onOptions);
-    this.swapBox.addEventListener("change", onOptions);
-    signal.addEventListener(
-      "abort",
-      () => {
-        this.transformSelect.removeEventListener("change", onOptions);
-        this.swapBox.removeEventListener("change", onOptions);
-      },
-      { once: true },
-    );
-    shown = this.options();
+    signal.addEventListener("abort", () => (this.onOptions = null), { once: true });
 
     /** The latest record of a trace view, with every 1-coordinate marker on its x axis as a rule. */
     const drawTraceView = (data: ReturnType<typeof displayed>) => {
       if (view.kind !== "trace") return;
       const x = axis(store, view.xDim);
       const n = view.latestAlong ? data.shape[1]! : data.values.length;
-      const last = view.latestAlong ? data.shape[0]! - 1 : 0;
-      if (last < 0) return;
+      const lastRecord = view.latestAlong ? data.shape[0]! - 1 : 0;
+      if (lastRecord < 0) return;
       const marks: TraceMark[] = [];
       for (const ann of store.annotations.values()) {
         if (ann.kind === "marker" && ann.coords.length === 1 && ann.coords[0] === x.name) marks.push({ x: ann.points[0]![0]!, label: ann.label ?? "" });
       }
-      drawTrace(overlay, x.values as never, data.values.subarray(last * n, (last + 1) * n), marks);
+      drawTrace(overlay, x.values as never, data.values.subarray(lastRecord * n, (lastRecord + 1) * n), marks);
     };
 
     // click-to-set (ADR 0053): a click on the map offers the point under it, as coordinate names and
@@ -312,16 +465,16 @@ class PlotPane {
         const data = displayed();
         if (view.kind === "heatmap" && renderer) {
           const r2 = renderer;
-          let map = data.values;
           const [rows, cols] = data.shape.slice(-2) as [number, number];
-          if (view.stackDim) {
-            if (mean?.length !== rows * cols) mean = new Float64Array(rows * cols).fill(NaN);
-            meanAlongLeading(data, dirty[0], dirty[1], mean);
-            map = mean;
-          }
           const plain = shown.transform === "raw" && !shown.swap;
           if (plain) {
             // the live path: only the dirty rows are mapped and uploaded (the bench measures this)
+            let map = data.values;
+            if (view.stackDim) {
+              if (mean?.length !== rows * cols) mean = new Float64Array(rows * cols).fill(NaN);
+              meanAlongLeading(data, dirty[0], dirty[1], mean);
+              map = mean;
+            }
             const r = finiteRange(map.subarray(dirty[0] * cols, dirty[1] * cols));
             if (r) range = range ? { min: Math.min(range.min, r.min), max: Math.max(range.max, r.max) } : r;
             if (r2.shape[0] !== rows || r2.shape[1] !== cols) {
@@ -329,25 +482,19 @@ class PlotPane {
               r2.upload(map, 0, rows);
               range = finiteRange(map) ?? range;
             } else r2.upload(map, dirty[0], dirty[1]);
+            last = { values: map, rows, cols, range };
           } else {
             // a view option: recompute the whole display map client-side (no round trip)
-            if (shown.transform !== "raw") {
-              if (derived?.length !== rows * cols) derived = new Float64Array(rows * cols);
-              map = transformMap(map, rows, cols, shown.transform, derived);
-            }
-            let [shownRows, shownCols] = [rows, cols];
-            if (shown.swap) {
-              if (swapped?.length !== rows * cols) swapped = new Float64Array(rows * cols);
-              map = transpose(map, rows, cols, swapped);
-              [shownRows, shownCols] = [cols, rows];
-            }
-            range = finiteRange(map);
-            if (r2.shape[0] !== shownRows || r2.shape[1] !== shownCols) r2.resize(shownRows, shownCols);
-            r2.upload(map, 0, shownRows);
+            const d = displayMap(data, !!view.stackDim, shown, scratchBuffers);
+            range = d.range;
+            if (r2.shape[0] !== d.rows || r2.shape[1] !== d.cols) r2.resize(d.rows, d.cols);
+            r2.upload(d.values, 0, d.rows);
+            last = d;
           }
           if (range) r2.draw(range);
           if (bench) r2.finish();
-          this.drawOverlay(store, view, shown);
+          this.drawOverlay(store, view, shown, cutAt);
+          cutDirty = true;
         } else if (view.kind === "trace") {
           drawTraceView(data);
         }
@@ -361,11 +508,15 @@ class PlotPane {
         dirty = null;
         overlaysDirty = false;
       } else if (overlaysDirty && view.kind === "heatmap" && renderer) {
-        this.drawOverlay(store, view, shown); // overlays that arrived after the last chunk
+        this.drawOverlay(store, view, shown, cutAt); // overlays that arrived after the last chunk
         overlaysDirty = false;
       } else if (overlaysDirty && view.kind === "trace") {
         drawTraceView(displayed());
         overlaysDirty = false;
+      }
+      if (cutDirty && last) {
+        this.drawCut(last, cutAt);
+        cutDirty = false;
       }
       const now = performance.now();
       while (recent.length && recent[0]![0] < now - 1000) recent.shift();
@@ -383,6 +534,35 @@ class PlotPane {
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
+  }
+
+  /** The line cut under the map: one column of the display map at the cursor, bottom row first. */
+  private drawCut(map: DisplayMap, at: number): void {
+    const c = this.cutCanvas;
+    const dpr = window.devicePixelRatio || 1;
+    const w = (c.width = Math.max(1, Math.round(c.clientWidth * dpr)));
+    const hgt = (c.height = Math.max(1, Math.round(c.clientHeight * dpr)));
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, w, hgt);
+    const col = columnCut(map, at);
+    const r = finiteRange(col);
+    if (!r || col.length < 2) return;
+    const span = r.max - r.min || 1;
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--live").trim() || "#f2b544";
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < col.length; i++) {
+      const v = col[i]!;
+      if (!Number.isFinite(v)) continue;
+      const x = (i / (col.length - 1)) * w;
+      const y = hgt - 6 * dpr - ((v - r.min) / span) * (hgt - 12 * dpr);
+      if (started) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
+      started = true;
+    }
+    ctx.stroke();
   }
 
   /** Axis names, units and extents on the overlay canvas: which coordinate runs which way. */
@@ -422,9 +602,25 @@ class PlotPane {
     label(last(y.values), m, 3 * m, "left", -Math.PI / 2);
   }
 
-  private drawOverlay(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>, o: ViewOptions): void {
+  private drawOverlay(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>, o: ViewOptions, cutAt: number): void {
     this.drawAnnotations(store, view, o.swap);
+    this.drawCursor(cutAt);
     this.drawAxes(store, view, o.swap);
+  }
+
+  /** The cut's position as a dashed rule on the overlay. */
+  private drawCursor(at: number): void {
+    const ctx = this.overlay.getContext("2d")!;
+    const { width: w, height: h } = this.overlay;
+    ctx.save();
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--live").trim() || "#f2b544";
+    ctx.setLineDash([8, 8]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(at * w, 0);
+    ctx.lineTo(at * w, h);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawAnnotations(store: DatasetStore, view: Extract<ViewKind, { kind: "heatmap" }>, swap: boolean): void {
@@ -448,3 +644,6 @@ class PlotPane {
     }
   }
 }
+
+// `difference` lives in view.ts; imported here under its own name to keep the frame loop readable
+import { difference } from "../view";

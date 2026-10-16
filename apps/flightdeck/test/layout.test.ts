@@ -8,6 +8,7 @@ import {
   LAYOUT_KEY,
   loadLayout,
   MAX_SIDE,
+  MAX_PLOT_PANES,
   MAX_SIDES,
   MIN_PANE_HEIGHT,
   MIN_SIDE,
@@ -21,7 +22,7 @@ import {
   type Layout,
 } from "../src/workspace/layout";
 
-const KNOWN = ["plot", "control", "empty"];
+const KNOWN = ["plot", "control", "empty", "history"];
 const sum = (panes: { size: number }[]) => panes.reduce((a, p) => a + p.size, 0);
 const TALL = 10 * MIN_PANE_HEIGHT;
 
@@ -30,7 +31,7 @@ describe("default layout", () => {
     const l = defaultLayout();
     expect(l.left.map((p) => p.widget)).toEqual(["control"]);
     expect(l.center.map((p) => p.widget)).toEqual(["plot"]);
-    expect(l.right.map((p) => p.widget)).toEqual(["empty"]);
+    expect(l.right.map((p) => p.widget)).toEqual(["history"]);
     expect(l.widths.left + l.widths.right).toBeLessThan(0.5);
     const ids = [...l.left, ...l.center, ...l.right].map((p) => p.id);
     expect(new Set(ids).size).toBe(3);
@@ -69,6 +70,19 @@ describe("split", () => {
     const two = split(l, l.left[0]!.id, "empty", TALL).layout;
     expect(canSplit(two, "left", 3 * MIN_PANE_HEIGHT - 1)).toBe(false);
     expect(canSplit(two, "left", 3 * MIN_PANE_HEIGHT)).toBe(true);
+  });
+
+  it("caps the centre at MAX_PLOT_PANES (one WebGL2 context each)", () => {
+    let l = defaultLayout();
+    for (let i = 1; i < MAX_PLOT_PANES; i++) {
+      const r = split(l, l.center[0]!.id, "plot", 100 * MIN_PANE_HEIGHT);
+      expect(r.pane, `pane ${i + 1}`).not.toBeNull();
+      l = r.layout;
+    }
+    expect(l.center).toHaveLength(MAX_PLOT_PANES);
+    expect(canSplit(l, "center", 100 * MIN_PANE_HEIGHT)).toBe(false);
+    expect(split(l, l.center[0]!.id, "plot", 100 * MIN_PANE_HEIGHT).pane).toBeNull();
+    expect(canSplit(close(l, l.center[0]!.id), "center", 100 * MIN_PANE_HEIGHT)).toBe(true);
   });
 
   it("keeps plots in the centre and only in the centre", () => {

@@ -45,9 +45,16 @@ it("lays out control | plot | empty, wears the slate theme as custom properties,
   await open(page);
   expect(await widgets(page, "left")).toEqual(["control"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
-  expect(await widgets(page, "right")).toEqual(["empty"]);
+  expect(await widgets(page, "right")).toEqual(["history"]);
   expect(await page.textContent(".col.center .pane .title")).toBe("Plot 1");
-  expect(await page.locator(".col.center .pane .slot #datasets option").count()).toBe(1);
+  expect(await page.textContent(".col.center .pane .src")).toMatch(/^live · synthetic/);
+  await page.locator(".col.center .pane [data-menu]").click();
+  const menu = page.locator(".menu.plot");
+  expect(await menu.locator("select[name=dataset] option").count()).toBe(2);
+  expect(await menu.locator("select[name=dataset]").inputValue()).toBe("live");
+  await page.keyboard.press("Escape");
+  expect(await page.locator(".menu.plot").count()).toBe(0);
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("data-menu"))).toBe("");
   // the theme: tokens on :root, no deco classes, the scheme on <html>
   const root = await page.evaluate(() => {
     const r = document.documentElement;
@@ -70,23 +77,38 @@ it("lays out control | plot | empty, wears the slate theme as custom properties,
   await page.close();
 });
 
-it("splits and closes side panes, refuses a second plot this session, and restores the layout after a reload", async () => {
+it("splits and closes panes, a second plot shows the same Dataset with its own view, and the layout restores after a reload", async () => {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, colorScheme: "dark" });
   await open(page);
   const right = page.locator(".col.right .pane");
-  expect(await page.locator(".col.center .pane [data-split]").isDisabled()).toBe(true);
   expect(await right.first().locator("[data-close]").isDisabled()).toBe(true); // the last pane of a column stays
   await right.first().locator("[data-split]").click();
-  expect(await widgets(page, "right")).toEqual(["empty", "empty"]);
+  expect(await widgets(page, "right")).toEqual(["history", "empty"]);
   expect(await page.locator(".col.right .gutter.h").count()).toBe(1);
   // the new pane can take the control panel only once the left pane gives it up: it is single-instance
   const options = await right.nth(1).locator(".picker option").allTextContents();
-  expect(options).toEqual(["Empty"]);
+  expect(options).toEqual(["Empty", "History"]);
+  // the centre splits into a second plot pane that follows the stream too, with its own renderer and cut
+  await page.locator(".col.center .pane [data-split]").first().click();
+  expect(await page.locator(".col.center .pane .title").allTextContents()).toEqual(["Plot 1", "Plot 2"]);
+  await page.waitForFunction(() => /^live · synthetic/.test(document.querySelectorAll(".col.center .pane .src")[1]?.textContent ?? ""));
+  const second = page.locator(".col.center .pane").nth(1);
+  await second.locator("[data-menu]").click();
+  await second.locator(".menu.plot input[name=swap]").check();
+  await second.locator(".menu.plot input[name=cut]").fill("0.25");
+  expect(await second.locator(".menu.plot .mono").textContent()).toMatch(/V_outer = /); // swapped: the cut runs along the outer axis
+  await page.keyboard.press("Escape");
+  await page.locator(".col.center .pane [data-menu]").first().click();
+  expect(await page.locator(".col.center .pane").first().locator(".menu.plot input[name=swap]").isChecked()).toBe(false);
+  await page.keyboard.press("Escape");
   await page.reload();
   await page.waitForFunction(() => /\(complete\)/.test(document.querySelector("#status")?.textContent ?? ""));
-  expect(await widgets(page, "right")).toEqual(["empty", "empty"]);
+  expect(await widgets(page, "right")).toEqual(["history", "empty"]);
+  expect(await widgets(page, "center")).toEqual(["plot", "plot"]);
+  await page.locator(".col.center .pane").nth(1).locator("[data-close]").click();
   await page.locator(".col.right .pane").nth(1).locator("[data-close]").click();
-  expect(await widgets(page, "right")).toEqual(["empty"]);
+  expect(await widgets(page, "right")).toEqual(["history"]);
+  expect(await widgets(page, "center")).toEqual(["plot"]);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v1")!) as { right: unknown[] });
   expect(stored.right).toHaveLength(1);
   await page.close();

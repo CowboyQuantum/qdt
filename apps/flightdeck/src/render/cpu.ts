@@ -72,6 +72,8 @@ export class CpuMap implements MapRenderer {
 
   finish(): void {}
 
+  dispose(): void {}
+
   pixels(): Uint8Array {
     const { width: w, height: h } = this.canvas;
     return new Uint8Array(this.canvas.getContext("2d")!.getImageData(0, 0, w, h).data.buffer);
