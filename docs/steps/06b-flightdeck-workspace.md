@@ -67,7 +67,7 @@ Ordered; one session each.
 - Layout as a schema object (shareable workspaces through the registry) — deferred; revisit if a second
   user needs the same workspace.
 - ~~WebGL2 context cap~~ — closed by ADR 0055: six plot panes at most; a closed pane loses its context; the CPU renderer is the fallback when a context cannot be made.
-- `GET /levels` readback semantics when a channel has no `LevelSense` (null vs. omitted).
+- ~~`GET /levels` readback semantics~~ — closed by ADR 0057: a new `GET /levels/state`, null where not sensed; limits are a browser setting until a stand declares them.
 - Script sandbox (server-side execution of restricted measurement scripts) — separate ADR.
 - Which widgets appear in the release mirror's first public build.
 - Whether uploaded themes are shared through the registry (a `Theme` record) or stay per browser. Default: per browser.
@@ -113,3 +113,15 @@ pulse + history under `flightdeck.layout.v2`. `e2e/control.test.ts` compiles, se
 marker, runs from the strip. Exit criterion "exactly one Run control, bound to a compiled plan with a visible
 identity and stale marker" met. Next: deliverable 4, the Levels widget with readbacks (needs `GET /levels` with
 `LevelSense` readbacks on `qdt-server`, its own ADR) and the Virtual gates widget.
+Session 4 (2026-10-16): **the Levels and Virtual gates widgets** (deliverable 4, ADR 0057). Server first: `ChannelLevel`
+(control slice, additive) and `GET /levels/state`: every level-setting or level-sensing channel's setpoint, held level
+and readback, null where the instrument refuses (the simulated device senses its sensor, never a gate); the
+`RunManager` keeps one live instrument set so a level set now is read back later and the sensor readback follows
+the gates (on the simulator that set is separate from a run's). `src/widgets/levels.ts`: the table, filters (type,
+instrument, text, pinned, near-limit; AND across, OR within), sort, pins, inline set with a limit refusal (±1 per
+browser) and a settling badge, release, click-to-set (the plot's `map:click` is offered here; the panel's section is
+gone). `src/widgets/gates.ts`: the coupling matrix per browser; the Sweep widget gives each stepped axis its row as
+`SweepAxis.couplings` (ADR 0049), the pure builder refuses couplings on a stage inner axis. Default layout
+sweep + control | plot | pulse + levels + history (`flightdeck.layout.v3`). e2e: click the map → the Levels widget
+offers → set → held and setpoint in the table → inline set refused beyond the limit, accepted within → release.
+Next: deliverable 5, Methods + Tune-up widgets, `panel.ts` deleted, `control.test.ts` fully migrated.
