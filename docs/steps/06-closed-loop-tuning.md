@@ -33,11 +33,14 @@ Carried from Step 5, each with its evidence; an ADR closes each one.
   `PlayedWaveform`. A node that steps a DC level and records a scope response is a stepped axis with a
   shot of step + capture. Open after it: the sequencer-to-scope trigger line (the OPX slice) and a capture
   on the sequencer's own input.
-- **Sub-ms stepping.** Probe 04: a QDAC `set` over USB serial reaches the output within 4.5 ms (steady to
-  ±0.2 ms) and settles to 1 % in 3 µs; `settle_s = 0.01` direct, `0.05` through the combiner. Faster
-  untriggered stepping has to move the step onto the sequencer (the OPX's DC offset, or a QDAC list with
-  a hardware trigger) or measure the Ethernet link. Decide what the DAG's inner loop needs before any
-  driver work.
+- ~~**Sub-ms stepping.**~~ Closed by ADR 0064 (2026-10-16): the DAG's inner loop is a triggered DC step.
+  `TriggeredLevelSource` beside the frozen five; `SweepAxis.stepping = "triggered"` for the innermost
+  stepped axis, loaded as a QDAC-II list and advanced by the OPX's marker on `do2`; the program owns
+  the axis. Open after it: Probe 05 (the marker, the scope's re-arm, the list's first trigger), then
+  the L2-4 staircase row; segmented acquisition on the scope; the Sweep widget offering the stepping.
+- ~~The sequencer-to-scope trigger line~~ (left open by ADR 0060) — closed by ADR 0063: the OPX runs a
+  shot capture now, the scope triggering itself until its stand entry names a marker line
+  (`trigger_from`); the executor drains the capture while the shots play.
 - **How a sense range is declared** (channel map vs. inferred). The 2450 autoranges its current
   measurement to 10 nA at 0 V and then charges a cable at 10 nA; the QDAC-II's LOW range measures nothing
   on the bench unit (BENCH.md). L2-2 sets both over the drivers' transports. A `ChannelMap` field is the

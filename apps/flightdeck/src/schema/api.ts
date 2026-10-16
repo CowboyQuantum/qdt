@@ -445,6 +445,10 @@ export interface SweepAxis {
    */
   start: number;
   /**
+   * How a stepped axis advances (ADR 0064). 'software': the executor sets each level and settles (the default). 'triggered': the channel's instrument is loaded with the axis's levels once and advances one point per trigger the stage's sequencer plays, so the sequencer paces the whole scan; the axis (and its couplings) then needs a 'triggered_level_source' instrument, a stage with a sequence, and no sensed or per-point captured channels. At most one axis is triggered and it is the innermost stepped axis.
+   */
+  stepping?: "software" | "triggered";
+  /**
    * Value at the last index (inclusive).
    */
   stop: number;
@@ -1478,7 +1482,13 @@ export interface ResolvedChannel {
   /**
    * Protocol the executor uses this channel through.
    */
-  role: "level_source" | "level_sense" | "waveform_source" | "waveform_sense" | "sequencer";
+  role:
+    | "level_source"
+    | "level_sense"
+    | "waveform_source"
+    | "waveform_sense"
+    | "sequencer"
+    | "triggered_level_source";
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
@@ -1523,8 +1533,22 @@ export interface InstrumentConfig {
    * @minItems 1
    */
   capabilities: [
-    "level_source" | "level_sense" | "waveform_source" | "waveform_sense" | "sequencer",
-    ...("level_source" | "level_sense" | "waveform_source" | "waveform_sense" | "sequencer")[]
+    (
+      | "level_source"
+      | "level_sense"
+      | "waveform_source"
+      | "waveform_sense"
+      | "sequencer"
+      | "triggered_level_source"
+    ),
+    ...(
+      | "level_source"
+      | "level_sense"
+      | "waveform_source"
+      | "waveform_sense"
+      | "sequencer"
+      | "triggered_level_source"
+    )[]
   ];
   /**
    * Instrument id, unique within the stand, e.g. 'dac0'.
