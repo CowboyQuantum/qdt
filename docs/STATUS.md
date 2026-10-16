@@ -3,46 +3,52 @@
 > Rewritten at the end of every session. Never appended. History: `git log -- docs/STATUS.md`.
 > A fresh session must be able to continue from this file alone.
 
-**Current step:** 6 — Closed-loop tuning → `docs/steps/06-closed-loop-tuning.md` (IN PROGRESS, opened 2026-10-15).
-**Branch:** `step-6/strike-daps` (PR against `main`; the human merges). PRs #25–#48 merged 2026-10-14/15.
-**Last session:** 2026-10-15, Step 6 session 6 (not at the bench). **Click-to-set** (ADR 0053), the listed
-deliverable and FINISH_LINE's one "up" edge. The server holds the stand's operating point: `POST /levels`
-validates the channels (on the stand, on a `LevelSource`), sets them on the backends now and holds them;
-`GET /levels` reads them; `DELETE /levels` releases them. Every sweep the `RunManager` compiles or runs is
-first merged with the held levels for the channels it does not touch (axes, couplings, sensed, captured,
-its own `levels`), so the plan and the record carry the operating point they ran at; tune-up nodes inherit
-it the same way, and a node that holds a channel itself (`charge-lattice` on `SG`) overrides it for that
-channel. Flight Deck: a click on the heatmap yields the point under it as coordinate names and values
-(`pointAt`, rule 8: no channels, no instruments); the panel maps names to the stand's DC channels
-(`setpointFor`), offers "set … on the stand", shows what is held and releases it. e2e: click the map, set,
-held, release. This closes the pending default-operating-point decision: the server is where it lives.
+**Current step:** none in progress. **Step 6 — Closed-loop tuning is DONE** (closed 2026-10-15; L3 deferred).
+The next step is the human's choice: **6b — Flight Deck workspace** (`docs/steps/06b-flightdeck-workspace.md`,
+spec merged in PR #50, ADR 0054 proposed) or **7 — Other sources** (`docs/steps/07-other-sources.md`, gated by
+manager sign-off, plan Open Decision #5).
+**Branch:** `step-6/close` (PR against `main`; the human merges). PRs #25–#50 merged 2026-10-14/15.
+**Last session:** 2026-10-15, Step 6 session 8 (not at the bench). Housekeeping and the close. Applied the chat
+patch for Step 6b as PR #50 (ADR renumbered 0051 → 0054 because 0051 is the telemetry ADR; the ADR title reworded
+because the provenance grep matched a substring of an ordinary word). Then, on the human's word ("let's put off L3 and close step 6"),
+marked Step 6 DONE in its file and `docs/steps/README.md`. No ADR: the rule that L3 never gates a step is plan
+§7.1; the direction line below records the call.
 
-## Step 6 exit criteria (from the step file)
-| Criterion | State |
+## Step 6 close-out
+| Exit criterion | State |
 |---|---|
 | a multi-node tune-up runs unattended against the sim | ✔ three nodes (sensor → lattice → virtual gates) from `POST /tuneups` and from Flight Deck; outcomes in the registry |
-| first L3 contact as confirmation, not discovery | not started (needs a fridge) |
+| first L3 contact as confirmation, not discovery | **deferred** — the first fridge task (below); plan §7.1: L3 is never a step exit criterion |
 
-**Deliverables (step file):** DAG runner ✔ (ADR 0050); nodes verified against sim ✔ (three, ADR 0048, 0049,
-0052); Flight Deck click-to-set ✔ (ADR 0053); DAPS forward model + bias study — **struck by the human on
-2026-10-15** (not a Step 6 deliverable; revisit by its own decision). Every remaining deliverable is done.
+Deliverables: DAG runner ✔ (ADR 0050); nodes verified against sim ✔ (three, ADR 0048, 0049, 0052); click-to-set ✔
+(ADR 0053); DAPS forward model + bias study — struck 2026-10-15 by the human.
+
+## Fridge (L3) tasks — not a gate; run when a fridge exists
+1. Run the three-node tune-up (sensor-operating-point → charge-lattice → virtual-lattice) on a real device through
+   `POST /tuneups`; compare outcomes to the sim's (`SimResult` fixtures). Confirmation, not discovery: a surprise
+   is a bug in a sim scenario or a node, filed as such.
+2. The diamond estimator on a cold sensor (ADR 0030); `flank_offset_v` against a real peak (ADR 0052).
+3. A dated report in `bench/reports/` (the ladder has no fridge report format yet; write one with the first run).
 
 ## Done
-- **Steps 0–5 DONE.** ADR 0001–0053 (0051 is a Step 7 decision taken ahead of its step). Frozen: `Dataset`
-  (0015; v2 by 0031), protocols (0021), stand/activity/pulse (0022; amended additively by 0037, 0038, 0047,
-  0049), identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; Step 6 objects beside it by 0048–0050),
-  control (0036; amended additively by 0046; `TuneUp` beside it by 0050). Registry DDL v3 (0026, 0029, 0050).
-- **Step 6 so far:** the modeling objects; `qdt-tuning` (pure: `nodes` + `TEMPLATES`, three `decisions`,
-  `bind`, `dag.order`); `run_node`, `run_tuneup`, `TuneUpManager`; three nodes; virtual gates in the sweep;
-  scenario realization and truth in `qdt-sim`; the tune-up API; the held operating point and `/levels`;
-  Flight Deck's Tune-up section and click-to-set; `scripts/make_tuning_fixtures.py`.
+- **Steps 0–6 DONE.** ADR 0001–0054 (0051 is a Step 7 decision taken ahead of its step; 0054 is Proposed, for
+  Step 6b). Frozen: `Dataset` (0015; v2 by 0031), protocols (0021), stand/activity/pulse (0022; amended additively
+  by 0037, 0038, 0047, 0049), identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; Step 6 objects beside it by
+  0048–0050), control (0036; amended additively by 0046; `TuneUp` beside it by 0050). Registry DDL v3 (0026, 0029,
+  0050).
+- **Step 6:** the modeling objects; `qdt-tuning` (pure: `nodes` + `TEMPLATES`, three `decisions`, `bind`,
+  `dag.order`); `run_node`, `run_tuneup`, `TuneUpManager`; three nodes; virtual gates in the sweep; scenario
+  realization and truth in `qdt-sim`; the tune-up API; the held operating point and `/levels`; Flight Deck's
+  Tune-up section and click-to-set; `scripts/make_tuning_fixtures.py`.
+- **Step 6b spec:** step file, ADR 0054 (Proposed), `docs/examples/flightdeck-workspace-proto.html` and
+  `flightdeck-theme-ember.json` as design reference only.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
-  `qdt-server`, `apps/flightdeck`.
+  `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
 - 394 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
   hardware-only in `bench/`; Flight Deck 74 unit tests and 6 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6/strike-daps` (docs only) awaits the human.
+- Nothing uncommitted. PR for `step-6/close` (docs only) awaits the human.
 
 ## Known broken / not yet real
 - **The held operating point is server memory** (like runs and tune-ups): a restart forgets it and the
@@ -61,33 +67,32 @@ held, release. This closes the pending default-operating-point decision: the ser
 - **QDAC-II (firmware 14-1.70), for QDevil:** filter setting changes nothing; LOW sense range reads ≈ 2 nA
   for any current; ch02 dead (`*RST` no cure); output impedance 50 Ω. **The 2450 autoranges to 10 nA at
   0 V.** Bench quirks in BENCH.md.
-- Step 5 carry-overs, Step 6 open decisions: nothing in a sweep plays a waveform; a sweep leaves its last
-  level (now the held operating point says where the stand *should* be); captures sequential, one
-  channel each; no 3-D capture view; Flight Deck offers every method on every record; the trace view has
-  no axes, labels or output curve.
+- Step 5/6 carry-overs: nothing in a sweep plays a waveform; a sweep leaves its last level (the held operating
+  point says where the stand *should* be); captures sequential, one channel each; no 3-D capture view; Flight
+  Deck offers every method on every record; the trace view has no axes, labels or output curve.
 - **The exponential's edge detector is a heuristic** (0046); **the plane fit is OLS** (0045). OPX input
   offset −1.7 mV not applied; OPX `drive` unsupported on the LF-FEM stage.
 - **Serial numbers:** `bench_report.py` does not redact `*IDN?` serials (decision pending).
 - **qm-qua deprecations:** the QUA config's `version` key; `job.halt` for `job.cancel`.
-- Carried over: diamond estimator needs a cold sensor (ADR 0030); zero-clipping in the dot model (ADR
-  0020); overlays in one colour; Postgres suite only in CI; `FINISH_LINE.md` TODO (human); Windows pnpm
-  via `corepack pnpm`.
-- `chat-2026-10-15-series.patch` sits untracked at the repo root (the human's upload; fully applied).
+- Carried over: zero-clipping in the dot model (ADR 0020); overlays in one colour; Postgres suite only in CI;
+  `FINISH_LINE.md` TODO (human); Windows pnpm via `corepack pnpm`.
+- `provenance_check.sh` matches its terms as bare substrings, so an ordinary word can trip it (it did, in the
+  Step 6b ADR title); a word-boundary pattern is a one-line fix when it next bites.
 
 ## Next action
 **Human:**
 1. Merge the PR.
-2. **Close Step 6, or hold it open for the L3 confirmation.** Every listed deliverable is done and the
-   first exit criterion is met on the simulator; the second ("first L3 contact as confirmation, not
-   discovery") needs a fridge, and L3 is never an exit criterion of a step by plan §7.1. If it closes, a
-   session marks it DONE (status, `docs/steps/README.md`) and opens Step 7's file, where ADR 0051 and
-   Analysis 0003 already wait; the L3 confirmation stays listed as the first fridge task.
-3. Or name the next slice first: a `sensor_peak` method (retires `flank_offset_v`), a bench confirmation
-   of the stability nodes (a second OPX pulse line), or the `PlayedWaveform` activity.
-4. The QDevil report; the Step 6 Open decisions still waiting.
+2. **Name the next step.** The default is **Step 6b, deliverable 1 (the shell)**: themes as data, the top strip,
+   the workspace layout model, widget registry and bus, the existing control panel mounted unchanged. It starts
+   after click-to-set, which has landed, and it needs no sign-off. Starting it accepts ADR 0054; say so, or say
+   what in the ADR changes first. **Step 7** waits for manager sign-off (Open Decision #5).
+3. Or a slice outside a step first: a `sensor_peak` method (retires `flank_offset_v`), a bench confirmation of
+   the stability nodes (a second OPX pulse line), or the `PlayedWaveform` activity.
+4. The QDevil report; Step 6's Open decisions (its file) still waiting.
 
-**Then (sessions):** the chosen item; a `tuneups` table and a `stand_state` table when something reads
-them; resume and parallel branches when a DAG needs them.
+**Then (sessions):** the chosen item. The first 6b session opens its file (Status → IN PROGRESS), flips ADR 0054
+to Accepted, and builds the shell. A `tuneups` table and a `stand_state` table when something reads them;
+resume and parallel branches when a DAG needs them.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -107,14 +112,17 @@ them; resume and parallel branches when a DAG needs them.
   0048); the second node is the virtual-gate stability diagram (ADR 0049); the persisted tune-up before a
   third node (ADR 0050); `qdt-telemetry` ingests, does not collect (ADR 0051, from a separate chat's
   patch); the third node is the sensor operating point (ADR 0052); "continue to next session":
-  click-to-set, the listed deliverable (ADR 0053); **"let's strike the DAPS development for now"**: the
-  DAPS forward model and bias study leave Step 6's deliverables (session 7).
+  click-to-set, the listed deliverable (ADR 0053); "let's strike the DAPS development for now": the
+  DAPS forward model and bias study leave Step 6's deliverables (session 7); the Step 6b spec arrives as a
+  chat patch (ADR 0054, Proposed); **"let's put off L3 and close step 6"**: Step 6 closes on the simulator,
+  the L3 confirmation is the first fridge task (session 8).
 
 ## Decisions pending
-- Closing Step 6 now (deliverables done; L3 waits for a fridge) or holding it open.
-- Step 6's Open decisions (step file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
-  a rest level at a sweep's end (the held operating point now says where the stand should be); the
-  time-series view's remainder; the deferred physics.
+- The next step: 6b (default) or 7; accepting ADR 0054.
+- Step 6's Open decisions (its file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
+  a rest level at a sweep's end; the time-series view's remainder; the deferred physics.
+- Step 6b's Open decisions (its file): layout as a schema object; the WebGL2 context cap; `/levels` readback
+  semantics; the script sandbox; the release mirror's first widgets; themes per browser or in the registry.
 - A `tuneups` table and a `stand_state` table; resume and parallel branches.
 - `detect_transitions` on a noiseless constant map (a method `VERSION` bump); a `sensor_peak` method.
 - `bench_report.py` and `*IDN?` serials; the dot model's zero-clipping; the diamond estimator on warm edges.
