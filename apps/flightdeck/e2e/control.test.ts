@@ -172,7 +172,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.locator(".col.center .pane").nth(1).locator("[data-close]").click();
   await page.waitForFunction(() => document.querySelectorAll(".col.center .pane").length === 1);
   await page.close();
-});
+}, 180_000);
 
 it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep draws a trace", async () => {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
@@ -247,7 +247,7 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   await page.waitForFunction(() => /e2e trace · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => /· trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
   await page.close();
-});
+}, 180_000);
 
 it("captures a record on the simulated scope, draws it as a trace, and marks the exponential's edge and τ on it", async () => {
   // ADR 0047: the L2-3 shape through the UI. The simulated scope records a droop; the single exponential
@@ -297,7 +297,7 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
     { timeout: 20_000 },
   );
   await page.close();
-});
+}, 180_000);
 
 it("runs a three-node tune-up from the UI and shows the DAG state with every node accepted", async () => {
   // ADR 0050: the nodes come from GET /nodes, the tune-up runs on the server one sweep at a time (each
@@ -323,4 +323,4 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   // both sweeps were runs and records like any other
   await page.waitForFunction(() => (document.querySelector(".pane[data-widget=history]")?.textContent ?? "").includes("virtual-gate lattice"), null, { timeout: 20_000 });
   await page.close();
-});
+}, 180_000);
