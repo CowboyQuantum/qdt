@@ -1,0 +1,29 @@
+{
+  "name": "paper",
+  "scheme": "light",
+  "tokens": {
+    "bg": "#E9ECF1",
+    "panel": "#F7F8FA",
+    "panel-2": "#FFFFFF",
+    "line": "#D4DAE3",
+    "line-strong": "#B9C2CE",
+    "text": "#1E2630",
+    "text-2": "#55606E",
+    "text-3": "#8A94A3",
+    "live": "#C98A12",
+    "live-ink": "#FFFFFF",
+    "ok": "#2E8B57",
+    "warn": "#C25A1E",
+    "sel": "#2B7CD3"
+  },
+  "type": {
+    "sans": "\"IBM Plex Sans\", system-ui, sans-serif",
+    "mono": "\"IBM Plex Mono\", ui-monospace, monospace",
+    "size": "14px"
+  },
+  "shape": {
+    "radius": "6px",
+    "paneRadius": "8px"
+  },
+  "flags": []
+}

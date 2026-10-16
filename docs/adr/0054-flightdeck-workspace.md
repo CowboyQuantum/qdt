@@ -1,6 +1,6 @@
 # 0054 — Flight Deck is a workspace of widgets: three columns, plots only in the centre, one Run
 
-**Status:** Proposed
+**Status:** Accepted (2026-10-15, the human: "go with 6b"; the shell landed in Step 6b session 1)
 **Date:** 2026-10-15
 **Step:** 6b
 

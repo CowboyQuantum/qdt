@@ -1,0 +1,29 @@
+{
+  "name": "steel",
+  "scheme": "dark",
+  "tokens": {
+    "bg": "#070809",
+    "panel": "#0D0F12",
+    "panel-2": "#13161A",
+    "line": "#22272D",
+    "line-strong": "#39414A",
+    "text": "#E8EAEC",
+    "text-2": "#9AA3AD",
+    "text-3": "#5F6873",
+    "live": "#FF5E1F",
+    "live-ink": "#0B0C0E",
+    "ok": "#9FE3B4",
+    "warn": "#FFB454",
+    "sel": "#E8EAEC"
+  },
+  "type": {
+    "sans": "\"IBM Plex Mono\", ui-monospace, monospace",
+    "mono": "\"IBM Plex Mono\", ui-monospace, monospace",
+    "size": "12.5px"
+  },
+  "shape": {
+    "radius": "2px",
+    "paneRadius": "0px"
+  },
+  "flags": ["caps", "brackets", "graticule", "glow", "flat"]
+}

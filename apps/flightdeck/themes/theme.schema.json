@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CowboyQuantum/qdt/apps/flightdeck/themes/theme.schema.json",
+  "title": "Flight Deck theme",
+  "description": "A theme is data (ADR 0054): thirteen colour tokens, type, shape, a scheme and a closed list of decoration flags. Nothing in a theme can inject CSS. Colormaps are view settings, not theme content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "scheme", "tokens", "type", "shape", "flags"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[\\w][\\w .-]{0,39}$", "description": "Shown in the theme menu; the file is named after it on export." },
+    "scheme": { "type": "string", "enum": ["dark", "light"], "description": "Sets color-scheme so form controls and scrollbars follow." },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bg", "panel", "panel-2", "line", "line-strong", "text", "text-2", "text-3", "live", "live-ink", "ok", "warn", "sel"],
+      "properties": {
+        "bg": { "$ref": "#/$defs/color", "description": "Page background." },
+        "panel": { "$ref": "#/$defs/color", "description": "Pane and strip background." },
+        "panel-2": { "$ref": "#/$defs/color", "description": "Pane heads, inputs, menus." },
+        "line": { "$ref": "#/$defs/color", "description": "Hairlines and borders." },
+        "line-strong": { "$ref": "#/$defs/color", "description": "Emphasised borders (the centre column, hovered gutters)." },
+        "text": { "$ref": "#/$defs/color", "description": "Primary text." },
+        "text-2": { "$ref": "#/$defs/color", "description": "Secondary text." },
+        "text-3": { "$ref": "#/$defs/color", "description": "Tertiary text and hints." },
+        "live": { "$ref": "#/$defs/color", "description": "The one accent: live state, Run, progress." },
+        "live-ink": { "$ref": "#/$defs/color", "description": "Text on the live accent." },
+        "ok": { "$ref": "#/$defs/color", "description": "Success." },
+        "warn": { "$ref": "#/$defs/color", "description": "Warnings and errors." },
+        "sel": { "$ref": "#/$defs/color", "description": "Selection and focus rings." }
+      }
+    },
+    "type": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sans", "mono", "size"],
+      "properties": {
+        "sans": { "$ref": "#/$defs/fontStack", "description": "Body font stack." },
+        "mono": { "$ref": "#/$defs/fontStack", "description": "Monospace font stack for numbers and ids." },
+        "size": { "$ref": "#/$defs/length", "description": "Base font size." }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["radius", "paneRadius"],
+      "properties": {
+        "radius": { "$ref": "#/$defs/length", "description": "Corner radius of controls." },
+        "paneRadius": { "$ref": "#/$defs/length", "description": "Corner radius of panes and menus." }
+      }
+    },
+    "flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Decorations to switch on; each is a stylesheet class the app already ships. The list is closed: an unknown flag fails validation.",
+      "items": { "type": "string", "enum": ["caps", "brackets", "graticule", "glow", "flat"] }
+    }
+  },
+  "$defs": {
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "length": { "type": "string", "pattern": "^\\d+(\\.\\d+)?(px|em|rem|%)$" },
+    "fontStack": { "type": "string", "pattern": "^[\\w\\s\"',-]+$" }
+  }
+}
