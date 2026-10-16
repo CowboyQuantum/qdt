@@ -5,6 +5,7 @@ The committed fixture `tests/fixtures/stability_24x32.npy` is `stability_fixture
 """
 
 import dataclasses
+import math
 
 import numpy as np
 
@@ -197,17 +198,28 @@ def lattice_truth(
     return {f"l_{i + 1}{j + 1}": float(lattice[i, j]) for i in range(2) for j in range(2)}
 
 
-def sensor_truth(scenario: SimScenario, near_v: float = 0.0) -> dict[str, float]:
+def sensor_truth(
+    scenario: SimScenario, near_v: float = 0.0, bias_v: float | None = None
+) -> dict[str, float]:
     """The sensor's Coulomb peaks the scenario's model gives, by the names the `sensor-operating-point`
-    node outputs: the peak nearest `near_v` with the plungers at 0 V, the period, the charging energy and
-    the lever arm (`sg_operating_v` is that peak plus the rule's offset; not a model quantity)."""
+    and `sensor-wing` nodes output: the peak nearest `near_v` with the plungers at 0 V, the period, the
+    charging energy and the lever arm; the width, the wing and the sensitivity there (ADR 0062), the
+    last at source–drain bias `bias_v` (the model's default bias when None: the peak current scales with
+    the bias in linear response)."""
     m = model_for(scenario)
     k = round((near_v - m.sensor_phase_v) / m.sensor_period_v)
     candidates = [m.sensor_phase_v + (k + d) * m.sensor_period_v for d in (-1, 0, 1)]
     peak = min(candidates, key=lambda g: abs(g - near_v))
+    # the wing (ADR 0062): the inflection of sech², atanh(1/√3) widths from the peak; the slope there
+    wing_widths = math.atanh(1 / math.sqrt(3))
+    slope_factor = 4 / (3 * math.sqrt(3))
+    height = m.sensor_peak_a * (1.0 if bias_v is None else bias_v / m.sensor_bias_v)
     return {
         "sg_peak_v": float(peak),
         "period": float(m.sensor_period_v),
         "charging_energy": float(m.sensor_charging_ev),
         "lever_arm": float(m.sensor_charging_ev / m.sensor_period_v),
+        "sg_width_v": float(m.sensor_width_v),
+        "sg_wing_v": float(peak + wing_widths * m.sensor_width_v),
+        "sensitivity_a_per_v": float(slope_factor * height / m.sensor_width_v),
     }

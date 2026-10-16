@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 1,
+    "scenario_id": "cold-sensor",
+    "description": "a cold sensor (10 mV peaks) so the diamonds resolve (ADR 0030); noise off",
+    "model": {
+      "sensor_width_v": 0.01
+    },
+    "seed": 2,
+    "noise": false,
+    "attrs": {}
+  },
+  "node_id": "sensor-wing",
+  "outcome": {
+    "schema_version": 1,
+    "outcome_id": "e6721b5790bf4af49f08c89e3f114a8c",
+    "node_id": "sensor-wing",
+    "tuneup_id": "e2d1be741ad2457f9b311c0b4b433cf5",
+    "scenario_id": "cold-sensor",
+    "record_id": "7512da1f78e14f3082a0a7d75618eb55",
+    "result_id": "242aea4c6ecd4eeda68a78668e9f801a",
+    "status": "accepted",
+    "message": "peak at -0.0599 V, width 0.0096 V; wing at -0.0535 ± 5.8e-05 V",
+    "outputs": {
+      "sg_peak_v": -0.05986308497773839,
+      "sg_width_v": 0.00964403758540534,
+      "sg_operating_v": -0.053512689249568736,
+      "sensitivity_a_per_v": 1.5875863768111862e-8
+    },
+    "created_at": "2026-10-16T04:59:03.188806Z",
+    "attrs": {
+      "method": "qdt_analysis.sensor_peak.fit_sensor_peak",
+      "rule": "qdt_tuning.decisions.sensor_wing"
+    }
+  },
+  "estimates": [
+    {
+      "schema_version": 1,
+      "name": "peak_v",
+      "value": -0.05986308497773839,
+      "stderr": 0.000039858791083508654,
+      "unit": "V"
+    },
+    {
+      "schema_version": 1,
+      "name": "width_v",
+      "value": 0.00964403758540534,
+      "stderr": 0.00006425264491628911,
+      "unit": "V"
+    },
+    {
+      "schema_version": 1,
+      "name": "height_a",
+      "value": 1.9889238177980154e-10,
+      "stderr": 9.566120869027876e-13,
+      "unit": "A"
+    },
+    {
+      "schema_version": 1,
+      "name": "background_a",
+      "value": 5.003570489995149e-11,
+      "stderr": 3.5750662490279515e-13,
+      "unit": "A"
+    },
+    {
+      "schema_version": 1,
+      "name": "wing_v",
+      "value": -0.053512689249568736,
+      "stderr": 0.000058127238859268635,
+      "unit": "V"
+    },
+    {
+      "schema_version": 1,
+      "name": "sensitivity_a_per_v",
+      "value": 1.5875863768111862e-8,
+      "stderr": null,
+      "unit": "A/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "r2",
+      "value": 0.9981910511047729,
+      "stderr": null,
+      "unit": ""
+    },
+    {
+      "schema_version": 1,
+      "name": "residual_rms",
+      "value": 2.5837611316624864e-12,
+      "stderr": null,
+      "unit": "A"
+    }
+  ],
+  "truth": {
+    "sg_peak_v": -0.06,
+    "sg_width_v": 0.01,
+    "sg_operating_v": -0.05341521051537591,
+    "sensitivity_a_per_v": 1.5396007178390026e-8
+  },
+  "created_at": "2026-10-16T04:59:03.210634Z"
+}

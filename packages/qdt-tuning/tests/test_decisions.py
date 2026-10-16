@@ -197,4 +197,41 @@ def test_sensor_operating_point_parks_the_gate_on_the_flank_of_the_nearest_peak(
     rule = decision_rule(SENSOR_OPERATING_POINT_NAME, near_v=0.15)
     assert rule.parameters == {"flank_offset_v": 0.02, "near_v": 0.15}
     assert apply(rule, diamonds_result()).outputs["sg_peak_v"] == 0.19
-    assert set(RULES) == {VIRTUAL_GATES_NAME, STRAIGHTENED_NAME, SENSOR_OPERATING_POINT_NAME}
+    assert set(RULES) == {VIRTUAL_GATES_NAME, STRAIGHTENED_NAME, SENSOR_OPERATING_POINT_NAME, "qdt_tuning.decisions.sensor_wing"}
+
+
+def test_sensor_wing_parks_the_gate_on_the_fitted_wing_with_its_error():
+    """ADR 0062: nothing typed; the wing and its error come from the fit."""
+    from qdt_tuning.decisions import SENSOR_WING_NAME, sensor_wing
+
+    def result(status="ok", **values):
+        estimates = tuple(
+            Estimate(name=k, value=v, unit="", stderr=0.001 if k == "wing_v" else None)
+            for k, v in values.items()
+        )
+        return AnalysisResult(
+            result_id="a" * 32,
+            record_id="b" * 32,
+            dataset_id="d",
+            method=FitModel(name="qdt_analysis.sensor_peak.fit_sensor_peak", version="1", parameters={}),
+            method_sha256=FitModel(name="qdt_analysis.sensor_peak.fit_sensor_peak", version="1", parameters={}).content_sha256(),
+            status=status,
+            message="",
+            estimates=estimates,
+            created_at=datetime.now(UTC),
+        )
+
+    good = result(peak_v=-0.06, width_v=0.01, height_a=1e-9, background_a=5e-11, wing_v=-0.0534, sensitivity_a_per_v=7.7e-8)
+    d = sensor_wing(good)
+    assert d.status == "accepted" and d.outputs == {
+        "sg_peak_v": -0.06,
+        "sg_width_v": 0.01,
+        "sg_operating_v": -0.0534,
+        "sensitivity_a_per_v": 7.7e-8,
+    }
+    assert "± 0.001" in d.message
+    assert sensor_wing(good, min_sensitivity_a_per_v=1e-7).status == "rejected"
+    assert sensor_wing(result(peak_v=0, width_v=0, height_a=1e-9, background_a=0, wing_v=0, sensitivity_a_per_v=0)).status == "rejected"
+    assert sensor_wing(result(status="failed")).status == "failed"
+    assert sensor_wing(result(peak_v=0)).status == "failed"
+    assert apply(decision_rule(SENSOR_WING_NAME), good).outputs["sg_operating_v"] == -0.0534

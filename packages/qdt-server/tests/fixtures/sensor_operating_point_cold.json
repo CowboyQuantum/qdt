@@ -14,22 +14,22 @@
   "node_id": "sensor-operating-point",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "070e8bc0fb1441cab5e1ec18f7f92dc5",
+    "outcome_id": "352c6412560b4aef8eba9826cff040ab",
     "node_id": "sensor-operating-point",
-    "tuneup_id": "d3c14fe6f85e43de9b3f4dd34c8bce74",
+    "tuneup_id": "4e91c1a865084b18a5cd45dd68b507a7",
     "scenario_id": "cold-sensor",
-    "record_id": "3dc827845b584555930f9bfeb553417a",
-    "result_id": "4b599cce55a44b23a941ef23ebfbb96b",
+    "record_id": "e0788f0af1af42e1996072dd2e1eb9e6",
+    "result_id": "019111c5276a48bbb3e9db04f8178607",
     "status": "accepted",
     "message": "peak at -0.0599 V (of 3), operating point -0.0399 V",
     "outputs": {
-      "sg_peak_v": -0.0598630849777384,
-      "sg_operating_v": -0.0398630849777384,
+      "sg_peak_v": -0.05986308497773839,
+      "sg_operating_v": -0.03986308497773838,
       "period": 0.24803049298825872,
       "charging_energy": 0.0010070329466755018,
       "lever_arm": 0.004060117506290538
     },
-    "created_at": "2026-10-15T20:59:30.300446Z",
+    "created_at": "2026-10-16T04:59:02.540606Z",
     "attrs": {
       "method": "qdt_analysis.diamonds.detect_diamonds",
       "rule": "qdt_tuning.decisions.sensor_operating_point"
@@ -79,5 +79,5 @@
     "lever_arm": 0.004,
     "sg_operating_v": -0.039999999999999994
   },
-  "created_at": "2026-10-15T20:59:30.302922Z"
+  "created_at": "2026-10-16T04:59:02.555554Z"
 }

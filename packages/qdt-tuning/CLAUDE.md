@@ -27,5 +27,8 @@ qdt_tuning/
 - Truth for a node comes from `qdt-sim` through the same formula the rule uses (`virtual_gate_matrix`
   is here so both sides agree); the committed `SimResult` fixture lives beside the runner's test.
 - A node that needs an upstream number declares an `InputBinding` (node, output, dotted path into its
-  definition); a node constructor keeps the template value (0) and the binding together, and
-  `test_bind.py` pins each node's bindings. A rule whose outputs another node binds keeps those names.
+  definition, optional `scale`/`offset`, optional `held` fallback: the server-held level of a channel when
+  the upstream node is not in the tune-up, ADR 0062); a node constructor keeps the template value (0) and
+  the binding together, and `test_bind.py` pins each node's bindings. A rule whose outputs another node
+  binds keeps those names. A node whose decision is where the stand should sit says so in `holds`
+  (channel → output); the server holds it on acceptance.

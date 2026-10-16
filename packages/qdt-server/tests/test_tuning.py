@@ -17,6 +17,7 @@ from qdt_sim.scenarios import DEVICE_ID, default_stand, device_for, lattice_trut
 from qdt_tuning import (
     charge_lattice,
     sensor_operating_point_node,
+    sensor_wing_node,
     virtual_gate_matrix,
     virtual_lattice,
 )
@@ -46,11 +47,14 @@ COLD = SimScenario(
 NodeBuilders = Sequence[Callable[[], CalibrationNode]]
 THREE_NODES: NodeBuilders = [
     sensor_operating_point_node,
+    sensor_wing_node,
     lambda: charge_lattice(instrument=DEVICE_ID, sensor_gate="SG"),
     lambda: virtual_lattice(instrument=DEVICE_ID),
 ]
+"""The full chain (four nodes since ADR 0062; the name stays for the fixtures that cite it)."""
 SCENARIOS: dict[str, tuple[SimScenario, NodeBuilders]] = {
     "sensor_operating_point_cold": (COLD, [sensor_operating_point_node]),
+    "sensor_wing_cold": (COLD, [sensor_operating_point_node, sensor_wing_node]),
     "virtual_lattice_cold": (COLD, THREE_NODES),
     "charge_lattice_default": (DEFAULT, [lambda: charge_lattice(instrument=DEVICE_ID)]),
     "charge_lattice_quiet": (QUIET, [lambda: charge_lattice(instrument=DEVICE_ID)]),
@@ -86,7 +90,18 @@ def truth_for(scenario: SimScenario, node_id: str) -> dict[str, float]:
         )
     if node_id == "sensor-operating-point":
         t = sensor_truth(scenario)
-        return t | {"sg_operating_v": t["sg_peak_v"] + 0.02}  # the rule's default flank offset
+        return {k: t[k] for k in ("sg_peak_v", "period", "charging_energy", "lever_arm")} | {
+            "sg_operating_v": t["sg_peak_v"] + 0.02  # the rule's default flank offset
+        }
+    if node_id == "sensor-wing":
+        bias = sensor_wing_node().definition.levels[0].value  # the node's linear-response bias
+        t = sensor_truth(scenario, bias_v=bias)
+        return {
+            "sg_peak_v": t["sg_peak_v"],
+            "sg_width_v": t["sg_width_v"],
+            "sg_operating_v": t["sg_wing_v"],
+            "sensitivity_a_per_v": t["sensitivity_a_per_v"],
+        }
     if node_id == "virtual-lattice":
         # in virtual coordinates the lattice is L · C, diagonal when M is right
         C = np.array([[1.0, M[0, 1] / M[1, 1]], [M[1, 0] / M[0, 0], 1.0]])
@@ -144,6 +159,8 @@ TOLERANCES = {
     "residual_b": (0.0, 0.02),
     "sg_peak_v": (0.0, 0.005),
     "sg_operating_v": (0.0, 0.005),
+    "sg_width_v": (0.1, 0.0),
+    "sensitivity_a_per_v": (0.15, 0.0),
     "period": (0.02, 0.0),
     "charging_energy": (0.05, 0.0),
     "lever_arm": (0.07, 0.0),
@@ -287,17 +304,20 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
     nodes = client.get("/nodes").json()
     assert [n["node_id"] for n in nodes] == [
         "sensor-operating-point",
+        "sensor-wing",
         "charge-lattice",
         "virtual-lattice",
     ]
-    assert nodes[1]["depends_on"] == ["sensor-operating-point"]
-    assert nodes[1]["definition"]["levels"][0]["channel"] == "SG"
+    assert nodes[1]["depends_on"] == ["sensor-operating-point"] and nodes[1]["holds"] == {"SG": "sg_operating_v"}
+    assert nodes[2]["depends_on"] == ["sensor-wing"]
+    assert nodes[2]["definition"]["levels"][0]["channel"] == "SG"
     r = client.post(
         "/tuneups",
         json={
             "node_ids": [
                 "virtual-lattice",
                 "charge-lattice",
+                "sensor-wing",
                 "sensor-operating-point",
             ],  # any order
             "scenario": COLD.model_dump(mode="json"),
@@ -309,19 +329,22 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
     assert tuneup.state == "completed", tuneup.message
     assert [n.node_id for n in tuneup.nodes] == [
         "sensor-operating-point",
+        "sensor-wing",
         "charge-lattice",
         "virtual-lattice",
     ]
     assert tuneup.scenario_id == COLD.scenario_id and tuneup.attrs["sensor_width_v"] == 0.01
-    assert tuneup.name == "sensor-operating-point → charge-lattice → virtual-lattice"
-    assert [o.status for o in tuneup.outcomes] == ["accepted", "accepted", "accepted"]
-    first, _, second = tuneup.outcomes
+    assert tuneup.name == "sensor-operating-point → sensor-wing → charge-lattice → virtual-lattice"
+    assert [o.status for o in tuneup.outcomes] == ["accepted"] * 4
+    first, wing, _, second = tuneup.outcomes
     assert first.outputs["sg_peak_v"] == pytest.approx(-0.06, abs=0.005)
+    assert wing.outputs["sg_width_v"] == pytest.approx(0.01, rel=0.1)
     assert abs(second.outputs["residual_a"]) < 0.02 and second.tuneup_id == tuneup.tuneup_id
     # every node's sweep was a run on the server, with the tune-up's options
     runs = client.get("/runs").json()
     assert [x["definition_name"] for x in runs] == [
         "sensor diamonds",
+        "sensor peak",
         "charge lattice",
         "virtual-gate lattice",
     ]
@@ -337,6 +360,16 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
     assert [t["tuneup_id"] for t in client.get("/tuneups").json()] == [tuneup.tuneup_id]
     assert client.get("/tuneups/" + "0" * 32).status_code == 404
     assert client.post(f"/tuneups/{tuneup.tuneup_id}/stop").status_code == 409
+    # ADR 0062: the wing node holds the sensor gate where it decided; a retune alone re-centres on it
+    held = {lv["channel"]: lv["value"] for lv in client.get("/levels").json()}
+    assert held["SG"] == pytest.approx(wing.outputs["sg_operating_v"])
+    r = client.post("/tuneups", json={"node_ids": ["sensor-wing"], "scenario": COLD.model_dump(mode="json")})
+    assert r.status_code == 202, r.text
+    retune = wait_tuneup(client, r.json()["tuneup_id"])
+    assert retune.state == "completed", retune.message
+    assert retune.outcomes[0].outputs["sg_operating_v"] == pytest.approx(wing.outputs["sg_operating_v"], abs=2e-3)
+    window = retune.nodes[0].definition.axes[0]
+    assert (window.start, window.stop) == pytest.approx((held["SG"] - 0.05, held["SG"] + 0.05))
 
 
 def test_a_tuneup_refuses_unknown_nodes_and_stops_when_asked(client):
@@ -347,11 +380,11 @@ def test_a_tuneup_refuses_unknown_nodes_and_stops_when_asked(client):
         "/tuneups",
         json={"node_ids": ["charge-lattice"], "scenario": COLD.model_dump(mode="json")},
     )
-    assert missing.status_code == 400 and "sensor-operating-point" in missing.json()["detail"]
+    assert missing.status_code == 400 and "sensor-wing" in missing.json()["detail"]
     r = client.post(
         "/tuneups",
         json={
-            "node_ids": ["sensor-operating-point", "charge-lattice", "virtual-lattice"],
+            "node_ids": ["sensor-operating-point", "sensor-wing", "charge-lattice", "virtual-lattice"],
             "scenario": COLD.model_dump(mode="json"),
         },
     )

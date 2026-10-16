@@ -18,6 +18,7 @@ from typing import Any
 
 from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitter, compile_sweep
 from qdt_registry import Registry
+from qdt_schemas.activity import FixedLevel
 from qdt_schemas.control import TuneUp
 from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
@@ -239,7 +240,7 @@ class TuneUpManager:
         return [
             make(seq, gate)
             for node_id, make in TEMPLATES.items()
-            if gate is not None or node_id != "sensor-operating-point"
+            if gate is not None or node_id not in ("sensor-operating-point", "sensor-wing")
         ]
 
     def nodes_for(self, node_ids: Sequence[str]) -> tuple[CalibrationNode, ...]:
@@ -346,11 +347,20 @@ class TuneUpManager:
                         return
                     self._set(tuneup_id, current_node=node.node_id, outcomes=tuple(outcomes))
                     try:
-                        bound = bind(node, accepted)
+                        # a retune (ADR 0062): an upstream not in the tune-up falls back to the held level
+                        held = {lv.channel: lv.value for lv in self.runs.levels()}
+                        bound = bind(node, accepted, held)
                     except (KeyError, ValueError) as e:
                         await record_failure(node, f"binding inputs: {e}")
                         finish("stopped", f"node {node.node_id!r} could not be bound")
                         return
+                    # the lifecycle object keeps the node as it ran: inputs bound (a retune's window
+                    # about the held level, a lattice at the fitted wing), not the template
+                    self._set(
+                        tuneup_id,
+                        nodes=tuple(bound if n.node_id == node.node_id else n for n in tuneup.nodes),
+                    )
+                    tuneup = self.tuneups[tuneup_id]
                     run = await self.runs.start(bound.definition, options)
                     run = await self._wait(run.run_id)
                     if run.state != "completed" or not run.record_id:
@@ -374,6 +384,15 @@ class TuneUpManager:
                         )
                         return
                     accepted[node.node_id] = outcome
+                    if node.holds:
+                        # the node decided where the stand sits (ADR 0053, 0062): hold it now
+                        levels = [
+                            FixedLevel(channel=ch, value=outcome.outputs[name])
+                            for ch, name in node.holds.items()
+                            if name in outcome.outputs
+                        ]
+                        if levels:
+                            self.runs.set_levels(levels)
                 finish("completed")
             except Exception as e:  # noqa: BLE001 — the tune-up reports its failure
                 finish("failed", f"{type(e).__name__}: {e}")

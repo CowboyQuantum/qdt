@@ -68,11 +68,29 @@ def test_the_sensor_node_uses_the_diamonds_method_with_its_defaults_and_feeds_th
     plan = compile_sweep(sensor.definition, default_stand(), {"simulated": SimulatedEmitter()})
     assert [d.name for d in plan.dataset.dims] == ["SG", "V_sd"]
     held = charge_lattice(instrument=DEVICE_ID, sensor_gate="SG")
-    assert held.depends_on == ("sensor-operating-point",)
+    assert held.depends_on == ("sensor-wing",)
     assert held.definition.levels == (FixedLevel(channel="SG", value=0.0),)
     assert [(b.node_id, b.output, b.target) for b in held.inputs] == [
-        ("sensor-operating-point", "sg_operating_v", "levels.0.value")
+        ("sensor-wing", "sg_operating_v", "levels.0.value")
     ]
     alone = charge_lattice(instrument=DEVICE_ID)
     assert alone.depends_on == () and alone.inputs == () and alone.definition.levels == ()
     assert coulomb_diamonds(sensor_gate="SG2", bias="b", sensor="s").axes[0].channel == "SG2"
+
+
+def test_the_wing_node_uses_the_sensor_peak_method_holds_the_gate_and_compiles():
+    """ADR 0062: a short sensor-gate sweep at a held bias, the peak method with the catalogue's defaults,
+    the window bound to the diamonds' peak (or the held level), the gate held at the wing on acceptance."""
+    from qdt_tuning.nodes import SENSOR_PEAK_DEFAULTS, SENSOR_PEAK_METHOD, sensor_wing
+
+    spec, _ = METHODS[SENSOR_PEAK_METHOD]
+    assert spec.resolve({}) == SENSOR_PEAK_DEFAULTS
+    node = sensor_wing()
+    assert node.node_id == "sensor-wing" and node.depends_on == ("sensor-operating-point",)
+    assert node.method.parameters == SENSOR_PEAK_DEFAULTS and node.decision.name in RULES
+    assert [a.channel for a in node.definition.axes] == ["SG"]
+    assert node.definition.levels == (FixedLevel(channel="bias", value=10e-6),)
+    assert {(b.target, b.offset, b.held) for b in node.inputs} == {("axes.0.start", -0.05, "SG"), ("axes.0.stop", 0.05, "SG")}
+    assert node.holds == {"SG": "sg_operating_v"}
+    plan = compile_sweep(node.definition, default_stand(), {"simulated": SimulatedEmitter()})
+    assert [d.name for d in plan.dataset.dims] == ["SG"] and plan.dataset.data_vars[0].dims == ("SG",)

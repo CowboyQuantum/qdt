@@ -6,7 +6,7 @@ pins that, so a method that changes its signature changes its spec in the same c
 
 from collections.abc import Callable
 
-from qdt_analysis import diamonds, exponential, plane, transitions
+from qdt_analysis import diamonds, exponential, plane, sensor_peak, transitions
 from qdt_analysis.transitions import Analysis
 from qdt_schemas.control import EstimateSpec, MethodSpec, ParameterSpec
 from qdt_schemas.data import AttrValue
@@ -219,6 +219,61 @@ METHODS: dict[str, tuple[MethodSpec, Method]] = {
             ),
         ),
         plane.fit_plane,
+    ),
+    sensor_peak.NAME: (
+        MethodSpec(
+            name=sensor_peak.NAME,
+            version=sensor_peak.VERSION,
+            title="Sensor peak",
+            description="background + height·sech²((V − peak)/width) on a sensor-gate trace; the wing (the inflection, ±0.66 widths) is where the sensor should sit (ADR 0062).",
+            applies_to="trace_1d",
+            parameters=(
+                ParameterSpec(
+                    name="variable",
+                    kind="str",
+                    default="",
+                    description="Data variable; default: the first trace (the gate on its last dim).",
+                ),
+                ParameterSpec(
+                    name="near_v",
+                    kind="float",
+                    default=0.0,
+                    unit="V",
+                    description="Gate voltage the fitted peak is nearest to, when `near_centre` is off.",
+                ),
+                ParameterSpec(
+                    name="near_centre",
+                    kind="bool",
+                    default=True,
+                    description="Fit the peak nearest the trace's centre (a window around a known peak).",
+                ),
+                ParameterSpec(
+                    name="side",
+                    kind="str",
+                    default="above",
+                    description="Which wing to sit on: 'above' (higher gate voltage) or 'below'.",
+                ),
+                ParameterSpec(
+                    name="min_r2",
+                    kind="float",
+                    default=0.5,
+                    minimum=0.0,
+                    maximum=1.0,
+                    description="Least fraction of the window's variance the peak must explain.",
+                ),
+            ),
+            estimates=(
+                EstimateSpec(name="peak_v", unit="V", description="The peak's gate voltage."),
+                EstimateSpec(name="width_v", unit="V", description="The peak's thermal width (sech² scale)."),
+                EstimateSpec(name="height_a", unit="A", description="Peak current above the background."),
+                EstimateSpec(name="background_a", unit="A", description="Current far from the peak."),
+                EstimateSpec(name="wing_v", unit="V", description="The operating point: the inflection on the side asked."),
+                EstimateSpec(name="sensitivity_a_per_v", unit="A/V", description="|dI/dV| at the wing."),
+                EstimateSpec(name="r2", description="Fraction of the window's variance explained."),
+                EstimateSpec(name="residual_rms", unit="A", description="RMS residual over the window."),
+            ),
+        ),
+        sensor_peak.fit_sensor_peak,
     ),
     exponential.NAME: (
         MethodSpec(
