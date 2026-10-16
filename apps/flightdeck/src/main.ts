@@ -15,6 +15,8 @@ import { controlWidget } from "./widgets/control";
 import { emptyWidget } from "./widgets/empty";
 import { historyWidget } from "./widgets/history";
 import { plotWidget } from "./widgets/plot";
+import { pulseWidget } from "./widgets/pulse";
+import { sweepWidget } from "./widgets/sweep";
 import { Bus } from "./workspace/bus";
 import { loadLayout, safeStorage } from "./workspace/layout";
 import { mountStrip } from "./workspace/strip";
@@ -26,7 +28,7 @@ const params = new URLSearchParams(location.search);
 const api = new ApiClient(apiBase(params));
 const bus = new Bus();
 const datasets = new Datasets();
-const registry = new WidgetRegistry().register(plotWidget).register(controlWidget).register(emptyWidget).register(historyWidget);
+const registry = new WidgetRegistry().register(plotWidget).register(controlWidget).register(emptyWidget).register(historyWidget).register(sweepWidget).register(pulseWidget);
 
 const themes = new ThemeManager(safeStorage(), applyTheme, matchMedia("(prefers-color-scheme: light)").matches);
 themes.apply();

@@ -67,19 +67,27 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
 
   // the form fills from GET /stand and GET /methods
-  await page.waitForFunction(() => document.querySelectorAll("#sweep select[name=outer_channel] option").length > 0);
-  expect(await page.inputValue("#sweep select[name=outer_channel]")).toBe("P1");
-  expect(await page.inputValue("#sweep select[name=inner_channel]")).toBe("P2_pulse");
+  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
+  expect(await page.inputValue(".pane[data-widget=sweep] select[name=outer_channel]")).toBe("P1");
+  expect(await page.inputValue(".pane[data-widget=sweep] select[name=inner_channel]")).toBe("P2_pulse");
   expect((await page.locator("#method option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Single exponential"]);
 
   // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region)
-  await page.fill("#sweep input[name=name]", "e2e stability");
-  for (const [k, v] of [["outer_num", "48"], ["inner_num", "48"]]) await page.fill(`#sweep input[name=${k}]`, v!);
-  await page.click("#sweep button[type=submit]");
-  await page.waitForFunction(() => /queued|running/.test(document.querySelector("#runs")?.textContent ?? ""));
+  await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e stability");
+  for (const [k, v] of [["outer_num", "48"], ["inner_num", "48"]]) await page.fill(`.pane[data-widget=sweep] input[name=${k}]`, v!);
+  // compile first (ADR 0056): the strip shows the plan's identity; an edit marks it stale; Run compiles again
+  await page.locator(".pane[data-widget=sweep] [data-compile]").click();
+  await page.waitForFunction(() => /^plan [0-9a-f]{8}$/.test(document.querySelector("#plan")?.textContent ?? ""));
+  expect(await page.textContent(".pane[data-widget=sweep] .plan")).toMatch(/e2e stability · P1 48 × P2 48 · 2,304 pts/);
+  await page.fill(".pane[data-widget=sweep] input[name=inner_num]", "40");
+  await page.waitForFunction(() => /stale/.test(document.querySelector("#plan")?.textContent ?? ""));
+  await page.fill(".pane[data-widget=sweep] input[name=inner_num]", "48");
+  expect(await page.textContent("#next-run")).toBe("next: e2e stability · stage · P1 48 × P2_pulse 48");
+  await page.click("#run");
+  await page.waitForFunction(() => /queued|running/.test(document.querySelector("#run-state")?.textContent ?? ""));
 
   // run → live → completed → record listed
-  await page.waitForFunction(() => /completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.waitForFunction(() => /completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => (document.querySelector("#records")?.textContent ?? "").includes("e2e stability"));
   expect(await page.textContent("#status")).toMatch(/heatmap/);
   const menu = await plotMenu(page);
@@ -155,48 +163,48 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   page.on("pageerror", (e) => console.error("page error:", e));
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
-  await page.waitForFunction(() => document.querySelectorAll("#ops .op-row").length === 2);
-  const row = (i: number) => page.locator("#ops .op-row").nth(i);
-  const errors = () => page.textContent("#sequence-errors");
+  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=pulse] .op-row").length === 2);
+  const row = (i: number) => page.locator(".pane[data-widget=pulse] .op-row").nth(i);
+  const errors = () => page.textContent(".pane[data-widget=pulse] .sequence-errors");
 
   // the template: step(P2_pulse, v_P2) ; measure(sensor), its symbol bound to the inner axis
   expect(await row(0).locator("input[name=level]").inputValue()).toBe("v_P2");
-  expect(await page.inputValue("#symbols input[name=bind_v_P2]")).toBe("P2");
+  expect(await page.inputValue(".pane[data-widget=pulse] .symbols input[name=bind_v_P2]")).toBe("P2");
 
-  await page.fill("#sweep input[name=name]", "e2e pulsed");
-  for (const [k, v] of [["outer_num", "8"], ["inner_num", "8"]]) await page.fill(`#sweep input[name=${k}]`, v!);
+  await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e pulsed");
+  for (const [k, v] of [["outer_num", "8"], ["inner_num", "8"]]) await page.fill(`.pane[data-widget=sweep] input[name=${k}]`, v!);
   // add a wait and move it between the step and the measure; add a second measure
-  await page.selectOption("#add-op", "wait");
+  await page.selectOption(".pane[data-widget=pulse] .add-op", "wait");
   await page.getByRole("button", { name: "add op" }).click();
   await row(2).getByRole("button", { name: "↑" }).click();
   expect(await row(1).locator("select.op").inputValue()).toBe("wait");
-  await page.selectOption("#add-op", "measure");
+  await page.selectOption(".pane[data-widget=pulse] .add-op", "measure");
   await page.getByRole("button", { name: "add op" }).click();
   expect(await errors()).toMatch(/result "I_sensor" is already a result/);
   await row(3).locator("input[name=result]").fill("I_ref");
   // a symbol duration needs a binding before the sweep can run
   await row(0).locator("input[name=duration]").fill("t_hold");
   expect(await errors()).toMatch(/symbol "t_hold" needs an axis/);
-  await page.click("#sweep button[type=submit]");
-  expect(await page.textContent("#message")).toMatch(/t_hold/);
-  await page.fill("#symbols input[name=bind_t_hold]", "300");
+  await page.click("#run");
+  await page.waitForFunction(() => /t_hold/.test(document.querySelector("#message")?.textContent ?? ""));
+  await page.fill(".pane[data-widget=pulse] .symbols input[name=bind_t_hold]", "300");
   expect(await errors()).toBe("");
   // chopped readout (ADR 0037): the reference point follows the swept level; the difference is recorded
-  await page.selectOption("#add-op", "step");
+  await page.selectOption(".pane[data-widget=pulse] .add-op", "step");
   await page.getByRole("button", { name: "add op" }).click();
   await row(4).locator("select[name=channel]").selectOption("P2_pulse");
   await row(4).locator("input[name=level]").fill("v_P2 + 0.002");
   await row(4).getByRole("button", { name: "↑" }).click(); // before the reference measure
   expect(await row(3).locator("input[name=level]").inputValue()).toBe("v_P2 + 0.002");
   expect(await row(3).locator("label").filter({ hasText: "level" }).textContent()).toMatch(/level ← P2 \(swept\)/);
-  await page.selectOption("#add-op", "difference");
+  await page.selectOption(".pane[data-widget=pulse] .add-op", "difference");
   await page.getByRole("button", { name: "add op" }).click();
   expect(await row(5).locator("input[name=a]").inputValue()).toBe("I_sensor");
   expect(await row(5).locator("input[name=b]").inputValue()).toBe("I_ref");
   expect(await errors()).toBe("");
 
-  await page.click("#sweep button[type=submit]");
-  await page.waitForFunction(() => /e2e pulsed · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e pulsed · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   // the recorded difference is a variable of its own; any two same-shape variables can be subtracted in the view
   const vars = await plotMenu(page);
   expect((await vars.locator("select[name=variable] option").allTextContents()).sort()).toEqual(["I_ref", "I_sensor", "dI"]);
@@ -208,20 +216,20 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   await page.keyboard.press("Escape");
 
   // 1-D: no outer axis, back to the template
-  await page.selectOption("#sweep select[name=outer_channel]", "");
+  await page.selectOption(".pane[data-widget=sweep] select[name=outer_channel]", "");
   await page.getByRole("button", { name: "reset to template" }).click();
-  expect(await page.locator("#ops .op-row").count()).toBe(2);
-  await page.fill("#sweep input[name=name]", "e2e trace");
+  expect(await page.locator(".pane[data-widget=pulse] .op-row").count()).toBe(2);
+  await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e trace");
   // operating point (ADR 0038): hold a DC level for the sweep; in 1-D, P1 is not swept and may be held too
   await page.getByRole("button", { name: "add level" }).click();
-  await page.locator("#levels .level-row").first().locator("select[name=level_channel]").selectOption("P2");
-  await page.locator("#levels .level-row").first().locator("input[name=level_value]").fill("0.05");
-  expect(await page.textContent("#level-errors")).toBe("");
-  await page.locator("#levels .level-row").first().locator("select[name=level_channel]").selectOption("P1");
-  expect(await page.textContent("#level-errors")).toBe(""); // 1-D: P1 is not swept, so it may be held
-  await page.locator("#levels .level-row").first().locator("select[name=level_channel]").selectOption("P2");
-  await page.click("#sweep button[type=submit]");
-  await page.waitForFunction(() => /e2e trace · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.locator(".pane[data-widget=sweep] .levels .level-row").first().locator("select[name=level_channel]").selectOption("P2");
+  await page.locator(".pane[data-widget=sweep] .levels .level-row").first().locator("input[name=level_value]").fill("0.05");
+  expect(await page.textContent(".pane[data-widget=sweep] .level-errors")).toBe("");
+  await page.locator(".pane[data-widget=sweep] .levels .level-row").first().locator("select[name=level_channel]").selectOption("P1");
+  expect(await page.textContent(".pane[data-widget=sweep] .level-errors")).toBe(""); // 1-D: P1 is not swept, so it may be held
+  await page.locator(".pane[data-widget=sweep] .levels .level-row").first().locator("select[name=level_channel]").selectOption("P2");
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e trace · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => /· trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
   await page.close();
 });
@@ -232,15 +240,15 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   page.on("pageerror", (e) => console.error("page error:", e));
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
-  await page.waitForFunction(() => document.querySelectorAll("#sweep select[name=outer_channel] option").length > 0);
-  await page.selectOption("#sweep select[name=kind]", "capture");
-  expect(await page.isHidden("#sweep select[name=sensor]")).toBe(true);
-  expect(await page.inputValue("#sweep select[name=capture_channel]")).toBe("scope1");
-  await page.selectOption("#sweep select[name=outer_channel]", "");
-  await page.fill("#sweep input[name=name]", "e2e droop");
-  await page.fill("#sweep input[name=options]", '{"seed": 2, "noise": true, "tau_s": 0.0015}');
-  await page.click("#sweep button[type=submit]");
-  await page.waitForFunction(() => /e2e droop · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
+  await page.selectOption(".pane[data-widget=sweep] select[name=kind]", "capture");
+  expect(await page.isHidden(".pane[data-widget=sweep] select[name=sensor]")).toBe(true);
+  expect(await page.inputValue(".pane[data-widget=sweep] select[name=capture_channel]")).toBe("scope1");
+  await page.selectOption(".pane[data-widget=sweep] select[name=outer_channel]", "");
+  await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e droop");
+  await page.fill(".pane[data-widget=sweep] input[name=options]", '{"seed": 2, "noise": true, "tau_s": 0.0015}');
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e droop · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => /· trace · trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
 
   await page.locator("#records li", { hasText: "e2e droop" }).first().getByRole("button", { name: "analyse" }).click();
@@ -283,7 +291,7 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   await page.waitForFunction(() => document.querySelectorAll("#nodes input[name=node]").length === 3);
   expect(await page.locator("#nodes .node-id").allTextContents()).toEqual(["sensor-operating-point", "charge-lattice", "virtual-lattice"]);
   // a cold sensor so the diamonds resolve (ADR 0030); the sensor node decides where the stability nodes park SG
-  await page.fill("#sweep input[name=options]", '{"seed": 2, "noise": false, "sensor_width_v": 0.01}');
+  await page.fill("#tuneup-options", '{"seed": 2, "noise": false, "sensor_width_v": 0.01}');
   await page.click("#run-tuneup");
   await page.waitForFunction(() => /queued|running/.test(document.querySelector("#tuneup-state")?.textContent ?? ""));
   await page.waitForFunction(() => /· completed/.test(document.querySelector("#tuneup-state .tuneup-head")?.textContent ?? ""), null, { timeout: 120_000 });

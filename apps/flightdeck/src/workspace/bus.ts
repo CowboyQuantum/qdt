@@ -1,6 +1,7 @@
 // The workspace event bus (ADR 0054): widgets share no state directly; what one widget needs another
 // to know travels here as a typed event, and the data itself lives in the stream stores or on the server.
-import type { StandConfig } from "../schema/api";
+import type { BindingRow, OpRow } from "../control/sequence";
+import type { Run, StandConfig } from "../schema/api";
 import type { DatasetStore } from "../stream/store";
 
 /** Every event the shell and its widgets exchange. Add an event here; nowhere else. */
@@ -13,10 +14,24 @@ export interface Events {
   "stream:state": { state: "idle" | "live" | "complete"; progress: number | null; summary: string };
   /** The stand the server runs (GET /stand), once a widget has fetched it. */
   stand: { stand: StandConfig };
-  /** The user pressed Run in the strip: whoever holds the next sweep runs it. */
+  /** The user pressed Run in the strip: the Sweep widget, which holds the compiled plan, runs it. */
   "run:request": Record<string, never>;
+  /** The user pressed abort in the strip. */
+  "run:abort": Record<string, never>;
   /** What the next Run would do, one line, from the widget that holds the sweep form. */
   "run:next": { summary: string };
+  /** The one run the strip follows: queued → running → completed | aborted | failed; null when none. */
+  "run:state": { run: Run | null };
+  /** The Sweep widget compiled: the plan's identity for the strip (ADR 0056). */
+  "plan:compiled": { planId: string; summary: string };
+  /** An editor changed after the last compile: the plan shown is stale (ADR 0056). */
+  "plan:changed": Record<string, never>;
+  /** The Sweep widget's axes, inner channel and sensor, for the Pulse widget's template. */
+  "sweep:axes": { kind: "stage" | "dc" | "capture"; axes: string[]; inner: string; sensor: string };
+  /** The Pulse widget's sequence as edited, for the Sweep widget's stage sweep. */
+  "pulse:sequence": { rows: OpRow[]; bindings: BindingRow[]; errors: string[] };
+  /** A run reached a terminal state: a record may have landed. */
+  "records:changed": Record<string, never>;
   /** A point on a map was clicked: coordinate names and values (rule 8: never a channel). */
   "map:click": { point: { name: string; unit: string; value: number }[] };
   /** Open a stored record in a plot pane: the pane pins itself to the Dataset that is the record, by its registry
