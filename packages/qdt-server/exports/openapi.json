@@ -1468,7 +1468,8 @@
                 "level_sense",
                 "waveform_source",
                 "waveform_sense",
-                "sequencer"
+                "sequencer",
+                "triggered_level_source"
               ],
               "type": "string"
             },
@@ -2455,7 +2456,8 @@
               "level_sense",
               "waveform_source",
               "waveform_sense",
-              "sequencer"
+              "sequencer",
+              "triggered_level_source"
             ],
             "title": "Role",
             "type": "string"
@@ -3382,6 +3384,16 @@
             "description": "Value at index 0, in the channel's quantity unit.",
             "title": "Start",
             "type": "number"
+          },
+          "stepping": {
+            "default": "software",
+            "description": "How a stepped axis advances (ADR 0064). 'software': the executor sets each level and settles (the default). 'triggered': the channel's instrument is loaded with the axis's levels once and advances one point per trigger the stage's sequencer plays, so the sequencer paces the whole scan; the axis (and its couplings) then needs a 'triggered_level_source' instrument, a stage with a sequence, and no sensed or per-point captured channels. At most one axis is triggered and it is the innermost stepped axis.",
+            "enum": [
+              "software",
+              "triggered"
+            ],
+            "title": "Stepping",
+            "type": "string"
           },
           "stop": {
             "description": "Value at the last index (inclusive).",

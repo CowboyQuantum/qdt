@@ -166,6 +166,7 @@ class SequencerProgram(QdtModel):
 
 Reduction = Literal["keep", "mean", "sum"]
 ParameterSource = Literal["const", "axis_num", "axis_start", "axis_step", "axis_value"]
+Stepping = Literal["software", "triggered"]
 
 
 class SweepAxis(QdtModel):
@@ -188,6 +189,18 @@ class SweepAxis(QdtModel):
             "A virtual gate (ADR 0049): other LevelSource channels moved with this axis, by these volts "
             "per volt of the axis value, from their held level (SweepDefinition.levels) or 0. Only a "
             "stepped axis couples; a stage axis expresses its couplings in the pulse sequence (Affine)."
+        ),
+    )
+    stepping: Stepping = Field(
+        default="software",
+        exclude_if=lambda v: v == "software",  # existing definitions keep their content hash
+        description=(
+            "How a stepped axis advances (ADR 0064). 'software': the executor sets each level and "
+            "settles (the default). 'triggered': the channel's instrument is loaded with the axis's "
+            "levels once and advances one point per trigger the stage's sequencer plays, so the "
+            "sequencer paces the whole scan; the axis (and its couplings) then needs a "
+            "'triggered_level_source' instrument, a stage with a sequence, and no sensed or per-point "
+            "captured channels. At most one axis is triggered and it is the innermost stepped axis."
         ),
     )
 
@@ -465,6 +478,28 @@ class SweepDefinition(QdtModel):
                 "a capture inside the shot needs a stage without stage axes: the scope is armed per "
                 "stepped point and triggered per shot (ADR 0060); step the axis instead"
             )
+        triggered = [a for a in self.axes if a.stepping == "triggered"]
+        if triggered:  # ADR 0064: the sequencer paces the scan, so it must own the whole inner loop
+            if len(triggered) > 1:
+                raise ValueError("at most one axis is triggered (one trigger line, one list)")
+            t = triggered[0]
+            if t.name in stage_axes:
+                raise ValueError(f"stage axis {t.name!r} is swept by the sequencer, not triggered")
+            if stepped[-1].name != t.name:
+                raise ValueError(
+                    f"triggered axis {t.name!r} must be the innermost stepped axis: the executor steps "
+                    "the axes outside it and the sequencer advances it"
+                )
+            if self.stage is None or self.stage.sequence is None:
+                raise ValueError(
+                    f"triggered axis {t.name!r} needs a stage with a sequence: its sequencer plays the "
+                    "trigger that advances the level"
+                )
+            if self.sensed or self.captured:
+                raise ValueError(
+                    f"triggered axis {t.name!r}: the executor is not in the loop per point, so nothing "
+                    "is sensed or captured per point; measure or capture in the shot instead"
+                )
         if {c.channel for c in shot_captures} & {c.channel for c in self.captured}:
             raise ValueError("a channel is captured in the shot or per point, not both (ADR 0060)")
         if len({c.records for c in self.captured}) > 1:
@@ -536,6 +571,16 @@ class SweepDefinition(QdtModel):
     def stepped_axes(self) -> tuple[SweepAxis, ...]:
         inner = set(self.stage.axes) if self.stage else set()
         return tuple(a for a in self.axes if a.name not in inner)
+
+    def triggered_axis(self) -> SweepAxis | None:
+        """The stepped axis the stage's sequencer advances by trigger (ADR 0064), if any."""
+        return next((a for a in self.axes if a.stepping == "triggered"), None)
+
+    def program_axes(self) -> tuple[SweepAxis, ...]:
+        """The axes the sequencer's program loops over, outer to inner: the triggered axis (if any),
+        then the stage axes. Symbols bound to any of them are swept inside the program."""
+        t = self.triggered_axis()
+        return (*((t,) if t else ()), *self.stage_axes())
 
     def coupled_channels(self) -> tuple[str, ...]:
         """Channels moved by an axis's couplings (ADR 0049), in axis order, each once."""
