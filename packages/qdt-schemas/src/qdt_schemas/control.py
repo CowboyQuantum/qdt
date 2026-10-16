@@ -241,7 +241,13 @@ class TuneUp(QdtModel):
             raise ValueError("node ids must be unique")
         seen: set[str] = set()
         for n in self.nodes:
-            missing = set(n.depends_on) - seen
+            # a dependency may be absent when every input taken from it has a held-level fallback:
+            # the node then runs on its own about the stand's operating point (a retune, ADR 0062)
+            missing = set()
+            for d in set(n.depends_on) - seen:
+                taken = [b for b in n.inputs if b.node_id == d]
+                if not (taken and all(b.held for b in taken)) or d in {x.node_id for x in self.nodes}:
+                    missing.add(d)
             if missing:
                 raise ValueError(f"node {n.node_id!r} depends on {sorted(missing)}, not before it")
             seen.add(n.node_id)
