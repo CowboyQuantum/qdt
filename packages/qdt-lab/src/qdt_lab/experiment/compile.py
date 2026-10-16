@@ -1,8 +1,9 @@
-"""`SweepDefinition` + `StandConfig` → `ExecutionPlan` (ADR 0019; captures by ADR 0047).
+"""`SweepDefinition` + `StandConfig` → `ExecutionPlan` (ADR 0019; captures by ADR 0047 and 0060).
 
 Dataset layout, outer to inner: `repeat` (when repeats != 1), the axes, `shot` (kept shots), then for
 captured waveforms `record` (when records > 1) and each capture's time axis. A sensed level is laid over
-the stepped axes; a stage result over every axis; a capture over the stepped axes plus its own time.
+the stepped axes; a stage result over every axis; a capture over the stepped axes plus its own time; a
+shot capture (ADR 0060) over the stepped axes, `shot` when shots are kept, and its own time from 0.
 """
 
 import uuid
@@ -84,7 +85,19 @@ def compile_sweep(
                 )
             resolve(a.channel, "sequencer")
         if stage.sequence is not None:
+            # a shot capture's scope (ADR 0060) is armed by the executor and triggered by the shot: its
+            # channel is a WaveformSense of another instrument, never a sequencer channel
+            for c in stage.captures():
+                if stand.channel(c.channel).instrument == stage.instrument:
+                    raise ValueError(
+                        f"capture {c.result!r} is on the sequencer's own input {c.channel!r}; a capture "
+                        "on the sequencer is not emitted yet (ADR 0060): put the scope on its own instrument"
+                    )
+                resolve(c.channel, "waveform_sense")
+            scope_channels = {c.channel for c in stage.captures()}
             for ch in stage.sequence.channels():
+                if ch in scope_channels:
+                    continue
                 if stand.channel(ch).instrument != stage.instrument:
                     raise ValueError(
                         f"sequence channel {ch!r} is not a channel of {stage.instrument!r}"
@@ -98,6 +111,8 @@ def compile_sweep(
                 {a.name: a for a in definition.axes},
                 {ch: stand.channel(ch) for ch in stage.sequence.channels()},
             )
+            if not program.results and stage.shots > 1 and not stage.captures():
+                raise ValueError("a stage with no results and no capture records nothing")
         else:
             program, bindings = stage.program, stage.parameters
         for b in bindings:
@@ -187,6 +202,29 @@ def _declare_dataset(
             else:
                 attrs[f"{r.name}.reduced"] = f"shot:{reduction}" if stage.shots > 1 else "none"
             variables.append(DataVariable(name=r.name, dims=vdims, unit=r.unit, dtype=r.dtype))
+    if stage is not None and stage.captures():
+        # ADR 0060: one record per shot on a time axis from the capture's point in the shot
+        keep = stage.shots > 1
+        if keep and SHOT_DIM not in {d.name for d in dims}:
+            dims.append(Dimension(name=SHOT_DIM, size=stage.shots))
+        for c in stage.captures():
+            tdim = definition.capture_time_dim(c.result)
+            if tdim not in {d.name for d in dims}:
+                dims.append(Dimension(name=tdim, size=c.num))
+                coords.append(
+                    LinearCoordinate(
+                        name=tdim, dim=tdim, unit="s", start=0.0, stop=c.duration_s, num=c.num
+                    )
+                )
+            variables.append(
+                DataVariable(
+                    name=c.result,
+                    dims=(*outer, *stepped_names, *((SHOT_DIM,) if keep else ()), tdim),
+                    unit=QUANTITY_UNIT[stand.channel(c.channel).quantity],
+                    dtype="float64",
+                )
+            )
+        attrs["shots"] = stage.shots
     captured = definition.captured
     if captured:
         records = captured[0].records  # the schema holds every capture to one count

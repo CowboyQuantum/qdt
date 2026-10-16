@@ -19,7 +19,7 @@ from pydantic import Field, model_validator
 
 from ._base import QdtModel
 from .data import AttrValue, Dataset, DType
-from .pulse import PulseSequence
+from .pulse import Capture, PulseSequence
 from .stand import Capability, Quantity
 
 
@@ -81,8 +81,11 @@ class SequencerProgram(QdtModel):
         description="Runtime inputs that change between runs without recompiling.",
     )
     results: tuple[SequencerResult, ...] = Field(
-        min_length=1,
-        description="Result streams the program produces; positional, no in-band coordinates.",
+        default=(),
+        description=(
+            "Result streams the program produces; positional, no in-band coordinates. Empty when the "
+            "stage is a stimulus whose readout is a shot capture on another instrument (ADR 0060)."
+        ),
     )
     attrs: dict[str, AttrValue] = Field(
         default_factory=dict,
@@ -361,6 +364,12 @@ class SequencerStage(QdtModel):
         unknown = set(self.reduce) - results
         if unknown:
             raise ValueError(f"reduce names unknown results {sorted(unknown)}")
+        for c in self.captures():
+            if self.reduce.get(c.result, "keep") != "keep":
+                raise ValueError(
+                    f"capture {c.result!r} keeps every shot: the executor never averages a record "
+                    "(ADR 0018, 0060)"
+                )
         return self
 
     def results(self) -> tuple[str, ...]:
@@ -369,6 +378,10 @@ class SequencerStage(QdtModel):
             if self.sequence
             else tuple(r.name for r in self.program.results)
         )
+
+    def captures(self) -> tuple[Capture, ...]:
+        """The shot's time-resolved readouts (ADR 0060); none for a hand-written program."""
+        return self.sequence.captures() if self.sequence else ()
 
     def reduction(self, result: str) -> Reduction:
         return self.reduce.get(result, "keep")
@@ -441,9 +454,19 @@ class SweepDefinition(QdtModel):
             raise ValueError(
                 "sensed, captured and result names must be unique and distinct from axis names"
             )
-        time_dims = {f"{c.name}_time" for c in self.captured}
+        shot_captures = self.stage.captures() if self.stage else ()
+        time_dims = {f"{c.name}_time" for c in self.captured} | {
+            f"{c.result}_time" for c in shot_captures
+        }
         if time_dims & (set(names) | set(var_names)):
             raise ValueError("a capture's '<name>_time' axis clashes with an axis or variable name")
+        if shot_captures and stage_axes:
+            raise ValueError(
+                "a capture inside the shot needs a stage without stage axes: the scope is armed per "
+                "stepped point and triggered per shot (ADR 0060); step the axis instead"
+            )
+        if {c.channel for c in shot_captures} & {c.channel for c in self.captured}:
+            raise ValueError("a channel is captured in the shot or per point, not both (ADR 0060)")
         if len({c.records for c in self.captured}) > 1:
             raise ValueError("every capture of a sweep takes the same number of records")
         captured_channels = [c.channel for c in self.captured]
@@ -469,7 +492,9 @@ class SweepDefinition(QdtModel):
                 )
             if moved & ({s.channel for s in self.sensed} | {c.channel for c in self.captured}):
                 raise ValueError(f"axis {a.name!r} couples a sensed or captured channel")
-        if set(captured_channels) & (axis_channels | {s.channel for s in self.sensed}):
+        if (set(captured_channels) | {c.channel for c in shot_captures}) & (
+            axis_channels | {s.channel for s in self.sensed}
+        ):
             raise ValueError("a captured channel is neither stepped nor sensed (ADR 0016)")
         held = [lv.channel for lv in self.levels]
         if len(set(held)) != len(held):
@@ -525,11 +550,22 @@ class SweepDefinition(QdtModel):
                 return c
         raise KeyError(f"unknown capture {name!r}")
 
+    def capture_grids(self) -> dict[str, tuple[float, float, int]]:
+        """Every time-resolved variable's grid, per-point captures (ADR 0047) and the shot's captures
+        (ADR 0060) alike: name → (start_s, stop_s, num)."""
+        grids = {c.name: (c.start_s, c.stop_s, c.num) for c in self.captured}
+        if self.stage:
+            for c in self.stage.captures():
+                grids[c.result] = (0.0, c.duration_s, c.num)
+        return grids
+
     def capture_time_dim(self, name: str) -> str:
-        """The time dimension (and coordinate) of capture `name`: 'time' when every capture declares
-        the same grid, else '<name>_time'."""
-        grids = {(c.start_s, c.stop_s, c.num) for c in self.captured}
-        return "time" if len(grids) == 1 else f"{self.capture(name).name}_time"
+        """The time dimension (and coordinate) of the capture or shot capture `name`: 'time' when
+        every time-resolved variable of the sweep declares the same grid, else '<name>_time'."""
+        grids = self.capture_grids()
+        if name not in grids:
+            raise KeyError(f"unknown capture {name!r}")
+        return "time" if len(set(grids.values())) == 1 else f"{name}_time"
 
 
 class ResolvedChannel(QdtModel):

@@ -168,7 +168,9 @@ class SimulatedDevice:
             )
         body = json.loads(program.body)
         sequence = PulseSequence.model_validate(body["sequence"])
-        unknown = set(sequence.channels()) - set(self.channels)
+        # a shot capture's scope channel (ADR 0060) belongs to the scope, not to this device
+        scopes = {op.channel for op in sequence.expand() if op.op == "capture"}
+        unknown = set(sequence.channels()) - set(self.channels) - scopes
         if unknown:
             raise ValueError(f"sequence uses channels the device does not have: {sorted(unknown)}")
         for op in sequence.expand():
@@ -244,7 +246,13 @@ class _DeviceRun:
         self._device, self._compiled, self._params = device, compiled, parameters
         self.dataset = dataset
         program = compiled.program
-        self._axes = tuple(d for d in program.results[0].dims if d != "shots")
+        # the stage axes are the parameters every result is laid over; a program with no result
+        # (a stimulus whose readout is a shot capture, ADR 0060) still runs its shots
+        self._axes = (
+            tuple(d for d in program.results[0].dims if d != "shots")
+            if program.results
+            else tuple(p.name for p in program.parameters if p.name.startswith("n_"))
+        )
         self._shape = tuple(parameters[a] for a in self._axes)
         self._shots = parameters.get("shots", 1)
 
@@ -309,6 +317,10 @@ class _DeviceRun:
         program, params = self._compiled.program, self._params
         variables = {v.name: v for v in self.dataset.data_vars}
         results = [r.name for r in program.results]
+        if not results:
+            for idx in np.ndindex(*self._shape) if self._shape else [()]:
+                self._pixel(idx)  # the stimulus plays; the shot capture's scope records it
+            return
         first = self._shape[0] if self._shape else 1
         rest = self._shape[1:]
         t0, done, seq = time.perf_counter(), 0, 0

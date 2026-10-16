@@ -12,4 +12,4 @@ This package is the root of the dependency tree and the product itself. It impor
 
 ## Never
 - import numpy/xarray/h5py at module top level (keep this package light; `[hdf5]` imports lazily)
-- edit a model that a frozen step owns without an ADR
+- edit a model that a frozen step owns without an ADR (the pulse vocabulary grows one primitive per ADR: `difference` 0037, `capture` 0060)

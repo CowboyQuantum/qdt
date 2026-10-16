@@ -28,10 +28,11 @@ Calibration DAG nodes (experiment + analysis + decision) run unattended against 
 
 ## Open decisions
 Carried from Step 5, each with its evidence; an ADR closes each one.
-- **A `PlayedWaveform` activity.** Nothing in a sweep plays a waveform: L2-3's pulse train was played
-  beside the capture sweep by the test (ADR 0047, BENCH.md L2-3). A tune-up node that steps a DC level
-  and records a scope response needs the play inside the sweep, in the same additive shape as
-  `CapturedWaveform`.
+- ~~A `PlayedWaveform` activity.~~ Closed by ADR 0060 (2026-10-16): the shot is the timeline. A `capture` op
+  opens a scope window inside the shot; `step`/`ramp` on a sequencer line are the stimulus; there is no
+  `PlayedWaveform`. A node that steps a DC level and records a scope response is a stepped axis with a
+  shot of step + capture. Open after it: the sequencer-to-scope trigger line (the OPX slice) and a capture
+  on the sequencer's own input.
 - **Sub-ms stepping.** Probe 04: a QDAC `set` over USB serial reaches the output within 4.5 ms (steady to
   ±0.2 ms) and settles to 1 % in 3 µs; `settle_s = 0.01` direct, `0.05` through the combiner. Faster
   untriggered stepping has to move the step onto the sequencer (the OPX's DC offset, or a QDAC list with

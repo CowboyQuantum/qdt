@@ -22,6 +22,7 @@ const channels: ChannelMap[] = [
   { logical: "P2_pulse", instrument: "dot", channel: "P2_pulse", quantity: "voltage" },
   { logical: "bias_pulse", instrument: "dot", channel: "bias_pulse", quantity: "voltage" },
   { logical: "sensor", instrument: "dot", channel: "sensor", quantity: "current" },
+  { logical: "scope1", instrument: "scope", channel: "1", quantity: "voltage" },
 ];
 
 const template = templateRows({ channel: "P2_pulse", symbol: "v_P2", sensor: "sensor", stepNs: 500, measureNs: 2000, result: "I_sensor" });
@@ -64,8 +65,8 @@ describe("sequence rows → PulseSequence", () => {
     rows.push(newRow("difference", channels, measuredResults(rows)));
     const b = buildSequence("all", rows, channels);
     expect(b.errors).toEqual([]);
-    expect(b.sequence!.body.map((op) => op.op)).toEqual(["step", "ramp", "wait", "drive", "measure", "measure", "difference"]);
-    expect(b.sequence!.body[6]).toEqual({ op: "difference", result: "dI", a: "I_sensor", b: "I_b" });
+    expect(b.sequence!.body.map((op) => op.op)).toEqual(["step", "ramp", "wait", "drive", "measure", "capture", "measure", "difference"]);
+    expect(b.sequence!.body[7]).toEqual({ op: "difference", result: "dI", a: "I_sensor", b: "I_b" });
     expect(b.sequence!.body[3]).toMatchObject({ frequency: 1e9, phase: 0 });
   });
 
@@ -233,7 +234,7 @@ describe("stage sweeps with an edited sequence; 1-D sweeps", () => {
     expect(() => stageSweep({ ...base, sequence: { rows: bad, bindings: [{ symbol: "v_P2", target: "" }], channels } })).toThrow(
       /symbol "v_P2" needs an axis.*result "P1" has an axis's name/,
     );
-    expect(() => stageSweep({ ...base, sequence: { rows: [{ op: "wait", fields: { duration: "10" } }], bindings: [], channels } })).toThrow(/measures nothing/);
+    expect(() => stageSweep({ ...base, sequence: { rows: [{ op: "wait", fields: { duration: "10" } }], bindings: [], channels } })).toThrow(/measures or captures nothing/);
   });
 
   it("refuses a number typed over the swept symbol: the inner axis would be unused (the demo's 422)", () => {
@@ -295,5 +296,41 @@ describe("operating point (ADR 0038)", () => {
     const d = dcSweep({ name: "d", levels, inner: { channel: "SG", start: 0, stop: 1, num: 4 }, sensor: "sensor", result: "I" });
     expect(d.levels).toEqual(levels);
     expect("levels" in dcSweep({ name: "d", inner: { channel: "SG", start: 0, stop: 1, num: 4 }, sensor: "sensor", result: "I" })).toBe(false);
+  });
+});
+
+describe("capture rows (ADR 0060)", () => {
+  it("opens a scope window in the shot: a voltage channel, a fixed window, a sample count, a result", () => {
+    const row = newRow("capture", channels);
+    expect(row.fields).toEqual({ channel: "scope1", duration: "1000000", num: "200", result: "trace" });
+    const built = buildSequence("step response", [template[0]!, row], channels);
+    expect(built.errors).toEqual([]);
+    const op = built.sequence!.body[1] as { op: string; channel: string; duration: number; num: number; result: string };
+    expect(op).toEqual({ op: "capture", channel: "scope1", duration: 1000000, num: 200, result: "trace" });
+    expect(measuredResults([template[0]!, row])).toEqual([]); // a capture is not a measure: no difference on it
+  });
+
+  it("refuses a current channel, a symbol window, a bad sample count and a reused result", () => {
+    const bad = (fields: OpRow["fields"]) => buildSequence("x", [{ op: "capture", fields }], channels).errors;
+    expect(bad({ channel: "sensor", duration: "100", num: "2", result: "t" })[0]).toMatch(/captures a voltage/);
+    expect(bad({ channel: "scope1", duration: "t_win", num: "2", result: "t" })[0]).toMatch(/never a symbol/);
+    expect(bad({ channel: "scope1", duration: "100", num: "1", result: "t" })[0]).toMatch(/samples ≥ 2/);
+    const two = buildSequence("x", [template[1]!, { op: "capture", fields: { channel: "scope1", duration: "100", num: "2", result: "I_sensor" } }], channels);
+    expect(two.errors[0]).toMatch(/already a result/);
+  });
+
+  it("a stage sweep with a capture and no measure is a readout", () => {
+    const d = stageSweep({
+      name: "step response",
+      inner: { channel: "P2_pulse", start: 0, stop: 0.1, num: 4 },
+      sensor: "sensor",
+      instrument: "dot",
+      shots: 1,
+      stepNs: 500,
+      measureNs: 2000,
+      result: "I_sensor",
+      sequence: { rows: [template[0]!, newRow("capture", channels)], bindings: [{ symbol: "v_P2", target: "P2" }], channels },
+    });
+    expect(d.stage!.sequence!.body.map((o) => o.op)).toEqual(["step", "capture"]);
   });
 });

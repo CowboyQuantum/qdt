@@ -2,7 +2,8 @@
 // `SymbolBinding`s. A form over the schema, not a timeline (ADR 0035): one row per primitive in time
 // order, one text cell per field. A value cell holds a number, a symbol name, or an affine of one
 // (`v_P2 + 0.002`, `-v_P2`, `0.5*v_P2 - 1e-3`, ADR 0037); a symbol is bound below the table to an axis or
-// a constant. A `difference` row subtracts two earlier measures per shot (chopped readout, ADR 0037). Pure functions: no DOM, no network. They refuse what the server's
+// a constant. A `difference` row subtracts two earlier measures per shot (chopped readout, ADR 0037). A
+// `capture` row opens a scope window in the shot (ADR 0060). Pure functions: no DOM, no network. They refuse what the server's
 // validators would refuse (PulseSequence, SequencerStage), so errors show while typing.
 import type { Affine, Call, ChannelMap, PulseSequence, Symbol as PulseSymbol, SymbolBinding } from "../schema/api";
 
@@ -20,6 +21,7 @@ export const OP_FIELDS = {
   wait: ["duration"],
   drive: ["channel", "frequency", "phase", "amplitude", "duration"],
   measure: ["channel", "duration", "result"],
+  capture: ["channel", "duration", "num", "result"],
   difference: ["result", "a", "b"],
 } as const satisfies { [K in OpKind]: readonly FieldOf<K>[] };
 
@@ -118,13 +120,18 @@ export function buildSequence(name: string, rows: readonly OpRow[], channels: re
       if (field === "channel") {
         if (!channel) errors.push(`${where}: ${t ? `unknown channel "${t}"` : "needs a channel"}`);
         else if (row.op === "measure" && channel.quantity !== "current") errors.push(`${where}: measures a current channel, not "${t}"`);
-        else if (row.op !== "measure" && channel.quantity !== "voltage") errors.push(`${where}: drives a voltage channel, not "${t}"`);
+        else if (row.op === "capture" && channel.quantity !== "voltage") errors.push(`${where}: captures a voltage (scope) channel, not "${t}"`);
+        else if (row.op !== "measure" && row.op !== "capture" && channel.quantity !== "voltage") errors.push(`${where}: drives a voltage channel, not "${t}"`);
         op.channel = t;
       } else if (field === "result") {
         if (!IDENT.test(t)) errors.push(`${where}: result needs a name`);
         else if (results.has(t)) errors.push(`${where}: result "${t}" is already a result in this shot`);
         results.add(t);
         op.result = t;
+      } else if (field === "num") {
+        const n = Number(t.trim());
+        if (t.trim() === "" || !Number.isInteger(n) || n < 2) errors.push(`${where}: num is a whole number of samples ≥ 2`);
+        op.num = n;
       } else if (field === "a" || field === "b") {
         if (!measured.has(t)) errors.push(`${where}: ${field} must name a measure earlier in the shot${measured.size ? ` (${[...measured].join(", ")})` : ""}`);
         else if (field === "b" && t === text("a")) errors.push(`${where}: subtracts "${t}" from itself`);
@@ -143,6 +150,9 @@ export function buildSequence(name: string, rows: readonly OpRow[], channels: re
         }
         if (field === "duration" && typeof v !== "number" && "symbol" in v) {
           errors.push(`${where}: a duration takes a number or a bare symbol, not "${t}"`);
+        }
+        if (row.op === "capture" && field === "duration" && (typeof v !== "number" || v < 1)) {
+          errors.push(`${where}: a capture window is a fixed number of ns ≥ 1, never a symbol (ADR 0060)`);
         }
         const sym = symbolOf(v);
         if (sym) {
@@ -224,6 +234,11 @@ export function newRow(op: OpKind, channels: readonly ChannelMap[], measured: re
       return { op, fields: { channel: voltage, frequency: "1e9", phase: "0", amplitude: "0", duration: "100" } };
     case "measure":
       return { op, fields: { channel: sensor, duration: "1000", result: "I_sensor" } };
+    case "capture": {
+      // a scope channel by the stand convention, else any voltage line
+      const scope = (voltages.find((c) => /scope/i.test(c.logical)) ?? voltages[0])?.logical ?? "";
+      return { op, fields: { channel: scope, duration: "1000000", num: "200", result: "trace" } };
+    }
     case "difference":
       return { op, fields: { result: "dI", a: measured.at(-2) ?? "", b: measured.at(-1) ?? "" } };
   }

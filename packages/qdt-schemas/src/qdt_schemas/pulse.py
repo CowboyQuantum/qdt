@@ -5,8 +5,10 @@ hold a level, ramp, wait, drive at a frequency, measure. Timing is integer nanos
 duration, frequency or amplitude may be a `Symbol` that a sweep binds to an axis or a constant, and
 any level, frequency, phase or amplitude may be an `Affine` of one (`scale·symbol + offset`, ADR 0037).
 A `difference` subtracts two of the shot's measures into a result of its own, per shot (ADR 0037).
-Named `Segment`s are reused by `call`. There is no control flow: loops over axes and shots belong to
-the sweep stage, and a per-backend emitter turns sequence + stage into that backend's
+A `capture` opens a time window on a `WaveformSense` channel at that point of the shot, one record per
+shot (ADR 0060): the shot is the one timeline, and a time-resolved readout hangs off it like an
+integrated one. Named `Segment`s are reused by `call`. There is no control flow: loops over axes and
+shots belong to the sweep stage, and a per-backend emitter turns sequence + stage into that backend's
 `SequencerProgram`. The vocabulary grows only by ADR; it is deliberately not a general pulse language.
 """
 
@@ -114,6 +116,36 @@ class Measure(QdtModel):
     )
 
 
+class Capture(QdtModel):
+    """Open a time window on a `WaveformSense` `channel` here in the shot, into the result stream
+    `result`: one record per shot, `num` samples over `duration`, time counted from this point
+    (ADR 0060). The shot waits for the window. The sequencer triggers the capture; the samples land on
+    the declared grid (ADR 0015). The window is fixed per sweep, so it is never a Symbol.
+    """
+
+    op: Literal["capture"] = Field(default="capture", description="Discriminator.")
+    channel: str = Field(
+        min_length=1, description="Logical WaveformSense channel (ChannelMap.logical)."
+    )
+    duration: int = Field(
+        ge=1, description="Window length in integer nanoseconds, from this point of the shot."
+    )
+    num: int = Field(
+        ge=2, description="Samples in the window: the declared time grid, filled exactly."
+    )
+    result: str = Field(
+        min_length=1,
+        description=(
+            "Result stream name; unique within the sequence; becomes a data variable over the sweep's "
+            "axes, 'shot' when shots are kept, and its time axis."
+        ),
+    )
+
+    @property
+    def duration_s(self) -> float:
+        return self.duration * 1e-9
+
+
 class Difference(QdtModel):
     """`result = a − b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).
 
@@ -140,8 +172,9 @@ class Call(QdtModel):
 
 
 Primitive = Annotated[
-    Step | Ramp | Wait | Drive | Measure | Difference | Call, Field(discriminator="op")
+    Step | Ramp | Wait | Drive | Measure | Capture | Difference | Call, Field(discriminator="op")
 ]
+Expanded = Step | Ramp | Wait | Drive | Measure | Capture | Difference
 
 
 class Segment(QdtModel):
@@ -175,7 +208,7 @@ class PulseSequence(QdtModel):
         for s in self.segments:
             self._expand(s.ops, segments, (s.name,))
         expanded = self._expand(self.body, segments, ())
-        results = [op.result for op in expanded if isinstance(op, Measure | Difference)]
+        results = [op.result for op in expanded if isinstance(op, Measure | Capture | Difference)]
         if len(set(results)) != len(results):
             raise ValueError("result names must be unique within a shot")
         measured: dict[str, str] = {}  # result -> channel, in time order
@@ -190,6 +223,9 @@ class PulseSequence(QdtModel):
                         )
                 if op.a == op.b:
                     raise ValueError(f"difference {op.result!r} subtracts {op.a!r} from itself")
+        captured = [op.channel for op in expanded if isinstance(op, Capture)]
+        if len(set(captured)) != len(captured):
+            raise ValueError("a channel is captured once per shot (ADR 0060)")
         units: dict[str, str] = {}
         for op in expanded:
             for field in ("level", "start", "stop", "frequency", "phase", "amplitude", "duration"):
@@ -219,7 +255,7 @@ class PulseSequence(QdtModel):
                 out.append(op)
         return out
 
-    def expand(self) -> tuple[Step | Ramp | Wait | Drive | Measure | Difference, ...]:
+    def expand(self) -> tuple[Expanded, ...]:
         """The shot with every `call` inlined, in time order."""
         return tuple(self._expand(self.body, {s.name: s for s in self.segments}, ()))
 
@@ -234,19 +270,27 @@ class PulseSequence(QdtModel):
         return out
 
     def results(self) -> tuple[str, ...]:
-        """Result stream names (measures and differences), in time order."""
-        return tuple(op.result for op in self.expand() if isinstance(op, Measure | Difference))
+        """Result stream names (measures, captures and differences), in time order."""
+        return tuple(
+            op.result for op in self.expand() if isinstance(op, Measure | Capture | Difference)
+        )
+
+    def captures(self) -> tuple[Capture, ...]:
+        """The shot's time-resolved readouts (ADR 0060), in time order."""
+        return tuple(op for op in self.expand() if isinstance(op, Capture))
 
     def result_channel(self, result: str) -> str:
-        """The sense channel a result comes from (a difference: that of its `a`)."""
-        ops = {op.result: op for op in self.expand() if isinstance(op, Measure | Difference)}
+        """The channel a result comes from (a difference: that of its `a`)."""
+        ops = {
+            op.result: op for op in self.expand() if isinstance(op, Measure | Capture | Difference)
+        }
         op = ops[result]
         while isinstance(op, Difference):
             op = ops[op.a]
         return op.channel
 
     def channels(self) -> tuple[str, ...]:
-        """Logical channels touched, in first-use order."""
+        """Logical channels touched, in first-use order (a capture's scope channel included)."""
         seen: dict[str, None] = {}
         for op in self.expand():
             ch = getattr(op, "channel", None)
