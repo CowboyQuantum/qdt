@@ -59,3 +59,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0053 | Click-to-set: the server holds the stand's operating point (`/levels`), every sweep inherits it, Flight Deck's map click is the one "up" edge | Accepted (extends 0038; closes the default-operating-point decision) |
 | 0054 | Flight Deck is a workspace of widgets: three columns, plots only in the centre, one Run; themes are data | Accepted |
 | 0055 | Plot panes: any number over the shared stores, following the stream or pinned to a record through the replay stream; six at most (one WebGL2 context each); click stays click-to-set, the cut comes from the ⚙ menu | Accepted (extends 0054) |
+| 0056 | One Run, bound to the compiled plan: the Sweep widget compiles and shows the plan's identity, an edit marks it stale, Run compiles again and runs; the Pulse widget's sequence travels over the bus; the panel shrinks | Accepted (extends 0054) |
