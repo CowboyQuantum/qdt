@@ -72,6 +72,10 @@ export class WebGL2Map implements MapRenderer {
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
   }
 
+  dispose(): void {
+    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+
   /** Allocate the texture for a rows x cols map (texture row 0 = outer index 0 = bottom of the view). */
   resize(rows: number, cols: number): void {
     const gl = this.gl;

@@ -51,7 +51,7 @@ describe.each(["webgl2", "cpu"])("renderer %s", (renderer) => {
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     const { error, name, width, height, pixels } = await page.evaluate(() => {
       const r = window.__flightdeckRenderer!;
-      const c = document.getElementById("plot") as HTMLCanvasElement;
+      const c = document.querySelector(".pane canvas.map") as HTMLCanvasElement;
       return { error: window.__flightdeck!.error, name: r.name, width: c.width, height: c.height, pixels: Array.from(r.pixels()) };
     });
     await page.close();

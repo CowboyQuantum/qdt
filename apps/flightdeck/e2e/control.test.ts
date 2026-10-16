@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Browser } from "playwright-core";
+import { chromium, type Browser, type Page } from "playwright-core";
 import { preview, type PreviewServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
@@ -16,6 +16,13 @@ const API_PORT = 18700 + Math.floor(Math.random() * 500);
 const WS_PORT = API_PORT + 1000;
 
 let server: PreviewServer;
+
+/** The ⚙ menu of the n-th plot pane, opened if it is not. */
+async function plotMenu(page: Page, n = 0) {
+  const pane = page.locator(".col.center .pane").nth(n);
+  if ((await pane.locator(".menu.plot").count()) === 0) await pane.locator("[data-menu]").click();
+  return pane.locator(".menu.plot");
+}
 let browser: Browser;
 let backend: ChildProcess;
 let app = "";
@@ -74,8 +81,12 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   // run → live → completed → record listed
   await page.waitForFunction(() => /completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => (document.querySelector("#records")?.textContent ?? "").includes("e2e stability"));
-  expect(await page.inputValue("#datasets")).not.toBe("");
   expect(await page.textContent("#status")).toMatch(/heatmap/);
+  const menu = await plotMenu(page);
+  expect(await menu.locator("select[name=dataset]").inputValue()).toBe("live");
+  expect(await menu.locator("select[name=dataset] option").count()).toBe(2); // live + the run's Dataset
+  await page.keyboard.press("Escape");
+  expect(await page.locator(".menu.plot").count()).toBe(0);
 
   // analyse the record with the curated method, then put the overlays on the live map
   await page.locator("#records li", { hasText: "e2e stability" }).first().getByRole("button", { name: "analyse" }).click();
@@ -91,7 +102,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   // the overlay canvas gets painted on the next frames: red segment pixels (axis labels are white)
   await page.waitForFunction(
     () => {
-      const c = document.getElementById("overlay") as HTMLCanvasElement;
+      const c = document.querySelector(".pane canvas.overlay") as HTMLCanvasElement;
       const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
       let red = 0;
       for (let i = 0; i < d.length; i += 4) if (d[i + 3]! > 0 && d[i]! > 200 && d[i + 1]! < 140) red++;
@@ -102,7 +113,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   );
   // click-to-set (ADR 0053): a click on the map offers the point under it; setting it holds the levels on
   // the stand, and the next compiled sweep inherits what it does not move itself
-  const box = (await page.locator("#overlay").boundingBox())!;
+  const box = (await page.locator(".pane canvas.overlay").first().boundingBox())!;
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   // the map's x axis is the inner (P2) axis, so P2 is listed first
   await page.waitForFunction(() => /clicked: P2 = .* · P1 = /.test(document.querySelector("#setpoint")?.textContent ?? ""));
@@ -115,9 +126,28 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.waitForFunction(() => /held: nothing/.test(document.querySelector("#held-levels")?.textContent ?? ""));
 
   // the view options are client-side: switching to the derivative and swapping axes keeps the view alive
-  await page.selectOption("#transform", "grad");
-  await page.check("#swap");
+  const view = await plotMenu(page);
+  await view.locator("select[name=transform]").selectOption("grad");
+  await view.locator("input[name=swap]").check();
   await page.waitForFunction(() => /\|gradient\|.*axes swapped/.test(document.querySelector("#status")?.textContent ?? ""));
+  await page.keyboard.press("Escape");
+
+  // History (ADR 0055): the record opens in a second plot pane, pinned to it, while Plot 1 follows the stream
+  const hist = page.locator(".pane[data-widget=history]");
+  await hist.locator("[data-refresh]").click();
+  await hist.locator("tr", { hasText: "e2e stability" }).first().waitFor();
+  await hist.locator("tr", { hasText: "e2e stability" }).first().getByRole("button", { name: "open" }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".col.center .pane").length === 2);
+  await page.waitForFunction(() => /pinned · record/.test(document.querySelectorAll(".col.center .pane .src")[1]?.textContent ?? ""), null, { timeout: 20_000 });
+  expect(await page.locator(".col.center .pane .src").first().textContent()).toMatch(/^live/);
+  await page.waitForFunction(() => /Plot 2/.test(document.querySelector(".pane[data-widget=history] tr.open td.shown")?.textContent ?? ""));
+  // each pane has its own cut: Plot 2's slider moves only its rule
+  const second = await plotMenu(page, 1);
+  await second.locator("input[name=cut]").fill("0.2");
+  expect(await second.locator(".mono").textContent()).toMatch(/P2 = /);
+  await page.keyboard.press("Escape");
+  await page.locator(".col.center .pane").nth(1).locator("[data-close]").click();
+  await page.waitForFunction(() => document.querySelectorAll(".col.center .pane").length === 1);
   await page.close();
 });
 
@@ -168,12 +198,14 @@ it("edits the pulse sequence, binds its symbols, and runs it; then a 1-D sweep d
   await page.click("#sweep button[type=submit]");
   await page.waitForFunction(() => /e2e pulsed · completed → record/.test(document.querySelector("#runs")?.textContent ?? ""), null, { timeout: 60_000 });
   // the recorded difference is a variable of its own; any two same-shape variables can be subtracted in the view
-  expect((await page.locator("#variable option").allTextContents()).sort()).toEqual(["I_ref", "I_sensor", "dI"]);
-  await page.selectOption("#variable", "I_sensor");
-  await page.selectOption("#minus", "I_ref");
+  const vars = await plotMenu(page);
+  expect((await vars.locator("select[name=variable] option").allTextContents()).sort()).toEqual(["I_ref", "I_sensor", "dI"]);
+  await vars.locator("select[name=variable]").selectOption("I_sensor");
+  await vars.locator("select[name=minus]").selectOption("I_ref");
   await page.waitForFunction(() => /· I_sensor − I_ref · heatmap/.test(document.querySelector("#status")?.textContent ?? ""));
-  await page.selectOption("#variable", "dI");
+  await vars.locator("select[name=variable]").selectOption("dI");
   await page.waitForFunction(() => /· dI · heatmap/.test(document.querySelector("#status")?.textContent ?? ""));
+  await page.keyboard.press("Escape");
 
   // 1-D: no outer axis, back to the template
   await page.selectOption("#sweep select[name=outer_channel]", "");
@@ -225,7 +257,7 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
   // was shown on this page before, so the WebGL map canvas is hidden and the trace is really drawn.
   await page.waitForFunction(
     () => {
-      const c = document.getElementById("overlay") as HTMLCanvasElement;
+      const c = document.querySelector(".pane canvas.overlay") as HTMLCanvasElement;
       const d = c.getContext("2d")?.getImageData(0, 0, c.width, c.height).data;
       if (!d) return false;
       let red = 0;
@@ -234,7 +266,7 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
         if (d[i]! > 200 && d[i + 1]! < 120 && d[i + 2]! < 120) red++;
         else if (d[i + 1]! > 150 && d[i]! < 120) teal++;
       }
-      return red > 50 && teal > 50 && (document.getElementById("plot") as HTMLElement).style.visibility === "hidden";
+      return red > 50 && teal > 50 && (document.querySelector(".pane canvas.map") as HTMLElement).style.visibility === "hidden";
     },
     null,
     { timeout: 20_000 },

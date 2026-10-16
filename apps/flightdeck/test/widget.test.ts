@@ -4,7 +4,7 @@ import { Bus, type Events, ScopedBus } from "../src/workspace/bus";
 import { type Widget, type WidgetContext, WidgetRegistry } from "../src/workspace/widget";
 
 const el = () => ({ textContent: "" }) as unknown as HTMLElement;
-const ctx = () => ({ api: {}, datasets: {}, params: new URLSearchParams(), layout: { addPlotPane() {} } }) as unknown as Omit<WidgetContext, "bus">;
+const ctx = () => ({ api: {}, datasets: {}, params: new URLSearchParams(), layout: { addPlotPane: () => null, plotPanes: () => [] } }) as unknown as Omit<WidgetContext, "bus" | "paneId">;
 
 const widget = (id: string, extra: Partial<Widget> = {}, onMount?: (c: WidgetContext) => () => void): Widget => ({
   id,
@@ -61,7 +61,7 @@ describe("WidgetRegistry", () => {
     expect(() => r.register(widget("empty"))).toThrow(/twice/);
     expect(r.ids()).toEqual(["plot", "control", "empty"]);
     expect(r.selectable().map((w) => w.id)).toEqual(["control", "empty"]);
-    const m = r.mount("control", el(), el(), new Bus(), ctx());
+    const m = r.mount("control", "p1", el(), el(), new Bus(), ctx());
     expect(r.selectable().map((w) => w.id)).toEqual(["empty"]);
     expect(r.selectable("control").map((w) => w.id)).toEqual(["control", "empty"]); // the pane that has it keeps it
     m.unmount();
@@ -72,12 +72,13 @@ describe("WidgetRegistry", () => {
     const bus = new Bus();
     let unmounted = 0;
     const forgetful = widget("forgetful", {}, (c) => {
+      expect(c.paneId).toBe("p1");
       c.bus.on("say", () => {});
       c.bus.on("stream:dataset", () => {});
       return () => unmounted++;
     });
     const r = new WidgetRegistry().register(forgetful);
-    const m = r.mount("forgetful", el(), el(), bus, ctx());
+    const m = r.mount("forgetful", "p1", el(), el(), bus, ctx());
     expect(bus.count()).toBe(2);
     expect(r.instances("forgetful")).toBe(1);
     m.unmount();
@@ -91,9 +92,9 @@ describe("WidgetRegistry", () => {
     let mounts = 0;
     const r = new WidgetRegistry().register(widget("control", { single: true }, () => (mounts++, () => {})));
     const bus = new Bus();
-    const a = r.mount("control", el(), el(), bus, ctx());
+    const a = r.mount("control", "p1", el(), el(), bus, ctx());
     const body = el();
-    const b = r.mount("control", body, el(), bus, ctx());
+    const b = r.mount("control", "p2", body, el(), bus, ctx());
     expect(mounts).toBe(1);
     expect(body.textContent).toMatch(/already open/);
     expect(r.instances("control")).toBe(1);
@@ -101,13 +102,13 @@ describe("WidgetRegistry", () => {
     expect(r.instances("control")).toBe(1);
     a.unmount();
     expect(r.instances("control")).toBe(0);
-    r.mount("control", el(), el(), bus, ctx());
+    r.mount("control", "p1", el(), el(), bus, ctx());
     expect(mounts).toBe(2);
   });
 
   it("an unknown widget id mounts the empty widget, so a stale layout never breaks a pane", () => {
     const r = new WidgetRegistry().register(widget("empty"));
-    expect(r.mount("gone", el(), el(), new Bus(), ctx()).widget.id).toBe("empty");
-    expect(() => new WidgetRegistry().mount("gone", el(), el(), new Bus(), ctx())).toThrow(/no widget/);
+    expect(r.mount("gone", "p1", el(), el(), new Bus(), ctx()).widget.id).toBe("empty");
+    expect(() => new WidgetRegistry().mount("gone", "p1", el(), el(), new Bus(), ctx())).toThrow(/no widget/);
   });
 });

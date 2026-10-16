@@ -19,6 +19,13 @@ export interface Events {
   "run:next": { summary: string };
   /** A point on a map was clicked: coordinate names and values (rule 8: never a channel). */
   "map:click": { point: { name: string; unit: string; value: number }[] };
+  /** Open a stored record in a plot pane: the pane pins itself to the Dataset that is the record, by its registry
+   * ref (a replay) or by its id (the record's plan id, when the run that made it is still on the stream). */
+  "plot:open": { recordId: string; planId: string; paneId: string };
+  /** What a plot pane shows now (null when it closes), for "shown in" lists. */
+  "plot:view": { paneId: string; datasetId: string | null; registryRef: string | null; name: string };
+  /** The layout was re-rendered: panes added, closed or re-ordered. */
+  "layout:changed": Record<string, never>;
   /** Something to tell the user: a status line or an error. */
   say: { text: string; error: boolean };
 }

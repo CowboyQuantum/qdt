@@ -4,25 +4,29 @@
 > A fresh session must be able to continue from this file alone.
 
 **Current step:** 6b — Flight Deck workspace → `docs/steps/06b-flightdeck-workspace.md` (IN PROGRESS, opened
-2026-10-15 on the human's "go with 6b"; ADR 0054 accepted with it). Step 6 is DONE (closed 2026-10-15; its L3
-confirmation is the first fridge task, below). Step 7 waits for manager sign-off.
-**Branch:** `step-6b/shell` (PR against `main`; the human merges). PRs #25–#51 merged 2026-10-14/15.
-**Last session:** 2026-10-15, Step 6b session 1 (not at the bench). **The shell**, deliverable 1 of six. Themes
-as data (`apps/flightdeck/themes/{slate,paper,steel}.json` + `theme.schema.json`, validated by
-`workspace/theme.ts`; load/export/remember per browser; a closed flag list becomes `deco-*` classes; a theme
-can never inject CSS). The top strip (stand, device, source, live pill, next-run line, one Run, telemetry,
-progress, messages, replay picker, theme menu). The layout model (`workspace/layout.ts`, pure, tested), the
-widget contract and registry with a bus scoped per mount (`widget.ts`), the typed bus (`bus.ts`), the renderer
-(`workspace.ts`, panes reconciled by id, pointer + keyboard gutters). Widgets: `plot` (the old stage, one
-instance, selects in its pane head), `control` (the Step 4b panel mounted unchanged), `empty`. `main.ts` is
-wiring. No behaviour change: the six existing e2e tests pass untouched.
+2026-10-15). Step 6 is DONE (closed 2026-10-15; its L3 confirmation is the first fridge task, below). Step 7
+waits for manager sign-off.
+**Branch:** `step-6b/plot-panes` (PR against `main`; the human merges). PRs #25–#52 merged 2026-10-14/16.
+**Last session:** 2026-10-15/16, Step 6b session 2 (not at the bench). **Plot panes and History**, deliverable
+2 of six (ADR 0055). The `plot` widget is any number of centre panes over the shared `Datasets`, each with its
+own `MapRenderer` (disposed when the pane closes), view options and line cut. A pane follows the stream (the
+newest Dataset as it arrives) or is pinned to one Dataset from its ⚙ menu (dataset, variable, minus, transform,
+swap axes, cut; focus-trapped, Escape closes and returns focus). Only following panes drive the strip's pill,
+telemetry and progress. `history` lists `/records`, searches, shows which panes show a record, and opens one
+in an existing or a new pane: the server replays it on the stream and the pane pins itself to the Dataset
+that is the record (by registry ref, or by the record's plan id when its run is still on the stream, since
+the server then publishes only the overlays). Six panes at most (`MAX_PLOT_PANES`, one WebGL2 context each;
+closes that open decision). The full display map (stack mean → transform → swap) is one pure function and
+two panes over one store are byte-identical. The e2e tests now address panes by position and menu, never by
+id; the control e2e opens the run's record from History into Plot 2 while Plot 1 follows live and moves Plot
+2's cut on its own.
 
 ## Step 6b deliverables (step file; one session each)
 | # | Deliverable | State |
 |---|---|---|
-| 1 | Shell: themes as data, strip, layout model, widget registry, bus; panel mounted unchanged | ✔ session 1 |
-| 2 | Plot panes: N instances over the shared stores, ⚙ menu, follow-live or pinned; History widget | next |
-| 3 | Sweep + Pulse widgets; Run moves to the strip, bound to the compiled plan with a stale marker | — |
+| 1 | Shell: themes as data, strip, layout model, widget registry, bus; panel mounted unchanged | ✔ session 1 (ADR 0054) |
+| 2 | Plot panes: N instances over the shared stores, ⚙ menu, follow-live or pinned; History widget | ✔ session 2 (ADR 0055) |
+| 3 | Sweep + Pulse widgets; Run moves to the strip, bound to the compiled plan with a stale marker | next |
 | 4 | Levels (operating point) widget with readbacks (`GET /levels` + `LevelSense`, own ADR); Virtual gates widget | — |
 | 5 | Methods + Tune-up widgets; `panel.ts` deleted; `e2e/control.test.ts` migrated | — |
 | 6 | Script widget placeholder | — |
@@ -35,33 +39,33 @@ wiring. No behaviour change: the six existing e2e tests pass untouched.
 3. A dated report in `bench/reports/` (the ladder has no fridge report format yet; write one with the first run).
 
 ## Done
-- **Steps 0–6 DONE.** ADR 0001–0054. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021), stand/activity/pulse
+- **Steps 0–6 DONE.** ADR 0001–0055. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021), stand/activity/pulse
   (0022; amended additively by 0037, 0038, 0047, 0049), identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033;
   Step 6 objects beside it by 0048–0050), control (0036; amended additively by 0046; `TuneUp` beside it by
   0050). Registry DDL v3 (0026, 0029, 0050).
 - **Step 6:** `qdt-tuning`; three nodes; virtual gates; the tune-up API; the held operating point and `/levels`;
   Flight Deck's Tune-up section and click-to-set.
-- **Step 6b so far:** the shell (above). `e2e/workspace.test.ts`: default layout, theme on `:root`, split/close
-  persisted across a reload, keyboard gutters, the theme menu.
+- **Step 6b so far:** the shell (session 1); plot panes and History (session 2). Widgets: `plot`, `control`
+  (the Step 4b panel, unchanged, temporary), `history`, `empty`. Default layout: control | plot | history.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
 - 394 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
-  hardware-only in `bench/`; Flight Deck 102 unit tests and 9 e2e.
+  hardware-only in `bench/`; Flight Deck 107 unit tests and 9 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6b/shell` awaits the human.
+- Nothing uncommitted. PR for `step-6b/plot-panes` awaits the human.
 
 ## Known broken / not yet real
-- **One plot pane this session**: the `plot` widget is single-instance (its canvases and selects keep the ids the
-  e2e tests drive), so the centre's `+` is disabled until deliverable 2. The right column starts with an `empty`
-  pane because a column keeps its last pane; the only other widget is `control`, also single-instance.
+- **No colormap in the ⚙ menu**: the renderers share one viridis formula (shader and CPU oracle); a second
+  colormap is a renderer change with pixel tests, its own slice.
+- **Per-pane view state (follow/pinned, variable, transform, swap, cut) does not survive a reload**; the layout
+  persists which panes exist. A `view` field on the persisted pane is an additive change when wanted.
 - **The strip's Run and next-run line read the control panel's form** (the panel is unchanged): two Run
-  controls until deliverable 3 binds the strip's to the compiled plan. The strip's stand/device come from the
-  API; without a server they read "?".
-- **No Google Fonts link**: the Plex stacks fall back to system fonts (the bench is offline); a theme may name any
-  installed font.
-- **A pane's widget keeps polling after close** only where the old panel does (`follow` loops end at a terminal
-  state); the registry disposes bus subscriptions, not the panel's own timers.
+  controls until deliverable 3. The panel's Records list and "show" duplicate History until deliverable 5.
+  The strip's stand/device come from the API; without a server they read "?".
+- **History refreshes on a stream Dataset's final chunk (twice, 0.5 s and 3 s later)** because the record lands
+  after the run finishes; there is no `records:changed` event from the server. A manual refresh button exists.
+- **No Google Fonts link**: the Plex stacks fall back to system fonts (the bench is offline).
 - **`provenance_check.sh` matches its terms as bare substrings**; a word-boundary pattern is a one-line fix.
 - Step 6 carry-overs: the held operating point is server memory (a `stand_state` table later); click-to-set only
   for axes named after stand DC channels; `flank_offset_v` is a judgment (0052); the diamonds method needs a cold
@@ -74,17 +78,18 @@ wiring. No behaviour change: the six existing e2e tests pass untouched.
   CI; `FINISH_LINE.md` TODO (human); Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Sessions:** Step 6b deliverable 2, **plot panes**: `src/widgets/plot.ts` becomes N instances over the shared
-`Datasets` (each its own `MapRenderer`, view options and cut cursor; follow-live or pinned to a dataset; the
-selects move into a ⚙ head menu that is focus-trapped and closes on Escape), the WebGL2 context cap decided
-(Open decisions: cap at ~6 or fall back to `cpu`), `src/widgets/history.ts` over `/records` with "shown in" and
-open-in-plot; `render.test.ts` gains the two-panes source-equivalence check; the e2e ids (`#plot`, `#overlay`,
-`#datasets`, …) become per-pane selectors and `control.test.ts` follows. Then deliverables 3–6 in order.
+**Sessions:** Step 6b deliverable 3, **Sweep + Pulse widgets**: extract the sweep form (kind, axes, sensor,
+shots, capture, operating-point levels, options) and the pulse-sequence editor from `panel.ts` into
+`src/widgets/sweep.ts` and `src/widgets/pulse.ts` over the unchanged pure models (`control/sweeps.ts`,
+`control/sequence.ts`); the sweep widget compiles (`POST /compile`) and publishes the plan's identity on the
+bus; the strip's Run binds to that compiled plan, shows its id, marks it stale when an editor changes after
+the compile, and starts the run; editors never run. The panel keeps runs/records/analysis/tune-up/levels
+until deliverables 4–5. e2e: compile → Run from the strip → record in History → open in Plot 2 → overlay.
 
 **Human:**
-1. Merge the PR; look at the shell in `pnpm dev` (the theme menu, the gutters, split/close on the right column).
-2. Say whether the strip's Run should already hide the panel's own run button (two Run controls until
-   deliverable 3), and whether a Google Fonts link is wanted for online use.
+1. Merge the PR; try the ⚙ menu and History's "open in a new pane" in `pnpm dev` against `python -m qdt_server`.
+2. Say whether the panel's own run button should be hidden now that the strip's Run exists, and whether a
+   Google Fonts link is wanted.
 3. Step 6's Open decisions (its file) and the QDevil report still wait.
 
 ## Direction recorded (human)
@@ -105,13 +110,13 @@ open-in-plot; `render.test.ts` gains the two-panes source-equivalence check; the
   tune-up before a third node (ADR 0050); `qdt-telemetry` ingests, does not collect (ADR 0051); the third node is
   the sensor operating point (ADR 0052); click-to-set (ADR 0053); "let's strike the DAPS development for now";
   the Step 6b spec arrives as a chat patch (ADR 0054); "let's put off L3 and close step 6": Step 6 closes on the
-  simulator, the L3 confirmation is the first fridge task; **"go with 6b"**: Step 6b opens, ADR 0054 is accepted,
-  the shell is session 1.
+  simulator, the L3 confirmation is the first fridge task; "go with 6b": Step 6b opens, ADR 0054 is accepted,
+  the shell is session 1; PR #52 merged, so session 2 (plot panes, ADR 0055) followed without a new word.
 
 ## Decisions pending
-- Step 6b's Open decisions (its file): layout as a schema object; the WebGL2 context cap; `/levels` readback
-  semantics; the script sandbox; the release mirror's first widgets; themes per browser or in the registry.
-- Two Run controls until deliverable 3; a Google Fonts link for online use.
+- Step 6b's Open decisions (its file): layout as a schema object; `/levels` readback semantics; the script
+  sandbox; the release mirror's first widgets; themes per browser or in the registry.
+- Two Run controls until deliverable 3; a Google Fonts link for online use; a colormap choice (renderer slice).
 - Step 6's Open decisions (its file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
   a rest level at a sweep's end; the time-series view's remainder; the deferred physics.
 - A `tuneups` table and a `stand_state` table; resume and parallel branches.

@@ -16,6 +16,8 @@ export interface MapRenderer {
   /** The drawn canvas as RGBA, top row first (pixel tests). */
   pixels(): Uint8Array;
   readonly shape: [number, number];
+  /** Release the canvas's drawing resources when its pane closes; a WebGL context is lost on purpose. */
+  dispose(): void;
 }
 
 // regl was benchmarked as a candidate and rejected (ADR 0013; code at d9909b3).

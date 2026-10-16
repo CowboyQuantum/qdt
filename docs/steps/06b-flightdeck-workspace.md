@@ -66,7 +66,7 @@ Ordered; one session each.
 ## Open decisions
 - Layout as a schema object (shareable workspaces through the registry) — deferred; revisit if a second
   user needs the same workspace.
-- WebGL2 context cap: browsers allow ~8–16 contexts; cap plot panes (e.g. 6) or fall back to `cpu` beyond it.
+- ~~WebGL2 context cap~~ — closed by ADR 0055: six plot panes at most; a closed pane loses its context; the CPU renderer is the fallback when a context cannot be made.
 - `GET /levels` readback semantics when a channel has no `LevelSense` (null vs. omitted).
 - Script sandbox (server-side execution of restricted measurement scripts) — separate ADR.
 - Which widgets appear in the release mirror's first public build.
@@ -90,3 +90,15 @@ change: the six Step 4b–6 e2e tests pass untouched; `e2e/workspace.test.ts` (3
 theme on `:root`, split/close/persist, the keyboard gutters and the theme menu; 28 unit tests for layout, widget,
 bus and theme. Left for deliverable 2: N plot panes (the centre's `+` is disabled while `plot` is single), the
 ⚙ menu, history; the WebGL2 context cap (Open decisions).
+Session 2 (2026-10-15): **plot panes and History** (deliverable 2, ADR 0055). `plot` is N centre panes over the
+shared `Datasets`, each with its own `MapRenderer` (disposed on close), view options and line cut; a pane follows
+the stream or is pinned to one Dataset from its ⚙ menu (dataset, variable, minus, transform, swap, cut;
+focus-trapped, Escape closes); only following panes drive the strip. `history` (`src/widgets/history.ts`) lists
+`/records`, searches, shows "shown in" from what panes announce (`plot:view`), and opens a record in an existing
+or new pane: the server replays it and the pane pins itself to the Dataset that is the record (registry ref, or
+the record's plan id when its run is still on the stream). Six panes at most (`MAX_PLOT_PANES`; closes the
+WebGL2 context cap decision). The full display map is one pure function (`render/display.ts`); two panes over
+one store are byte-identical (`render.test.ts`). The e2e tests address panes by position and menu, never by id;
+`control.test.ts` opens the run's record from History into Plot 2 while Plot 1 follows live. Not done: colormap
+in the menu (one viridis formula shared by shader and oracle; a renderer slice of its own); per-pane view state
+across a reload. Next: deliverable 3, the Sweep and Pulse widgets with Run bound to the compiled plan.
