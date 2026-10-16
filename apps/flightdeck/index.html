@@ -158,6 +158,17 @@
       .matrix .lab { color: var(--text-2); display: flex; align-items: center; justify-content: center; padding: 2px; }
       .matrix .lab.stage { color: var(--text-3); text-decoration: line-through; }
 
+      /* ---- widget: script (placeholder) ---- */
+      .code { display: grid; grid-template-columns: 1fr 200px; height: 100%; }
+      .code textarea { resize: none; border: none; background: var(--panel); color: var(--text); padding: 10px 12px; font: 0.93em/1.5 var(--mono); height: 100%; width: 100%; outline: none; }
+      .code .api { border-left: 1px solid var(--line); padding: 10px; font-size: 0.86em; overflow: auto; }
+      .code .api h4 { margin: 0 0 6px; font-size: 1em; font-weight: 600; color: var(--text-2); }
+      .code .api code { font-family: var(--mono); display: block; padding: 2px 0; color: var(--text-2); }
+      .code .lint { margin-top: 10px; padding: 6px 8px; border-radius: var(--r); border: 1px solid var(--line); color: var(--text-2); }
+      .code .lint:empty { display: none; }
+      .code .lint.bad { border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); color: var(--warn); }
+      @media (max-width: 900px) { .code { grid-template-columns: 1fr; } .code .api { border-left: none; border-top: 1px solid var(--line); } }
+
       /* ---- form widgets: sweep, pulse, analysis, tune-up ---- */
       .form-widget { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; font-size: 0.93em; }
       .form-widget h3 { margin: 10px 0 2px; font-size: 1em; color: var(--text-2); }

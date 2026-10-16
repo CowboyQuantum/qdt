@@ -18,6 +18,7 @@ import { historyWidget } from "./widgets/history";
 import { levelsWidget } from "./widgets/levels";
 import { plotWidget } from "./widgets/plot";
 import { pulseWidget } from "./widgets/pulse";
+import { scriptWidget } from "./widgets/script";
 import { sweepWidget } from "./widgets/sweep";
 import { tuneupWidget } from "./widgets/tuneup";
 import { Bus } from "./workspace/bus";
@@ -31,7 +32,7 @@ const params = new URLSearchParams(location.search);
 const api = new ApiClient(apiBase(params));
 const bus = new Bus();
 const datasets = new Datasets();
-const registry = new WidgetRegistry().register(plotWidget).register(emptyWidget).register(historyWidget).register(sweepWidget).register(pulseWidget).register(levelsWidget).register(gatesWidget).register(analysisWidget).register(tuneupWidget);
+const registry = new WidgetRegistry().register(plotWidget).register(emptyWidget).register(historyWidget).register(sweepWidget).register(pulseWidget).register(levelsWidget).register(gatesWidget).register(analysisWidget).register(tuneupWidget).register(scriptWidget);
 
 const themes = new ThemeManager(safeStorage(), applyTheme, matchMedia("(prefers-color-scheme: light)").matches);
 themes.apply();

@@ -87,7 +87,17 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   expect(await page.locator(".col.right .gutter.h").count()).toBe(3);
   // the new pane may take any widget that is not a busy single (every form widget is open already)
   const options = await right.nth(3).locator(".picker option").allTextContents();
-  expect(options).toEqual(["Empty", "History", "Virtual gates"]);
+  expect(options).toEqual(["Empty", "History", "Virtual gates", "Script"]);
+  // the Script placeholder (ADR 0059): stage lints against the allowed API and says nothing ran
+  await right.nth(3).locator(".picker").selectOption("script");
+  const script = page.locator(".pane[data-widget=script]");
+  await script.locator("textarea[name=script]").fill("qdt.run(qdt.sweep(axes=[]))\nqdt.erase_everything()");
+  await script.locator("[data-stage]").click();
+  expect(await script.locator("[data-report]").textContent()).toMatch(/line 2: qdt\.erase_everything is not an allowed call/);
+  await script.locator("textarea[name=script]").fill("qdt.run(qdt.sweep(axes=[]))");
+  await script.locator("[data-stage]").click();
+  expect(await script.locator("[data-report]").textContent()).toMatch(/staged: .* nothing was run/);
+  await right.nth(3).locator(".picker").selectOption("empty");
   // the centre splits into a second plot pane that follows the stream too, with its own renderer and cut
   await page.locator(".col.center .pane [data-split]").first().click();
   expect(await page.locator(".col.center .pane .title").allTextContents()).toEqual(["Plot 1", "Plot 2"]);

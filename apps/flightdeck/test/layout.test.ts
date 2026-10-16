@@ -22,7 +22,7 @@ import {
   type Layout,
 } from "../src/workspace/layout";
 
-const KNOWN = ["plot", "empty", "history", "sweep", "pulse", "levels", "gates", "analysis", "tuneup"];
+const KNOWN = ["plot", "empty", "history", "sweep", "pulse", "levels", "gates", "analysis", "tuneup", "script"];
 /** The default layout with one pane per column: the split/close arithmetic reads best from there. */
 const single = () => {
   let l = defaultLayout();
