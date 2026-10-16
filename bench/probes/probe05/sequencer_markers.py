@@ -17,9 +17,9 @@ digital outputs wired to the scope's EXT TRIG input and to the QDAC-II's externa
 Wiring (all BNC):
     OPX LF-FEM ao1 → scope ch1, 50 Ω          (the analog edge)
     OPX do1        → scope EXT TRIG IN         (the scope's trigger line)
-    OPX do2        → scope ch2, 1 MΩ           (marker section: the marker itself, level and width)
-    OPX do2        → QDAC-II ext1 (rear)       (qdac section: move the same cable)
-    QDAC ch01      → scope ch3, 1 MΩ           (qdac section: the staircase)
+    OPX do3        → scope ch3, 1 MΩ           (marker section: a copy of the marker, level and width)
+    OPX do2        → QDAC-II ext1 (rear)       (qdac section: the DAC's trigger line)
+    QDAC ch01      → scope ch2, 1 MΩ           (qdac section: the staircase; --qdac-scope-channel)
 
 The OPX is driven through the driver's own config (`Opx1000.config()` with the two lines), so the
 elements, the marker pulse and `MARKER_NS` are the ones a sweep will use. The scope is driven through
@@ -28,7 +28,8 @@ through its transport for the single-shot records of the other sections, as Prob
 
     uv run python bench/probes/probe05/sequencer_markers.py --opx <qm-host> \\
         --scope "TCPIP::<scope>::5025::SOCKET" --qdac "ASRL/dev/cu.usbserial-NNNN::INSTR" \\
-        [--fem 1] [--sections marker,pacing,qdac] [--qdac-channel 1] [--out bench/fixtures/probe05]
+        [--fem 1] [--sections marker,pacing,qdac] [--qdac-channel 1] [--qdac-scope-channel 2] \\
+        [--out bench/fixtures/probe05]
 """
 
 import argparse
@@ -79,6 +80,9 @@ class Bench:
                 ChannelMap(
                     logical="dac_trigger", instrument="opx", channel="do2", quantity="voltage"
                 ),
+                ChannelMap(
+                    logical="marker_copy", instrument="opx", channel="do3", quantity="voltage"
+                ),
             ),
         )
         self.scope_inst = InstrumentConfig(
@@ -91,6 +95,9 @@ class Bench:
             ChannelMap(logical=f"ch{n}", instrument="scope0", channel=str(n), quantity="voltage")
             for n in (1, 2, 3, 4)
         )
+        # a `:DIGitize` left waiting by an earlier session blocks the scope's `*OPC?` until a trigger
+        # arrives: fire a few markers before the first query that waits on it
+        self.execute(self.program_markers(5, 0.05, ("do1", "do3"), step=False)).halt()
         self.scope = InfiniiVisionX.from_config(self.scope_inst, self.scope_channels)
         self._s = self.scope._t
         self._s._r.timeout = 20000
@@ -101,9 +108,9 @@ class Bench:
     def qm(self):
         return self.opx._ensure()
 
-    def program_markers(self, n: int, spacing_s: float, lines: tuple[str, ...], step: bool):
-        """`n` repeats, `spacing_s` apart: a marker on each of `lines` and, with `step`, a 2 µs
-        step of STEP_V on ao1 at the same moment (every element aligned first)."""
+    def program_markers(self, n: int | None, spacing_s: float, lines: tuple[str, ...], step: bool):
+        """`n` repeats (None: endless), `spacing_s` apart: a marker on each of `lines` and, with
+        `step`, a 2 µs step of STEP_V on ao1 at the same moment (every element aligned first)."""
         from qm import qua
 
         from qdt_lab.drivers.qm.opx1000 import CLOCK_NS, _element, _trigger_element
@@ -112,7 +119,8 @@ class Bench:
         spacing = max(4, round(spacing_s * 1e9 / CLOCK_NS))
         with qua.program() as prog:
             k = qua.declare(int)
-            with qua.for_(k, 0, k < n, k + 1):
+            loop = qua.infinite_loop_() if n is None else qua.for_(k, 0, k < n, k + 1)
+            with loop:
                 qua.align()
                 for line in lines:
                     qua.play("marker", _trigger_element(line))
@@ -143,8 +151,7 @@ class Bench:
         return prog
 
     def execute(self, prog):
-        job = self.qm().execute(prog)
-        return job
+        return self.qm().execute(prog)
 
     # --- scope front panel and single-shot records (as Probe 04) -----------------------------------
 
@@ -260,20 +267,21 @@ def edges(t: np.ndarray, y: np.ndarray, level: float, rising: bool = True) -> np
 
 
 def section_marker(b: Bench, a, findings: dict) -> None:
-    """Level and width of the marker on ch2, delay from the EXT trigger (do1) to the analog edge on ch1."""
+    """Level and width of the marker (do3's copy on ch3), delay from the EXT trigger (do1) to the
+    analog edge on ch1."""
     rows = []
     # the first pass finds the marker's level with a generous EXT level; later passes use half of it
     ext_level = 0.5
     for k in range(MARKER_REPEATS):
-        b.front_panel({1: (0.1, 0.1), 2: (1.0, 1.5)}, MARKER_WINDOW_S, ext_level)
+        b.front_panel({1: (0.1, 0.1), 3: (1.0, 1.5)}, MARKER_WINDOW_S, ext_level)
         b.arm_single()
-        job = b.execute(b.program_markers(1, MARKER_SPACING_S, ("do1", "do2"), step=True))
+        job = b.execute(b.program_markers(1, MARKER_SPACING_S, ("do1", "do3"), step=True))
         if not b.wait_trigger():
             print(f"  rep {k}: no trigger on EXT")
             job.halt()
             continue
         t1, y1 = b.read(1)
-        t2, y2 = b.read(2)
+        t2, y2 = b.read(3)
         high = float(np.percentile(y2, 95))
         low = float(np.percentile(y2, 5))
         half = (high + low) / 2
@@ -308,8 +316,10 @@ def section_marker(b: Bench, a, findings: dict) -> None:
 
 
 def section_pacing(b: Bench, a, findings: dict) -> None:
-    """Records delivered through the driver (EXT trigger at arm, one `:DIGitize` per record) for
-    PACING_RECORDS markers at each spacing; then whether segmented acquisition is accepted."""
+    """Records per second through the driver (EXT trigger at arm, one `:DIGitize` per record) under
+    an endless marker train at each spacing: the time per record is max(spacing, the scope's re-arm),
+    so the smallest spacing whose records come one per marker is the floor. Then whether segmented
+    acquisition is accepted."""
     from qdt_lab.drivers.keysight.infiniivision import InfiniiVisionX
 
     level = findings.get("marker", {}).get("marker_high_v", 2.0) / 2
@@ -330,45 +340,61 @@ def section_pacing(b: Bench, a, findings: dict) -> None:
     )
     results = []
     for spacing in PACING_SPACINGS_S:
-        drain = _Drain(scope.arm("ch1", ds, "v"))
-        time.sleep(0.2)
+        job = b.execute(b.program_markers(None, spacing, ("do1",), step=True))
+        time.sleep(0.5)
+        stamps: list[float] = []
         t0 = time.perf_counter()
-        job = b.execute(b.program_markers(PACING_RECORDS, spacing, ("do1",), step=True))
-        drain.thread.join(PACING_TIMEOUT_S)
-        elapsed = time.perf_counter() - t0
+        error = None
+        try:
+            for _ in scope.arm("ch1", ds, "v").frames():
+                stamps.append(time.perf_counter() - t0)
+        except Exception as e:  # the count ends where the scope stopped answering
+            error = str(e)[:120]
         job.halt()
+        gaps = np.diff(stamps) if len(stamps) > 1 else np.array([])
         row = {
             "spacing_s": spacing,
-            "markers": PACING_RECORDS,
-            "records": len(drain.got),
-            "elapsed_s": elapsed,
-            "error": str(drain.error)[:120] if drain.error else None,
+            "records": len(stamps),
+            "elapsed_s": stamps[-1] if stamps else None,
+            "s_per_record_median": float(np.median(gaps)) if gaps.size else None,
+            "markers_per_record_median": float(np.median(gaps) / spacing) if gaps.size else None,
+            "error": error,
         }
         results.append(row)
         print(
-            f"  {spacing * 1e3:5.0f} ms apart: {len(drain.got)}/{PACING_RECORDS} records in {elapsed:.1f} s"
-            + (f" ({row['error']})" if drain.error else "")
+            f"  {spacing * 1e3:5.0f} ms apart: {len(stamps)}/{PACING_RECORDS} records, "
+            + (
+                f"{row['s_per_record_median'] * 1e3:.0f} ms per record = {row['markers_per_record_median']:.1f} markers"
+                if gaps.size
+                else "no gaps"
+            )
+            + (f" ({error})" if error else "")
         )
-        if (
-            drain.thread.is_alive()
-        ):  # a `:DIGitize` still waiting: the next spacing needs a clean session
-            b._s.write(":STOP")
-            drain.thread.join(5.0)
+        time.sleep(0.5)
+    b._s.write(":STOP")
     b._s.write(":ACQuire:MODE SEGMented")
     b._s.write(f":ACQuire:SEGMented:COUNt {PACING_RECORDS}")
     mode = b._s.query(":ACQuire:MODE?").strip()
     err = b._s.query(":SYSTem:ERRor?").strip()
     b._s.write(":ACQuire:MODE RTIMe")
+    rearm = [r["s_per_record_median"] for r in results if r["s_per_record_median"]]
     findings["pacing"] = {
         "rows": results,
         "segmented_mode_readback": mode,
         "segmented_error": err,
+        "rearm_s": float(min(rearm)) if rearm else None,
         "floor_s": min(
-            (r["spacing_s"] for r in results if r["records"] == PACING_RECORDS), default=None
+            (
+                r["spacing_s"]
+                for r in results
+                if r["markers_per_record_median"] and r["markers_per_record_median"] < 1.5
+            ),
+            default=None,
         ),
     }
     print(
-        f"  → segmented: mode reads {mode!r}, error {err!r}; floor {findings['pacing']['floor_s']}"
+        f"  → re-arm about {findings['pacing']['rearm_s']} s per record; one record per marker down to "
+        f"{findings['pacing']['floor_s']} s; segmented: mode reads {mode!r}, error {err!r}"
     )
 
 
@@ -387,6 +413,7 @@ def section_qdac(b: Bench, a, findings: dict) -> None:
         (),
     )
     ch = f"ch{a.qdac_channel:02d}"
+    sc = a.qdac_scope_channel
     level = findings.get("marker", {}).get("marker_high_v", 2.0) / 2
     n = len(QDAC_LEVELS)
     window = (n + 1.5) * QDAC_SPACING_S
@@ -394,7 +421,7 @@ def section_qdac(b: Bench, a, findings: dict) -> None:
     for k in range(3):
         b.qdac.set(ch, -0.25)  # a level no list point has: a move before the first marker shows
         time.sleep(0.1)
-        b.front_panel({3: (0.25, 0.4)}, window, level)
+        b.front_panel({sc: (0.25, 0.4)}, window, level)
         b.qdac.load(ch, QDAC_LEVELS)
         b.arm_single()
         job = b.execute(b.program_staircase(n, QDAC_SPACING_S))
@@ -403,7 +430,7 @@ def section_qdac(b: Bench, a, findings: dict) -> None:
             job.halt()
             b.qdac.release(ch)
             continue
-        t, y = b.read(3)
+        t, y = b.read(sc)
         job.halt()
         b.qdac.release(ch)
         np.savez_compressed(a.out / f"staircase_{k}.npz", t=t, y=y)
@@ -481,6 +508,7 @@ def main() -> int:
     p.add_argument("--fem", type=int, default=1)
     p.add_argument("--qdac-channel", type=int, default=1)
     p.add_argument("--qdac-trigger", default="ext1")
+    p.add_argument("--qdac-scope-channel", type=int, default=2)
     p.add_argument("--sections", default="marker,pacing,qdac")
     p.add_argument("--out", type=Path, default=Path("bench/fixtures/probe05"))
     a = p.parse_args()
@@ -489,7 +517,11 @@ def main() -> int:
     if "qdac" in wanted and not a.qdac:
         p.error("--qdac is needed for the qdac section")
     b = Bench(a)
-    findings: dict = {"run_at": datetime.now(UTC).isoformat(), "fem": a.fem}
+    findings: dict = {"fem": a.fem}
+    existing = a.out / "markers.json"
+    if existing.exists():  # sections run one at a time merge into one file
+        findings.update(json.loads(existing.read_text()))
+    findings["run_at"] = datetime.now(UTC).isoformat()
     try:
         if "marker" in wanted:
             print("marker")

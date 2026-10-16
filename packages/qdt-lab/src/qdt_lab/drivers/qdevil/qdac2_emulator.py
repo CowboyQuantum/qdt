@@ -28,7 +28,7 @@ _LIST_TMOD = re.compile(r"sour(\d+):list:tmod step")
 _LIST_COUN = re.compile(r"sour(\d+):list:coun 1")
 _LIST_DIR = re.compile(r"sour(\d+):list:dir up")
 _TRIG_SOUR = re.compile(r"sour(\d+):dc:trig:sour (bus|ext[1-4])")
-_INIT = re.compile(r"sour(\d+):dc:init")
+_INIT_CONT = re.compile(r"sour(\d+):dc:init:cont (on|off)")
 _ABOR = re.compile(r"sour(\d+):dc:abor")
 
 
@@ -66,15 +66,28 @@ class Qdac2Emulator:
             self.mode[self._ch(m[1])] = "list"
         elif m := _LIST_VOLT.fullmatch(command):
             self.lists[self._ch(m[1])] = [float(v) for v in m[2].split(",")]
-        elif _LIST_TMOD.fullmatch(command) or _LIST_COUN.fullmatch(command) or _LIST_DIR.fullmatch(command):
+        elif (
+            _LIST_TMOD.fullmatch(command)
+            or _LIST_COUN.fullmatch(command)
+            or _LIST_DIR.fullmatch(command)
+        ):
             pass
         elif m := _TRIG_SOUR.fullmatch(command):
             self.trigger_source[self._ch(m[1])] = m[2]
-        elif m := _INIT.fullmatch(command):
+        elif m := _INIT_CONT.fullmatch(command):
             n = self._ch(m[1])
-            if self.mode.get(n) != "list" or n not in self.lists or n not in self.trigger_source:
-                raise ValueError(f"channel {n}: init needs list mode, a list and a trigger source")
-            self.armed[n] = -1
+            if m[2] == "off":
+                self.armed.pop(n, None)
+            else:
+                if (
+                    self.mode.get(n) != "list"
+                    or n not in self.lists
+                    or n not in self.trigger_source
+                ):
+                    raise ValueError(
+                        f"channel {n}: init needs list mode, a list and a trigger source"
+                    )
+                self.armed[n] = -1
         elif m := _ABOR.fullmatch(command):
             self.armed.pop(self._ch(m[1]), None)
         elif command == "*TRG":
@@ -84,12 +97,12 @@ class Qdac2Emulator:
 
     def trigger(self, source: str) -> None:
         """A trigger on `source` (`bus`, `ext1`..): every armed channel listening there plays its next
-        point; after the last point the channel stays there, still armed."""
+        point; after the last point the next trigger starts the list again (Probe 05)."""
         self.triggers.append(source)
         for n, i in list(self.armed.items()):
             if self.trigger_source.get(n) != source:
                 continue
-            i = min(i + 1, len(self.lists[n]) - 1)
+            i = (i + 1) % len(self.lists[n])
             self.armed[n] = i
             self.volts[n] = self.lists[n][i]
 

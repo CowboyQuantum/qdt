@@ -134,9 +134,10 @@ class TriggeredLevelSource(LevelSource, Protocol):
 
     def load(self, channel: str, values: Sequence[float]) -> None:
         """Load `values` (SI unit of the channel's declared quantity) on `channel` and arm it: the
-        output moves to `values[0]` on the first trigger and one point further on each later one;
-        after the last point it holds there. A second `load` on the channel replaces the list and
-        re-arms. Until the first trigger the channel holds the level it had."""
+        output moves to `values[0]` on the first trigger and one point further on each later one; a
+        trigger after the last point starts the list again at `values[0]` (the QDAC-II's behaviour,
+        Probe 05), so a caller plays exactly one trigger per point. A second `load` on the channel
+        replaces the list and re-arms. Until the first trigger the channel holds the level it had."""
         ...
 
     def advance(self, channel: str) -> None:

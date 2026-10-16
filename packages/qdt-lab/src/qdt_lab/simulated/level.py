@@ -44,7 +44,7 @@ class SimulatedLevelSource:
         if channel not in self._lists:
             raise ValueError(f"channel {channel!r} has no list loaded")
         values, i = self._lists[channel]
-        i = min(i + 1, len(values) - 1)
+        i = (i + 1) % len(values)  # past the end the list starts again (Probe 05)
         self._lists[channel] = (values, i)
         self._levels[channel] = values[i]
 

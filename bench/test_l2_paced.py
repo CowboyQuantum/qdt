@@ -30,10 +30,15 @@ FIXTURES = Path(__file__).parent / "fixtures" / "probe03"
 
 STEP_V = 0.25
 TRIGGER_LEVEL_V = 0.1
-SHOT_WAIT_NS = 300_000_000
-"""After the capture: the scope's per-record re-arm (ADR 0063; Probe 05 measures the floor)."""
+SHOT_WAIT_NS = 50_000_000
+"""After the capture: with segmented acquisition the scope catches every trigger in hardware (Probe
+05, 2026-10-16: 10/10 records down to 20 ms apart); the wait only keeps the shot's window and the
+next point's settle apart. Through one `:SINGle` per record it would have to be 0.5 s (ADR 0065)."""
 STAIRCASE = (-1.0, 1.0, 5)
-STAIRCASE_SCOPE = ScopeChannel(number=1, volts_per_div=0.5)
+STAIRCASE_SCOPE = ScopeChannel(
+    number=int(os.environ.get("QDT_L2_STAIRCASE_SCOPE_CHANNEL", "1")), volts_per_div=0.5
+)
+"""The scope input QDAC ch01 is cabled to; its logical name in the stand is `scope<number>`."""
 STAIRCASE_WINDOW = {"duration": 2_000_000, "num": 200}
 
 
@@ -124,7 +129,10 @@ def test_l2_4_a_triggered_staircase_on_the_qdac_is_captured_point_by_point(
     ):
         pytest.skip("the stand needs trigger_from on dac0 (and trigger_in) and on scope0")
     if os.environ.get("QDT_L2_STAIRCASE") != "1":
-        pytest.skip("set QDT_L2_STAIRCASE=1 with QDAC ch01 cabled directly to scope ch1 (no board)")
+        pytest.skip(
+            "set QDT_L2_STAIRCASE=1 with QDAC ch01 cabled directly to the scope input named by "
+            "QDT_L2_STAIRCASE_SCOPE_CHANNEL (default 1), no board"
+        )
     scope_front_panel(STAIRCASE_SCOPE.number, STAIRCASE_SCOPE.volts_per_div, 0.0, "DC", "ONEMeg")
     start, stop, num = STAIRCASE
     record = run_capture(
@@ -148,7 +156,7 @@ def test_l2_4_a_triggered_staircase_on_the_qdac_is_captured_point_by_point(
                     "body": [
                         {
                             "op": "capture",
-                            "channel": "scope1",
+                            "channel": f"scope{STAIRCASE_SCOPE.number}",
                             "result": "trace",
                             **STAIRCASE_WINDOW,
                         },

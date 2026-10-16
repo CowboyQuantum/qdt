@@ -211,7 +211,12 @@ def test_a_triggered_axis_on_the_device_gives_the_same_map_as_software_stepping(
     assert isinstance(quiet(), TriggeredLevelSource)
     software = stability(6, 9, p1=(-0.02, 0.04), p2=(-0.03, 0.05))
     triggered = software.model_copy(
-        update={"axes": (software.axes[0].model_copy(update={"stepping": "triggered"}), software.axes[1])}
+        update={
+            "axes": (
+                software.axes[0].model_copy(update={"stepping": "triggered"}),
+                software.axes[1],
+            )
+        }
     )
     plan, out = run(triggered, quiet())
     assert [p.name for p in plan.stage_program.parameters][:1] == ["n_P1"]

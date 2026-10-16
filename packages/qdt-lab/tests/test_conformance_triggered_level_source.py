@@ -16,7 +16,9 @@ def test_backend_satisfies_both_protocols(triggered_level_source):
     assert isinstance(triggered_level_source, LevelSource)
 
 
-def test_a_loaded_list_advances_one_point_per_trigger_and_holds_at_its_end(triggered_level_source):
+def test_a_loaded_list_advances_one_point_per_trigger_and_starts_again_past_its_end(
+    triggered_level_source,
+):
     src = triggered_level_source
     src.set("ch00", -0.5)
     src.load("ch00", LIST)
@@ -24,10 +26,10 @@ def test_a_loaded_list_advances_one_point_per_trigger_and_holds_at_its_end(trigg
     for expected in LIST:
         src.advance("ch00")
         assert abs(src.get("ch00") - expected) < 1e-3
-    src.advance("ch00")  # past the end: the last point holds
-    assert abs(src.get("ch00") - LIST[-1]) < 1e-3
+    src.advance("ch00")  # past the end: the list starts again (the QDAC-II's behaviour, Probe 05)
+    assert abs(src.get("ch00") - LIST[0]) < 1e-3
     src.release("ch00")
-    assert abs(src.get("ch00") - LIST[-1]) < 1e-3
+    assert abs(src.get("ch00") - LIST[0]) < 1e-3  # release holds the point the channel is at
 
 
 def test_release_restores_set_and_a_second_load_replaces_the_list(triggered_level_source):

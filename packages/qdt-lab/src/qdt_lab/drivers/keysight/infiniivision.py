@@ -11,12 +11,21 @@ sequencer's marker channel wired to its EXT TRIG input) is set at `arm` to trigg
 rising edge at `settings["trigger_level_v"]` (default `EXT_TRIGGER_LEVEL_V`), NORMal sweep: a record is
 the triggered one or the acquisition times out, never a free-run.
 
-Each frame is one `:DIGitize` of the channel. The capture is converted to volts with the preamble and
-resampled onto the declared `LinearCoordinate` (`np.interp`): the producer aligns, never the consumer
-(ADR 0015). A declared grid reaching more than one sample interval outside the captured span raises.
+Acquisition is `:SINGle`, a wait for `:AER?` (armed), then a poll of `:RSTate?` until the scope
+reports STOP, never `:DIGitize`; with the trigger sweep AUTO (and no marker line) a trigger is forced
+after `AUTO_FORCE_S` so an untriggered capture free-runs as it did through `:DIGitize`: `:DIGitize` blocks the instrument's parser until it triggers, so an
+acquisition left waiting wedged every later session until a device clear (bench, 2026-10-16). With
+more than one record the scope acquires in **segmented** mode (`:ACQuire:MODE SEGMented`, one
+`:SINGle` catches every trigger in hardware, then each segment is read by index), when the instrument
+accepts it (the HD3 does; the mode is read back); otherwise one `:SINGle` per record, which costs
+about half a second each on the HD3 (Probe 05). The capture is converted to volts with the preamble
+and resampled onto the declared `LinearCoordinate` (`np.interp`): the producer aligns, never the
+consumer (ADR 0015). A declared grid reaching more than one sample interval outside the captured span
+raises. `settings["acquire_timeout_s"]` (default 600) bounds a wait for triggers that never come.
 """
 
 import re
+import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
@@ -35,6 +44,17 @@ LEFT_REFERENCE_FRACTION = 0.1
 
 MIN_POINTS = 1000
 """Fewest raw points requested per record."""
+
+ACQUIRE_TIMEOUT_S = 600.0
+"""Default bound on one acquisition's wait for its trigger(s)."""
+POLL_S = 0.02
+"""Between `:RSTate?` polls while a single-shot waits for its trigger(s)."""
+ARM_TIMEOUT_S = 5.0
+"""Bound on the wait for `:AER?` to report the single-shot armed after `:SINGle`."""
+AUTO_FORCE_S = 0.5
+"""With the trigger sweep AUTO, a trigger is forced this long after the arm when none has come:
+`:SINGle` waits for a real trigger even in AUTO (unlike `:DIGitize`, bench 2026-10-16), and AUTO means
+"free-run when nothing triggers", as the instrument's RUN does."""
 
 EXT_TRIGGER_LEVEL_V = 1.0
 """Default EXT TRIG level: below half of an LVTTL marker into the input's 1 MΩ (Probe 05 measures the
@@ -57,6 +77,7 @@ class InfiniiVisionX:
         channels: tuple[ChannelMap, ...] = (),
         max_records: int = 8,
         external_trigger_level_v: float | None = None,
+        acquire_timeout_s: float = ACQUIRE_TIMEOUT_S,
     ) -> None:
         idn = transport.query("*IDN?")
         fields = [f.strip() for f in idn.split(",")]
@@ -72,6 +93,7 @@ class InfiniiVisionX:
         self.idn = idn
         self.max_records = max_records
         self.external_trigger_level_v = external_trigger_level_v
+        self.acquire_timeout_s = acquire_timeout_s
         self._logical: dict[str, int] = {}
         for ch in channels:
             if ch.quantity != "voltage":
@@ -97,6 +119,8 @@ class InfiniiVisionX:
             kw["external_trigger_level_v"] = float(
                 instrument.settings.get("trigger_level_v", EXT_TRIGGER_LEVEL_V)
             )
+        if "acquire_timeout_s" in instrument.settings:
+            kw["acquire_timeout_s"] = float(instrument.settings["acquire_timeout_s"])
         return cls(open_visa(str(address)), channels, **kw)
 
     def _channel(self, channel: str) -> int:
@@ -127,6 +151,9 @@ class InfiniiVisionX:
                 f"got start={start}, stop={stop}"
             )
         t = self._t
+        t.write(
+            ":STOP"
+        )  # an acquisition left waiting by an earlier arm must not catch this one's trigger
         # LEFT puts the reference one division (10 % of the range) in from the screen's left edge, so
         # the capture starts at position - range/10 (bench, HD304MSO, 2026-10-14). Place it at `start`.
         rng = span * (1 + TIMEBASE_MARGIN)
@@ -145,9 +172,30 @@ class InfiniiVisionX:
         t.write(":WAVeform:UNSigned 0")
         t.write(":WAVeform:POINts:MODE RAW")
         t.write(f":WAVeform:POINts {max(num, MIN_POINTS)}")
+        auto = self.external_trigger_level_v is None and (
+            t.query(":TRIGger:SWEep?").strip().upper().startswith("AUTO")
+        )
+        segmented = False
+        if n_records > 1:  # catch every trigger in hardware, if the instrument can (ADR 0063)
+            t.write(":ACQuire:MODE SEGMented")
+            t.write(f":ACQuire:SEGMented:COUNt {n_records}")
+            segmented = t.query(":ACQuire:MODE?").strip().upper().startswith("SEGM")
+        if not segmented:
+            t.write(":ACQuire:MODE RTIMe")
         times = np.linspace(start, stop, num)
         return _ScopeRecordSource(
-            t, n, dataset, v.name, v.dtype, record_dim, time_dim, n_records, times
+            t,
+            n,
+            dataset,
+            v.name,
+            v.dtype,
+            record_dim,
+            time_dim,
+            n_records,
+            times,
+            segmented=segmented,
+            timeout_s=self.acquire_timeout_s,
+            auto=auto,
         )
 
     def close(self) -> None:
@@ -156,7 +204,8 @@ class InfiniiVisionX:
 
 
 class _ScopeRecordSource:
-    """The `Source` an `InfiniiVisionX.arm` returns: one `:DIGitize` per record."""
+    """The `Source` an `InfiniiVisionX.arm` returns: one `:SINGle` for every record (segmented) or
+    per record, each waited for by polling the run bit, never by a blocking `:DIGitize`."""
 
     def __init__(
         self,
@@ -169,17 +218,50 @@ class _ScopeRecordSource:
         time_dim: str,
         n_records: int,
         times: np.ndarray,
+        *,
+        segmented: bool = False,
+        timeout_s: float = ACQUIRE_TIMEOUT_S,
+        auto: bool = False,
     ) -> None:
         self._t, self._n = transport, channel
         self.dataset, self._variable, self._dtype = dataset, variable, dtype
         self._record_dim, self._time_dim, self._n_records = record_dim, time_dim, n_records
         self._times = times
+        self._segmented, self._timeout_s, self._auto = segmented, timeout_s, auto
 
-    def record(self) -> np.ndarray:
-        """Acquire one record and return it in volts on the declared time grid."""
+    def acquire(self) -> None:
+        """`:SINGle`, then wait until the scope reports STOP (every segment caught, or the one
+        record), polling `:RSTate?` (the HD3 has no `:OPERegister`, bench 2026-10-16); raises
+        TimeoutError when the trigger(s) never come, after `:STOP`."""
         t = self._t
-        t.write(f":DIGitize CHANnel{self._n}")
-        t.query("*OPC?")
+        t.query(":AER?")  # clear a stale arm event, so the next 1 is this acquisition's
+        t.write(":SINGle")
+        armed_by = time.monotonic() + ARM_TIMEOUT_S
+        while int(float(t.query(":AER?"))) != 1:  # `:RSTate?` still reads the old state until then
+            if time.monotonic() > armed_by:
+                t.write(":STOP")
+                raise TimeoutError(f"the scope did not arm within {ARM_TIMEOUT_S:g} s")
+            time.sleep(POLL_S)
+        deadline = time.monotonic() + self._timeout_s
+        force_at = time.monotonic() + AUTO_FORCE_S
+        while t.query(":RSTate?").strip().upper() != "STOP":
+            if self._auto and time.monotonic() > force_at:  # AUTO sweep: free-run, as RUN would
+                t.write(":TRIGger:FORCe")
+                force_at = time.monotonic() + AUTO_FORCE_S
+            if time.monotonic() > deadline:
+                t.write(":STOP")
+                raise TimeoutError(
+                    f"the scope did not trigger within {self._timeout_s:g} s "
+                    f"({self._n_records} record(s) armed{', segmented' if self._segmented else ''})"
+                )
+            time.sleep(POLL_S)
+
+    def record(self, index: int | None = None) -> np.ndarray:
+        """Read the acquired record (segment `index`, 1-based, when segmented) in volts on the
+        declared time grid."""
+        t = self._t
+        if index is not None:
+            t.write(f":ACQuire:SEGMented:INDex {index}")
         pre = [p.strip() for p in t.query(":WAVeform:PREamble?").split(",")]
         if len(pre) != 10:
             raise ValueError(f"preamble has {len(pre)} fields, expected 10: {pre!r}")
@@ -203,8 +285,14 @@ class _ScopeRecordSource:
 
     def frames(self) -> Iterator[Frame]:
         n = self._times.size
+        if self._segmented:
+            self.acquire()
         for k in range(self._n_records):
-            values = self.record()
+            if self._segmented:
+                values = self.record(k + 1)
+            else:
+                self.acquire()
+                values = self.record()
             yield Frame(
                 DatasetChunk(
                     dataset_id=self.dataset.dataset_id,
