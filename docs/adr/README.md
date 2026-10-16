@@ -58,3 +58,4 @@ Immutable once merged (except a `Superseded by` status line). New decision = new
 | 0052 | The sensor operating point as the first node: Coulomb diamonds → a gate parked on a peak's flank, held by the stability nodes through `levels` | Accepted (extends 0048–0050) |
 | 0053 | Click-to-set: the server holds the stand's operating point (`/levels`), every sweep inherits it, Flight Deck's map click is the one "up" edge | Accepted (extends 0038; closes the default-operating-point decision) |
 | 0054 | Flight Deck is a workspace of widgets: three columns, plots only in the centre, one Run; themes are data | Accepted |
+| 0055 | Plot panes: any number over the shared stores, following the stream or pinned to a record through the replay stream; six at most (one WebGL2 context each); click stays click-to-set, the cut comes from the ⚙ menu | Accepted (extends 0054) |
