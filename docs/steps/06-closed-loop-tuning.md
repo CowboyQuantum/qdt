@@ -52,7 +52,7 @@ Carried from Step 5, each with its evidence; an ADR closes each one.
   warm edges; the dot model's zero-clipping (ADR 0020).
 
 ## Status
-IN PROGRESS (opened 2026-10-15 on the human's word after Step 5 closed). Session 1: the file gained its
+DONE (opened 2026-10-15; closed 2026-10-15 on the human's word, session 8). Sessions below. Session 1: the file gained its
 Open decisions from Step 5's bench record; nothing built yet. First task: the schema slice's shape
 (`SimScenario`, `SimResult`, `CalibrationNode`, ADR 0033 reserved the names) and the first node, against
 `SimulatedDevice` only (ADR 0007).
@@ -97,3 +97,11 @@ operating point decision. Left: axis → channel from the record's definition fo
 Session 7 (2026-10-15): the human struck the DAPS forward model and bias study from this step. With that, every
 listed deliverable is done (DAG runner, three nodes verified against the sim, click-to-set) and the first exit
 criterion is met; the second (an L3 confirmation) waits for a fridge. Whether the step closes now is the human's.
+Session 8 (2026-10-15): **closed.** The human: "let's put off L3 and close step 6." Every listed deliverable is done
+and the first exit criterion is met on the simulator. The second, "first L3 contact as confirmation, not discovery",
+is deferred, not waived: plan §7.1 says L3 is never a step's exit criterion, and the repo has no fridge yet. It is the
+first fridge task, tracked in `STATUS.md` until a fridge session runs the three-node tune-up (ADR 0048–0050, 0052) on
+a real device and confirms what the sim showed. Carried out of this step unresolved: the Open decisions above, the
+`sensor_peak` method, a bench confirmation of the stability nodes, `PlayedWaveform`, the `tuneups` and `stand_state`
+tables, resume and parallel branches. The DAPS study stays struck. Next: Step 6b (spec merged, ADR 0054 proposed) or
+Step 7 (gated by manager sign-off), the human's choice.
