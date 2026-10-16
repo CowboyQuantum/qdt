@@ -3,37 +3,30 @@
 > Rewritten at the end of every session. Never appended. History: `git log -- docs/STATUS.md`.
 > A fresh session must be able to continue from this file alone.
 
-**Current step:** 6b — Flight Deck workspace → `docs/steps/06b-flightdeck-workspace.md` (IN PROGRESS, opened
-2026-10-15). Step 6 is DONE (closed 2026-10-15; its L3 confirmation is the first fridge task, below). Step 7
-waits for manager sign-off.
-**Branch:** `step-6b/analysis-tuneup` (PR against `main`; the human merges). PRs #25–#55 merged 2026-10-14/16.
-**Last session:** 2026-10-16, Step 6b session 5 (not at the bench). **Analysis and Tune-up widgets; the panel
-deleted**, deliverable 5 of six (ADR 0058). The Analysis widget: a record from History's per-row "analyse"
-(`analysis:record`) or its own picker over `/records`, a method from `/methods`, parameters over the pure
-`control/methods.ts`, run, estimates, show overlays and show output through the replay path. The Tune-up
-widget: nodes from `/nodes`, options, start/stop, the DAG state rendered from `TuneUp` (`tuneupLines` moved,
-still pure); a finished tune-up emits `records:changed` like a finished run. `control/panel.ts` and the
-`control` widget are deleted; no `#`-ids remain in form widgets; `e2e/control.test.ts` drives every widget by
-pane. Default layout sweep + analysis + tune-up | plot | pulse + levels + history (`flightdeck.layout.v4`).
-Four of the step's five exit criteria are met (below); the fifth is deliverable 6's placeholder.
+**Current step:** none in progress. **Step 6b — Flight Deck workspace is DONE** (opened 2026-10-15, closed
+2026-10-16 after six sessions, ADR 0054–0059). Step 6 is DONE (its L3 confirmation is the first fridge task,
+below). **Step 7 waits for manager sign-off** (plan Open Decision #5); what comes next is the human's call.
+**Branch:** `step-6b/script-close` (PR against `main`; the human merges). PRs #25–#56 merged 2026-10-14/16.
+**Last session:** 2026-10-16, Step 6b session 6 (not at the bench). **The Script widget placeholder; the step
+closes** (ADR 0059). An editor (per browser) beside the allowed API as data (`sweep`, `levels`, `run`, `wait`,
+`analyze`, `device`), a stage button that lints (allow-list, a `qdt.x` without a call, brackets and quotes as a
+stack across lines, comments and strings ignored) and reports that nothing ran. No execution path; a sandbox is
+its own ADR. With it every Step 6b deliverable is done and every exit criterion met (table below); the step file
+and `docs/steps/README.md` say DONE.
 
-## Step 6b deliverables (step file; one session each)
-| # | Deliverable | State |
-|---|---|---|
-| 1 | Shell: themes as data, strip, layout model, widget registry, bus; panel mounted unchanged | ✔ session 1 (ADR 0054) |
-| 2 | Plot panes: N instances over the shared stores, ⚙ menu, follow-live or pinned; History widget | ✔ session 2 (ADR 0055) |
-| 3 | Sweep + Pulse widgets; Run moves to the strip, bound to the compiled plan with a stale marker | ✔ session 3 (ADR 0056) |
-| 4 | Levels (operating point) widget with readbacks (`GET /levels/state`); Virtual gates widget | ✔ session 4 (ADR 0057) |
-| 5 | Analysis + Tune-up widgets; `panel.ts` deleted; `e2e/control.test.ts` migrated | ✔ session 5 (ADR 0058) |
-| 6 | Script widget placeholder (allowed-API panel, a stage button that only validates) | next |
-
-## Step 6b exit criteria (step file)
-| Criterion | State |
+## Step 6b close-out
+| Exit criterion | State |
 |---|---|
-| `panel.ts` is gone; every former panel capability exists as a widget; all e2e green | ✔ |
-| Two plot panes show live and a stored record simultaneously with independent cuts | ✔ (e2e: History opens the run's record in Plot 2 while Plot 1 follows; Plot 2's cut moves alone) |
-| Exactly one Run control, bound to a compiled plan with a visible identity and stale marker | ✔ |
-| Layout persists and restores; `+` refuses below the min pane height | ✔ |
+| `panel.ts` is gone; every former panel capability exists as a widget; all e2e green | ✔ (ADR 0058) |
+| Two plot panes show live and a stored record simultaneously with independent cuts | ✔ (ADR 0055; e2e) |
+| Exactly one Run control, bound to a compiled plan with a visible identity and stale marker | ✔ (ADR 0056) |
+| Layout persists and restores; `+` refuses below the min pane height | ✔ (ADR 0054; e2e) |
+
+Deliverables 1–6: shell (0054), plot panes + History (0055), Sweep + Pulse + one Run (0056), Levels + Virtual
+gates with `GET /levels/state` (0057), Analysis + Tune-up with the panel deleted (0058), Script placeholder
+(0059). Widgets: `plot`, `sweep`, `pulse`, `levels`, `gates`, `history`, `analysis`, `tuneup`, `script`, `empty`.
+Open decisions carried, not closed: layout as a schema object; the script sandbox (the allow-list should come
+from it); the release mirror's first widgets; themes in the registry.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
 1. Run the three-node tune-up (sensor-operating-point → charge-lattice → virtual-lattice) on a real device through
@@ -43,33 +36,28 @@ Four of the step's five exit criteria are met (below); the fifth is deliverable 
 3. A dated report in `bench/reports/` (the ladder has no fridge report format yet; write one with the first run).
 
 ## Done
-- **Steps 0–6 DONE.** ADR 0001–0058. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021), stand/activity/pulse
-  (0022; amended additively by 0037, 0038, 0047, 0049), identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033;
-  Step 6 objects beside it by 0048–0050), control (0036; amended additively by 0046, 0050; `ChannelLevel` beside
-  it by 0057). Registry DDL v3 (0026, 0029, 0050).
-- **Step 6:** `qdt-tuning`; three nodes; virtual gates; the tune-up API; the held operating point and `/levels`;
-  click-to-set.
-- **Step 6b so far:** deliverables 1–5. Widgets: `plot`, `sweep`, `pulse`, `levels`, `gates`, `history`,
-  `analysis`, `tuneup`, `empty`. `src/control/` holds only the pure form models.
+- **Steps 0–6 and 6b DONE.** ADR 0001–0059. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+  stand/activity/pulse (0022; amended additively by 0037, 0038, 0047, 0049), identity/envelope/`qdt-hdf5-v1`
+  (0028), modeling (0033; Step 6 objects beside it by 0048–0050), control (0036; amended additively by 0046,
+  0050; `ChannelLevel` beside it by 0057). Registry DDL v3 (0026, 0029, 0050).
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
 - 395 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
-  hardware-only in `bench/`; Flight Deck 116 unit tests and 9 e2e.
+  hardware-only in `bench/`; Flight Deck 119 unit tests and 9 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6b/analysis-tuneup` awaits the human.
+- Nothing uncommitted. PR for `step-6b/script-close` awaits the human.
 
 ## Known broken / not yet real
-- **An analysis names its record from History or the picker**, not from a plot pane's pinned record yet (the id
-  is on the bus; a "from Plot N" choice is a small addition).
-- **Two widgets refresh records after a run** (History, Analysis): two requests, no server push.
-- **The simulator's live device and a run's device diverge** (ADR 0057); a simulated gate reads back null; the
-  Levels widget polls every 2 s; limits are a browser setting; the coupling matrix is per browser.
-- **A stage sweep needs the Pulse widget mounted**; **one run at a time from the UI**; **Run compiles again when
-  stale** (ADR 0056).
-- **No colormap in the ⚙ menu**; **per-pane view state does not survive a reload** (ADR 0055).
-- The strip's stand/device come from the API; without a server they read "?". **No Google Fonts link**;
-  **`provenance_check.sh` matches bare substrings**.
+- **The Script widget runs nothing**: stage lints and says so; the allow-list is hand-written until a sandbox ADR
+  generates it.
+- **Flight Deck carry-overs (Step 6b):** an analysis names its record from History or the picker, not from a
+  plot pane yet; two widgets refresh records after a run (no server push); the simulator's live device and a
+  run's device diverge (ADR 0057); a simulated gate reads back null; the Levels widget polls every 2 s; limits
+  are a browser setting; the coupling matrix is per browser; a stage sweep needs the Pulse widget mounted; one
+  run at a time from the UI; Run compiles again when stale (0056); no colormap in the ⚙ menu; per-pane view state
+  does not survive a reload (0055); no Google Fonts link; the strip's stand/device read "?" without a server.
+- **`provenance_check.sh` matches bare substrings**; a word-boundary pattern is a one-line fix.
 - Step 6 carry-overs: the held operating point is server memory (a `stand_state` table later); click-to-set only
   for axes named after stand DC channels; `flank_offset_v` is a judgment (0052); the diamonds method needs a cold
   sensor (0030); `TuneUp` not persisted, one at a time, no resume/parallel (0050); the bench has one OPX pulse
@@ -81,19 +69,20 @@ Four of the step's five exit criteria are met (below); the fifth is deliverable 
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Sessions:** Step 6b deliverable 6, **the Script widget placeholder**: `src/widgets/script.ts` with a text area, a
-panel listing the allowed API (the calls a measurement script may make: sweep, run, wait, analyze, as the
-prototype sketched) and a "stage" button that only validates (names outside the allowed list, syntax) and
-reports; no execution. A real server-side sandbox is its own ADR (Open decisions), not this step. Then close
-Step 6b: step file DONE, `docs/steps/README.md`, the exit-criteria table above checked once more, and STATUS
-pointing at what comes next (Step 7 gated by sign-off; otherwise the Step 6 Open decisions or the fridge tasks).
-
 **Human:**
-1. Merge the PR; the panel is gone: try an analysis from History's "analyse" and a tune-up from its widget in
-   `pnpm dev` against `python -m qdt_server`.
-2. After deliverable 6, say what follows Step 6b: Step 7 (needs sign-off), a Step 6 Open decision
-   (`PlayedWaveform`, sub-ms stepping, sense range), a `sensor_peak` method, or a bench session.
+1. Merge the PR. Step 6b is closed; look at the whole workspace once in `pnpm dev` against `python -m qdt_server`.
+2. **Name what comes next.** Step 7 (other sources onto the substrate: `qdt-telemetry` ingest, the internal
+   extension, lab PC deployment) is gated by manager sign-off. Without it, the candidates are:
+   - a Step 6 Open decision with an ADR and a slice: `PlayedWaveform` (a waveform played inside a sweep, ADR
+     0047's other half), sub-ms stepping (Probe 04's consequence), how a sense range is declared;
+   - a `sensor_peak` method retiring `flank_offset_v` (ADR 0052);
+   - a bench session: a second OPX pulse line for the stability nodes, the QDevil report;
+   - Flight Deck follow-ups from the list above (a colormap choice, per-pane view state, "analyse the record in
+     Plot N", the tune-up's `virtual_gates` into the coupling matrix, a `records:changed` push).
 3. Step 6's Open decisions (its file) and the QDevil report still wait.
+
+**Then (sessions):** the chosen item, on its own branch, with its ADR. A `tuneups` table and a `stand_state`
+table when something reads them; resume and parallel branches when a DAG needs them.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -114,16 +103,18 @@ pointing at what comes next (Step 7 gated by sign-off; otherwise the Step 6 Open
   the sensor operating point (ADR 0052); click-to-set (ADR 0053); "let's strike the DAPS development for now";
   the Step 6b spec arrives as a chat patch (ADR 0054); "let's put off L3 and close step 6": Step 6 closes on the
   simulator, the L3 confirmation is the first fridge task; "go with 6b": Step 6b opens, ADR 0054 is accepted,
-  the shell is session 1; PRs #52–#55 merged without a word, so sessions 2–5 (ADR 0055–0058) followed the step
-  file's order, taking STATUS's stated defaults where a decision was pending.
+  the shell is session 1.
+- **2026-10-16:** PRs #52–#56 merged without a word, so sessions 2–6 (ADR 0055–0059) followed the step file's
+  order, taking STATUS's stated defaults where a decision was pending; "the flight deck ci didn't pass": two
+  timing failures fixed in #56 (the Levels table keeps its rows across polls; e2e scenarios declare 180 s).
 
 ## Decisions pending
+- **What follows Step 6b** (the list above).
 - Deliverable 4's defaults, taken: readback null (not omitted); the limit a browser setting. Say if either changes.
-- What follows Step 6b (after deliverable 6).
 - Step 6b's Open decisions (its file): layout as a schema object; the script sandbox; the release mirror's
   first widgets; themes per browser or in the registry.
-- A Google Fonts link for online use; a colormap choice (renderer slice); queueing a second run from the UI;
-  pulling the tune-up's `virtual_gates` outputs into the coupling matrix; "analyse the record in Plot N".
+- Flight Deck follow-ups: a Google Fonts link; a colormap choice; queueing a second run; the tune-up's
+  `virtual_gates` into the coupling matrix; "analyse the record in Plot N"; per-pane view state across a reload.
 - Step 6's Open decisions (its file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
   a rest level at a sweep's end; the time-series view's remainder; the deferred physics.
 - A `tuneups` table and a `stand_state` table; resume and parallel branches.
