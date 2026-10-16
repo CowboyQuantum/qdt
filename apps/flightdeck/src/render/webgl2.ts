@@ -1,7 +1,7 @@
 // Raw WebGL2 2D map renderer (ADR 0008, 0012): the map lives in an R32F texture; live updates upload only
 // the changed rows with texSubImage2D; colour mapping happens in the fragment shader. No library.
 import type { TypedArray } from "../stream/decode";
-import { GLSL_VIRIDIS, MISSING } from "./colormap";
+import { type Colormap, GLSL_VIRIDIS, lut, MISSING } from "./colormap";
 import type { Range } from "./cpu";
 import type { MapRenderer } from "./map";
 
@@ -16,6 +16,8 @@ void main() {
 const FRAGMENT = `#version 300 es
 precision highp float;
 uniform highp sampler2D data;
+uniform sampler2D lut;
+uniform int cmap;
 uniform vec2 range;
 in vec2 uv;
 out vec4 color;
@@ -23,7 +25,9 @@ ${GLSL_VIRIDIS}
 void main() {
   float v = texture(data, uv).r;
   if (isnan(v)) { color = vec4(${MISSING.slice(0, 3).map((x) => (x / 255).toFixed(6)).join(", ")}, 1.0); return; }
-  color = vec4(viridis((v - range.x) / max(range.y - range.x, 1e-30)), 1.0);
+  float t = clamp((v - range.x) / max(range.y - range.x, 1e-30), 0.0, 1.0);
+  // cmap 0: the viridis polynomial; otherwise the 256-entry LUT, sampled at entry centres (ADR 0061)
+  color = cmap == 0 ? vec4(viridis(t), 1.0) : texture(lut, vec2((t * 255.0 + 0.5) / 256.0, 0.5));
 }`;
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
@@ -39,6 +43,8 @@ export class WebGL2Map implements MapRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
   private readonly texture: WebGLTexture;
+  private readonly lutTexture: WebGLTexture;
+  private cmap = 0;
   private rows = 0;
   private cols = 0;
   private scratch = new Float32Array(0);
@@ -70,6 +76,28 @@ export class WebGL2Map implements MapRenderer {
       gl.texParameteri(gl.TEXTURE_2D, k, v);
     }
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    this.lutTexture = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
+    for (const [k, v] of [
+      [gl.TEXTURE_MIN_FILTER, gl.LINEAR],
+      [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+      [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+      [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+    ] as const) {
+      gl.texParameteri(gl.TEXTURE_2D, k, v);
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut("grey"));
+  }
+
+  setColormap(name: Colormap): void {
+    if (name === "viridis") {
+      this.cmap = 0;
+      return;
+    }
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut(name));
+    this.cmap = 1;
   }
 
   dispose(): void {
@@ -106,6 +134,10 @@ export class WebGL2Map implements MapRenderer {
     gl.useProgram(this.program);
     gl.uniform2f(gl.getUniformLocation(this.program, "range"), range.min, range.max);
     gl.uniform1i(gl.getUniformLocation(this.program, "data"), 0);
+    gl.uniform1i(gl.getUniformLocation(this.program, "lut"), 1);
+    gl.uniform1i(gl.getUniformLocation(this.program, "cmap"), this.cmap);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

@@ -11,6 +11,8 @@ export interface Pane {
   widget: string;
   /** Relative height within the column (flex-grow); sizes in a column sum to 1 after normalize. */
   size: number;
+  /** The widget's own view state, persisted with the layout (ADR 0061); opaque to the layout. */
+  state?: Record<string, unknown>;
 }
 
 export interface Layout {
@@ -94,11 +96,18 @@ export function close(layout: Layout, paneId: string): Layout {
   return { ...layout, [column]: normalize(rest) };
 }
 
+/** Remember a widget's view state on its pane (a plot's variable, transform, colormap, …). */
+export function setPaneState(layout: Layout, paneId: string, state: Record<string, unknown>): Layout {
+  const column = columnOf(layout, paneId);
+  if (!column) return layout;
+  return { ...layout, [column]: layout[column].map((p) => (p.id === paneId ? { ...p, state } : p)) };
+}
+
 /** Change which widget a side pane shows (the centre is plots only). */
 export function setWidget(layout: Layout, paneId: string, widget: string): Layout {
   const column = columnOf(layout, paneId);
   if (!column || column === "center" || widget === PLOT_WIDGET) return layout;
-  return { ...layout, [column]: layout[column].map((p) => (p.id === paneId ? { ...p, widget } : p)) };
+  return { ...layout, [column]: layout[column].map((p) => (p.id === paneId ? { ...p, widget, state: undefined } : p)) };
 }
 
 /** Move the boundary between pane `i` and `i+1` of a column so that `fraction` of their joint height
@@ -144,10 +153,11 @@ export function parseLayout(text: string | null, known: readonly string[]): Layo
     const panes: Pane[] = [];
     for (const p of v as unknown[]) {
       if (!p || typeof p !== "object") return null;
-      const { widget, size } = p as { widget?: unknown; size?: unknown };
+      const { widget, size, state } = p as { widget?: unknown; size?: unknown; state?: unknown };
       if (typeof widget !== "string") return null;
       const w = c === "center" ? PLOT_WIDGET : widget === PLOT_WIDGET || !known.includes(widget) ? EMPTY_WIDGET : widget;
-      panes.push({ id: newPaneId(), widget: w, size: typeof size === "number" && size > 0 ? size : 1 });
+      const kept = state && typeof state === "object" && !Array.isArray(state) && w === widget ? (state as Record<string, unknown>) : undefined;
+      panes.push({ id: newPaneId(), widget: w, size: typeof size === "number" && size > 0 ? size : 1, ...(kept ? { state: kept } : {}) });
     }
     return normalize(panes);
   };
@@ -164,7 +174,7 @@ export function parseLayout(text: string | null, known: readonly string[]): Layo
 
 /** The persisted form: widgets and sizes, never pane ids. */
 export function serializeLayout(layout: Layout): string {
-  const col = (panes: Pane[]) => panes.map(({ widget, size }) => ({ widget, size }));
+  const col = (panes: Pane[]) => panes.map(({ widget, size, state }) => ({ widget, size, ...(state ? { state } : {}) }));
   return JSON.stringify({ left: col(layout.left), center: col(layout.center), right: col(layout.right), widths: layout.widths });
 }
 

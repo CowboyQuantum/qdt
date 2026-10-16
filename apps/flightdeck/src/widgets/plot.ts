@@ -5,6 +5,7 @@
 // Dataset stream (rule 8); a click on the map goes out as coordinate names and values (ADR 0053).
 import { finiteRange, type Range } from "../render/cpu";
 import { columnCut, displayMap, scratch, type DisplayMap } from "../render/display";
+import { type Colormap, COLORMAPS } from "../render/colormap";
 import { createMapRenderer, defaultMapRenderer, type MapRenderer, RENDERERS, type RendererName } from "../render/map";
 import { drawTrace, type TraceMark } from "../render/trace";
 import type { DatasetStore } from "../stream/store";
@@ -66,6 +67,7 @@ class PlotPane {
   private transform: Transform = "raw";
   private swap = false;
   private cut = 0.5;
+  private colormap: Colormap = "viridis";
   /** Set by the running view so a menu change reaches its frame loop. */
   private onOptions: (() => void) | null = null;
 
@@ -75,6 +77,16 @@ class PlotPane {
     private readonly ctx: WidgetContext,
   ) {
     this.bench = ctx.params.get("bench") === "1";
+    // the pane remembers its view across a reload (ADR 0061); a URL parameter wins for the pixel tests
+    const remembered = (ctx.pane.state ?? {}) as Partial<{ variable: string; minus: string; transform: Transform; swap: boolean; cut: number; colormap: Colormap; follow: boolean }>;
+    if (typeof remembered.variable === "string") this.variable = remembered.variable;
+    if (typeof remembered.minus === "string") this.minus = remembered.minus;
+    if (remembered.transform && ["raw", "d_col", "d_row", "grad"].includes(remembered.transform)) this.transform = remembered.transform;
+    if (typeof remembered.swap === "boolean") this.swap = remembered.swap;
+    if (typeof remembered.cut === "number" && remembered.cut >= 0 && remembered.cut <= 1) this.cut = remembered.cut;
+    if (remembered.colormap && (COLORMAPS as readonly string[]).includes(remembered.colormap)) this.colormap = remembered.colormap;
+    const urlMap = ctx.params.get("colormap");
+    if (urlMap && (COLORMAPS as readonly string[]).includes(urlMap)) this.colormap = urlMap as Colormap;
     this.src = h("span", { className: "src", text: "live" });
     this.menuButton = h("button", { className: "icon", type: "button", text: "⚙", title: "View settings", attrs: { "data-menu": "", "aria-label": "View settings", "aria-haspopup": "menu", "aria-expanded": "false" } });
     head.append(this.src, this.menuButton);
@@ -193,6 +205,11 @@ class PlotPane {
     return { swap: this.swap, transform: this.transform };
   }
 
+  /** What the pane remembers across a reload: its view, never a dataset id (the stream is new each time). */
+  private remember(): void {
+    this.ctx.pane.save({ variable: this.variable, minus: this.minus, transform: this.transform, swap: this.swap, cut: this.cut, colormap: this.colormap });
+  }
+
   // --- the ⚙ menu ----------------------------------------------------------------------------------
 
   private toggleMenu(): void {
@@ -278,6 +295,7 @@ class PlotPane {
       this.variable = variable.value;
       this.minus = ""; // a new variable starts without a subtraction
       if (this.shown) this.select(this.shown); // a different display map: restart the view, keep the stream
+      this.remember();
       this.fillMenu();
     });
     const others = this.shown ? partners(this.shown.dataset, this.variable) : [];
@@ -286,6 +304,7 @@ class PlotPane {
     minus.addEventListener("change", () => {
       this.minus = minus.value;
       if (this.shown) this.select(this.shown);
+      this.remember();
     });
     const transform = h(
       "select",
@@ -299,11 +318,21 @@ class PlotPane {
     transform.addEventListener("change", () => {
       this.transform = transform.value as Transform;
       this.onOptions?.();
+      this.remember();
+    });
+    const cmap = h("select", { name: "colormap" }, ...COLORMAPS.map((c) => new Option(c, c)));
+    cmap.value = this.colormap;
+    cmap.addEventListener("change", () => {
+      this.colormap = cmap.value as Colormap;
+      this.renderer?.setColormap(this.colormap);
+      this.onOptions?.();
+      this.remember();
     });
     const swap = h("input", { name: "swap", type: "checkbox", checked: this.swap });
     swap.addEventListener("change", () => {
       this.swap = swap.checked;
       this.onOptions?.();
+      this.remember();
     });
     const cutValue = h("span", { className: "mono", text: this.cutLabel() });
     const cut = h("input", { name: "cut", type: "range", min: "0", max: "1", step: "0.01", value: String(this.cut), attrs: { "aria-label": "Line cut position" } });
@@ -312,11 +341,13 @@ class PlotPane {
       cutValue.textContent = this.cutLabel();
       this.onOptions?.();
     });
+    cut.addEventListener("change", () => this.remember());
     menu.replaceChildren(
       row("dataset", dataset),
       row("variable", variable),
       row("minus", minus),
       row("view", transform),
+      row("colormap", cmap),
       h("label", { className: "row" }, h("span", { text: "swap axes" }), swap),
       h("label", { className: "row" }, h("span", {}, "cut at ", cutValue), cut),
       h("div", { className: "row hint", text: "click the map to set the gates there; the cut follows the slider" }),
@@ -361,7 +392,10 @@ class PlotPane {
       this.state("idle", null, `${store.dataset.name}: no v0 view for this shape`);
       return;
     }
-    if (view.kind === "heatmap" && !this.renderer) this.renderer = this.makeRenderer();
+    if (view.kind === "heatmap" && !this.renderer) {
+      this.renderer = this.makeRenderer();
+      this.renderer.setColormap(this.colormap);
+    }
     const renderer = this.renderer;
     // the map renderer owns the map canvas (a WebGL context refuses a 2-D one afterwards), so a trace draws
     // on the 2-D overlay canvas and the map canvas is hidden under it
@@ -407,9 +441,11 @@ class PlotPane {
     let last: DisplayMap | null = null; // what was uploaded last: the cut reads it
     let shown: ViewOptions = this.options();
     let cutAt = this.cut;
+    let shownMap = this.colormap;
     this.onOptions = () => {
       const o = this.options();
-      if (o.swap !== shown.swap || o.transform !== shown.transform) {
+      if (o.swap !== shown.swap || o.transform !== shown.transform || shownMap !== this.colormap) {
+        shownMap = this.colormap;
         shown = o;
         range = null;
         dirty = [0, totalRows()];

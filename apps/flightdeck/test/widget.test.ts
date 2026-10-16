@@ -4,7 +4,7 @@ import { Bus, type Events, ScopedBus } from "../src/workspace/bus";
 import { type Widget, type WidgetContext, WidgetRegistry } from "../src/workspace/widget";
 
 const el = () => ({ textContent: "" }) as unknown as HTMLElement;
-const ctx = () => ({ api: {}, datasets: {}, params: new URLSearchParams(), layout: { addPlotPane: () => null, plotPanes: () => [] } }) as unknown as Omit<WidgetContext, "bus" | "paneId">;
+const ctx = () => ({ api: {}, datasets: {}, params: new URLSearchParams(), pane: { state: undefined, save() {} }, layout: { addPlotPane: () => null, plotPanes: () => [] } }) as unknown as Omit<WidgetContext, "bus" | "paneId">;
 
 const widget = (id: string, extra: Partial<Widget> = {}, onMount?: (c: WidgetContext) => () => void): Widget => ({
   id,

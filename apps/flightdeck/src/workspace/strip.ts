@@ -2,10 +2,12 @@
 // button, stream telemetry and progress, messages, the replay picker and the theme menu. It holds no
 // instrument or registry handle (rule 8): the stand and device come from the API as records.
 import type { ApiClient } from "../api/client";
+import type { Run } from "../schema/api";
 import type { Datasets } from "../stream/datasets";
 import type { Bus } from "./bus";
 import { h } from "./dom";
-import { FLAGS, type ThemeManager, validateTheme, type Theme } from "./theme";
+import { FLAGS, loadWebFonts, saveWebFonts, setWebFonts, type ThemeManager, validateTheme, type Theme } from "./theme";
+import { safeStorage } from "./layout";
 
 export interface StripOptions {
   bus: Bus;
@@ -79,16 +81,21 @@ export function mountStrip(header: HTMLElement, o: StripOptions): void {
     plan.replaceChildren("plan ", h("b", { text: planId.slice(0, 8) }), h("span", { className: "stale-mark", text: " · stale" }));
     plan.classList.add("stale");
   });
+  // the runs the UI started, by id: the strip shows the one executing (or the latest), and how many wait
+  const runs = new Map<string, Run>();
+  const TERMINAL = new Set(["completed", "aborted", "failed"]);
   o.bus.on("run:state", ({ run: r }) => {
-    if (!r) {
-      runState.textContent = "";
-      abort.hidden = true;
-      return;
-    }
-    const terminal = ["completed", "aborted", "failed"].includes(r.state);
-    runState.replaceChildren("run ", h("b", { text: r.run_id.slice(0, 8) }), ` ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${r.record_id.slice(0, 8)}` : ""}`);
-    abort.hidden = terminal;
-    run.disabled = !terminal;
+    if (!r) return;
+    runs.set(r.run_id, r);
+    const live = [...runs.values()].filter((x) => !TERMINAL.has(x.state));
+    const shown = live.find((x) => x.state === "running") ?? live[0] ?? r;
+    const queued = live.filter((x) => x.state === "queued").length - (shown.state === "queued" ? 1 : 0);
+    runState.replaceChildren(
+      "run ",
+      h("b", { text: shown.run_id.slice(0, 8) }),
+      ` ${shown.definition_name} · ${shown.state}${shown.record_id ? ` → record ${shown.record_id.slice(0, 8)}` : ""}${queued > 0 ? ` · ${queued} queued` : ""}`,
+    );
+    abort.hidden = live.length === 0;
   });
   o.bus.on("stream:state", ({ state, progress: p, summary }) => {
     pill.classList.toggle("live", state === "live");
@@ -167,6 +174,11 @@ function toggleThemeMenu(button: HTMLButtonElement, themes: ThemeManager, onPick
       });
       input.click();
     });
+    const fonts = h("input", { type: "checkbox", name: "webfonts", checked: loadWebFonts(safeStorage()) });
+    fonts.addEventListener("change", () => {
+      saveWebFonts(fonts.checked, safeStorage());
+      setWebFonts(fonts.checked);
+    });
     const exportButton = h("button", { type: "button", text: "Export current" });
     exportButton.addEventListener("click", () => {
       const t = themes.current;
@@ -177,6 +189,7 @@ function toggleThemeMenu(button: HTMLButtonElement, themes: ThemeManager, onPick
     });
     menu.append(
       h("div", { className: "row" }, load, exportButton),
+      h("label", { className: "row hint" }, h("span", { text: "load the Plex web fonts (online only; off at the bench)" }), fonts),
       h("div", { className: "row hint", text: `JSON: name, scheme, tokens (13 colours), type, shape, flags [${FLAGS.join(", ")}]` }),
       error,
     );

@@ -54,7 +54,9 @@ class SweepWidget {
   /** The last compile: what Run runs unless the editors changed since (then it compiles again first). */
   private compiled: { plan: ExecutionPlan; definition: SweepDefinition; options: Record<string, string | number | boolean> } | null = null;
   private stale = false;
-  private run: Run | null = null;
+  /** Every run this widget started, by id; the server queues them (one executes at a time). */
+  private readonly runs = new Map<string, Run>();
+  private starting = false;
   private readonly form: HTMLFormElement;
   private readonly capture: HTMLFieldSetElement;
   private readonly levels: HTMLDivElement;
@@ -105,6 +107,7 @@ class SweepWidget {
     this.body.replaceChildren();
     this.head.replaceChildren();
     this.ctx.bus.emit("run:next", { summary: "" });
+    this.runs.clear();
   }
 
   private async init(): Promise<void> {
@@ -370,23 +373,28 @@ class SweepWidget {
     }
   }
 
-  /** The strip's Run: what is compiled, compiled again first when the editors changed since. */
+  /** The strip's Run: what is compiled, compiled again first when the editors changed since. The server
+   * queues runs (one executes at a time), so Run is never refused while one is live (ADR 0061). */
   private async runNow(): Promise<void> {
-    if (this.run && !TERMINAL.has(this.run.state)) return this.say(`run ${short(this.run.run_id)} is still ${this.run.state}`, true);
-    const compiled = this.compiled && !this.stale ? this.compiled : await this.compile();
-    if (!compiled) return;
+    if (this.starting) return;
+    this.starting = true;
     try {
+      const compiled = this.compiled && !this.stale ? this.compiled : await this.compile();
+      if (!compiled) return;
       const run = await this.ctx.api.startRun({ definition: compiled.definition, options: compiled.options });
       this.setRun(run);
-      this.say(`run ${short(run.run_id)} queued`);
+      const live = [...this.runs.values()].filter((r) => !TERMINAL.has(r.state)).length;
+      this.say(`run ${short(run.run_id)} queued${live > 1 ? ` (${live - 1} ahead of it)` : ""}`);
       void this.follow(run.run_id);
     } catch (e) {
       this.say(describe(e), true);
+    } finally {
+      this.starting = false;
     }
   }
 
-  private setRun(run: Run | null): void {
-    this.run = run;
+  private setRun(run: Run): void {
+    this.runs.set(run.run_id, run);
     this.ctx.bus.emit("run:state", { run });
   }
 
@@ -400,7 +408,7 @@ class SweepWidget {
         this.say(describe(e), true);
         return;
       }
-      if (this.run?.run_id !== runId) return; // a newer run took over, or the widget went away
+      if (!this.runs.has(runId)) return; // the widget went away
       this.setRun(run);
       if (TERMINAL.has(run.state)) {
         this.say(`run ${short(runId)} ${run.state}${run.error ? `: ${run.error}` : ""}`, run.state === "failed");
@@ -410,11 +418,14 @@ class SweepWidget {
     }
   }
 
+  /** Abort the run that is executing, else the newest queued one. */
   private async abort(): Promise<void> {
-    if (!this.run || TERMINAL.has(this.run.state)) return this.say("no run to abort", true);
+    const live = [...this.runs.values()].filter((r) => !TERMINAL.has(r.state));
+    const target = live.find((r) => r.state === "running") ?? live.at(-1);
+    if (!target) return this.say("no run to abort", true);
     try {
-      this.setRun(await this.ctx.api.abort(this.run.run_id));
-      this.say(`run ${short(this.run.run_id)} aborting`);
+      this.setRun(await this.ctx.api.abort(target.run_id));
+      this.say(`run ${short(target.run_id)} aborting`);
     } catch (e) {
       this.say(describe(e), true);
     }
