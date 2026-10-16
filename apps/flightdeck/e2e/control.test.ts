@@ -70,7 +70,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=outer_channel]")).toBe("P1");
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=inner_channel]")).toBe("P2_pulse");
-  expect((await page.locator("#method option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Single exponential"]);
+  expect((await page.locator(".pane[data-widget=analysis] select[name=method] option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Single exponential"]);
 
   // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region)
   await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e stability");
@@ -88,7 +88,8 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
 
   // run → live → completed → record listed
   await page.waitForFunction(() => /completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
-  await page.waitForFunction(() => (document.querySelector("#records")?.textContent ?? "").includes("e2e stability"));
+  await page.locator(".pane[data-widget=history] [data-refresh]").click();
+  await page.locator(".pane[data-widget=history] tr", { hasText: "e2e stability" }).first().waitFor();
   expect(await page.textContent("#status")).toMatch(/heatmap/);
   const menu = await plotMenu(page);
   expect(await menu.locator("select[name=dataset]").inputValue()).toBe("live");
@@ -97,15 +98,16 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   expect(await page.locator(".menu.plot").count()).toBe(0);
 
   // analyse the record with the curated method, then put the overlays on the live map
-  await page.locator("#records li", { hasText: "e2e stability" }).first().getByRole("button", { name: "analyse" }).click();
-  await page.selectOption("#method", { label: "Charge transitions" });
-  await page.getByRole("button", { name: "run analysis" }).click();
-  await page.waitForFunction(() => /^(ok|failed)/.test(document.querySelector("#estimates")?.textContent ?? ""), null, { timeout: 60_000 });
-  const estimates = (await page.textContent("#estimates")) ?? "";
+  await page.locator(".pane[data-widget=history] tr", { hasText: "e2e stability" }).first().getByRole("button", { name: "analyse" }).click();
+  await page.waitForFunction(() => (document.querySelector(".pane[data-widget=analysis] select[name=record]") as HTMLSelectElement | null)?.value !== "");
+  await page.locator(".pane[data-widget=analysis] select[name=method]").selectOption({ label: "Charge transitions" });
+  await page.locator(".pane[data-widget=analysis] [data-analyse]").first().click();
+  await page.waitForFunction(() => /^(ok|failed)/.test(document.querySelector(".pane[data-widget=analysis] .estimates")?.textContent ?? ""), null, { timeout: 60_000 });
+  const estimates = (await page.textContent(".pane[data-widget=analysis] .estimates")) ?? "";
   expect(estimates).toMatch(/^ok/);
   expect(estimates).toMatch(/a_per_volt_row/);
 
-  await page.getByRole("button", { name: "show overlays" }).click();
+  await page.locator(".pane[data-widget=analysis] [data-overlays]").click();
   await page.waitForFunction(() => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
   // the overlay canvas gets painted on the next frames: red segment pixels (axis labels are white)
   await page.waitForFunction(
@@ -264,15 +266,17 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
   await page.waitForFunction(() => /e2e droop · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => /· trace · trace/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
 
-  await page.locator("#records li", { hasText: "e2e droop" }).first().getByRole("button", { name: "analyse" }).click();
-  await page.selectOption("#method", { label: "Single exponential" });
-  await page.getByRole("button", { name: "run analysis" }).click();
-  await page.waitForFunction(() => /^(ok|failed)/.test(document.querySelector("#estimates")?.textContent ?? ""), null, { timeout: 60_000 });
-  const estimates = (await page.textContent("#estimates")) ?? "";
+  await page.locator(".pane[data-widget=history] [data-refresh]").click();
+  await page.locator(".pane[data-widget=history] tr", { hasText: "e2e droop" }).first().getByRole("button", { name: "analyse" }).click();
+  await page.waitForFunction(() => (document.querySelector(".pane[data-widget=analysis] select[name=record]") as HTMLSelectElement | null)?.value !== "");
+  await page.locator(".pane[data-widget=analysis] select[name=method]").selectOption({ label: "Single exponential" });
+  await page.locator(".pane[data-widget=analysis] [data-analyse]").first().click();
+  await page.waitForFunction(() => /^(ok|failed)/.test(document.querySelector(".pane[data-widget=analysis] .estimates")?.textContent ?? ""), null, { timeout: 60_000 });
+  const estimates = (await page.textContent(".pane[data-widget=analysis] .estimates")) ?? "";
   expect(estimates).toMatch(/^ok/);
   expect(estimates).toMatch(/tau\s+0\.001[45]/);
 
-  await page.getByRole("button", { name: "show overlays" }).click();
+  await page.locator(".pane[data-widget=analysis] [data-overlays]").click();
   await page.waitForFunction(() => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
   // the markers are red rules on the trace canvas (the 2-D overlay; the trace itself is teal). A heatmap
   // was shown on this page before, so the WebGL map canvas is hidden and the trace is really drawn.
@@ -301,14 +305,14 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   page.on("pageerror", (e) => console.error("page error:", e));
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
-  await page.waitForFunction(() => document.querySelectorAll("#nodes input[name=node]").length === 3);
-  expect(await page.locator("#nodes .node-id").allTextContents()).toEqual(["sensor-operating-point", "charge-lattice", "virtual-lattice"]);
+  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=tuneup] input[name=node]").length === 3);
+  expect(await page.locator(".pane[data-widget=tuneup] .node-id").allTextContents()).toEqual(["sensor-operating-point", "charge-lattice", "virtual-lattice"]);
   // a cold sensor so the diamonds resolve (ADR 0030); the sensor node decides where the stability nodes park SG
-  await page.fill("#tuneup-options", '{"seed": 2, "noise": false, "sensor_width_v": 0.01}');
-  await page.click("#run-tuneup");
-  await page.waitForFunction(() => /queued|running/.test(document.querySelector("#tuneup-state")?.textContent ?? ""));
-  await page.waitForFunction(() => /· completed/.test(document.querySelector("#tuneup-state .tuneup-head")?.textContent ?? ""), null, { timeout: 120_000 });
-  const lines = await page.locator("#tuneup-state .dag li").allTextContents();
+  await page.fill(".pane[data-widget=tuneup] input[name=options]", '{"seed": 2, "noise": false, "sensor_width_v": 0.01}');
+  await page.locator(".pane[data-widget=tuneup] [data-start]").click();
+  await page.waitForFunction(() => /queued|running/.test(document.querySelector(".pane[data-widget=tuneup] .tuneup-state")?.textContent ?? ""));
+  await page.waitForFunction(() => /· completed/.test(document.querySelector(".pane[data-widget=tuneup] .tuneup-head")?.textContent ?? ""), null, { timeout: 120_000 });
+  const lines = await page.locator(".pane[data-widget=tuneup] .dag li").allTextContents();
   expect(lines).toHaveLength(3);
   expect(lines[0]).toMatch(/sensor-operating-point · accepted/);
   expect(lines[0]).toMatch(/sg_operating_v=/);
@@ -317,6 +321,6 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   expect(lines[2]).toMatch(/virtual-lattice · accepted/);
   expect(lines[2]).toMatch(/residual_a=/);
   // both sweeps were runs and records like any other
-  await page.waitForFunction(() => (document.querySelector("#records")?.textContent ?? "").includes("virtual-gate lattice"));
+  await page.waitForFunction(() => (document.querySelector(".pane[data-widget=history]")?.textContent ?? "").includes("virtual-gate lattice"), null, { timeout: 20_000 });
   await page.close();
 });

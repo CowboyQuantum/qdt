@@ -22,10 +22,11 @@ import {
   type Layout,
 } from "../src/workspace/layout";
 
-const KNOWN = ["plot", "control", "empty", "history", "sweep", "pulse", "levels", "gates"];
+const KNOWN = ["plot", "empty", "history", "sweep", "pulse", "levels", "gates", "analysis", "tuneup"];
 /** The default layout with one pane per column: the split/close arithmetic reads best from there. */
 const single = () => {
   let l = defaultLayout();
+  l = close(l, l.left[2]!.id);
   l = close(l, l.left[1]!.id);
   l = close(l, l.right[2]!.id);
   l = close(l, l.right[1]!.id);
@@ -35,16 +36,16 @@ const sum = (panes: { size: number }[]) => panes.reduce((a, p) => a + p.size, 0)
 const TALL = 10 * MIN_PANE_HEIGHT;
 
 describe("default layout", () => {
-  it("is sweep + control left, one plot centre, pulse + history right, sides narrower than the centre", () => {
+  it("is sweep + analysis + tune-up left, one plot centre, pulse + levels + history right, sides narrower than the centre", () => {
     const l = defaultLayout();
-    expect(l.left.map((p) => p.widget)).toEqual(["sweep", "control"]);
+    expect(l.left.map((p) => p.widget)).toEqual(["sweep", "analysis", "tuneup"]);
     expect(l.center.map((p) => p.widget)).toEqual(["plot"]);
     expect(l.right.map((p) => p.widget)).toEqual(["pulse", "levels", "history"]);
     expect(l.widths.left + l.widths.right).toBeLessThan(0.6);
     expect(sum(l.left)).toBeCloseTo(1);
     expect(sum(l.right)).toBeCloseTo(1);
     const ids = [...l.left, ...l.center, ...l.right].map((p) => p.id);
-    expect(new Set(ids).size).toBe(6);
+    expect(new Set(ids).size).toBe(7);
   });
 });
 
@@ -132,7 +133,7 @@ describe("close", () => {
 describe("setWidget", () => {
   it("changes a side pane's widget and never makes a plot or touches the centre", () => {
     const l = defaultLayout();
-    expect(setWidget(l, l.right[0]!.id, "control").right[0]!.widget).toBe("control");
+    expect(setWidget(l, l.right[0]!.id, "gates").right[0]!.widget).toBe("gates");
     expect(setWidget(l, l.right[0]!.id, "plot")).toBe(l);
     expect(setWidget(l, l.center[0]!.id, "empty")).toBe(l);
   });
@@ -180,7 +181,7 @@ describe("persistence", () => {
     expect(shape(parseLayout("{not json", KNOWN))).toEqual(shape(d));
     expect(shape(parseLayout('{"left":[]}', KNOWN))).toEqual(shape(d));
     expect(shape(parseLayout('{"left":[{"widget":"matrix"}],"center":[{"widget":"x"}],"right":[{"widget":"plot"}]}', KNOWN))).toEqual([["empty"], ["plot"], ["empty"]]);
-    const w = parseLayout('{"left":[{"widget":"control"}],"center":[{"widget":"plot"}],"right":[{"widget":"empty"}],"widths":{"left":0.9,"right":"x"}}', KNOWN);
+    const w = parseLayout('{"left":[{"widget":"sweep"}],"center":[{"widget":"plot"}],"right":[{"widget":"empty"}],"widths":{"left":0.9,"right":"x"}}', KNOWN);
     expect(w.widths.left).toBe(MAX_SIDE);
     expect(w.widths.right).toBe(d.widths.right);
   });

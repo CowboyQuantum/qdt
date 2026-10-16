@@ -37,8 +37,9 @@ export const newPaneId = (): string => `pane-${++seq}`;
 export function defaultLayout(): Layout {
   return {
     left: [
-      { id: newPaneId(), widget: "sweep", size: 0.55 },
-      { id: newPaneId(), widget: "control", size: 0.45 },
+      { id: newPaneId(), widget: "sweep", size: 0.45 },
+      { id: newPaneId(), widget: "analysis", size: 0.25 },
+      { id: newPaneId(), widget: "tuneup", size: 0.3 },
     ],
     center: [{ id: newPaneId(), widget: PLOT_WIDGET, size: 1 }],
     right: [
@@ -168,7 +169,7 @@ export function serializeLayout(layout: Layout): string {
 }
 
 /** Versioned: a new default layout (new widgets) retires the stored one rather than hiding them. */
-export const LAYOUT_KEY = "flightdeck.layout.v3";
+export const LAYOUT_KEY = "flightdeck.layout.v4";
 
 /** localStorage is a per-viewer convenience: absent, blocked or full, the app still runs. */
 export function loadLayout(known: readonly string[], storage: Pick<Storage, "getItem"> | null = safeStorage()): Layout {

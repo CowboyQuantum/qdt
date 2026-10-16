@@ -65,7 +65,7 @@ class History {
           h(
             "table",
             { className: "ht" },
-            h("thead", {}, h("tr", {}, ...["when", "name", "device", "outcome", "shown in", ""].map((t) => h("th", { text: t })))),
+            h("thead", {}, h("tr", {}, ...["when", "name", "device", "outcome", "shown in", "", ""].map((t) => h("th", { text: t })))),
             this.tbody,
           ),
         ),
@@ -84,6 +84,7 @@ class History {
         this.fillTarget();
         this.render();
       }),
+      ctx.bus.on("records:changed", () => void this.refresh()),
       // a run's Dataset completing means a record is about to be stored (the run finishes after its last
       // chunk): refresh soon and again a little later, so the row appears without a manual refresh
       ctx.bus.on("stream:dataset", ({ store }) => {
@@ -127,6 +128,8 @@ class History {
       ...rows.map((r) => {
         const open = h("button", { type: "button", text: "open", attrs: { "data-open": r.record_id } });
         open.addEventListener("click", () => void this.open(r));
+        const analyse = h("button", { type: "button", text: "analyse", title: "Select this record in the Analysis widget", attrs: { "data-analyse": r.record_id } });
+        analyse.addEventListener("click", () => this.ctx.bus.emit("analysis:record", { recordId: r.record_id, name: r.definition_name }));
         const shown = shownIn(r.record_id, this.views, panes);
         return h(
           "tr",
@@ -137,6 +140,7 @@ class History {
           h("td", { text: r.outcome }),
           h("td", { className: "shown", text: shown.join(", ") }),
           h("td", {}, open),
+          h("td", {}, analyse),
         );
       }),
     );

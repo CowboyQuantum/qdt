@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiClient, ApiError, apiBase, describeDetail } from "../src/api/client";
 import { check, defaults, overrides, parse } from "../src/control/methods";
-import { tuneupLines } from "../src/control/panel";
+import { tuneupLines } from "../src/widgets/tuneup";
 import { setpointFor } from "../src/widgets/levels";
 import { captureSweep, dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
 import type { MethodSpec, StandConfig } from "../src/schema/api";
