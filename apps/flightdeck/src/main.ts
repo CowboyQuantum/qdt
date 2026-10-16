@@ -24,7 +24,7 @@ import { tuneupWidget } from "./widgets/tuneup";
 import { Bus } from "./workspace/bus";
 import { loadLayout, safeStorage } from "./workspace/layout";
 import { mountStrip } from "./workspace/strip";
-import { applyTheme, ThemeManager } from "./workspace/theme";
+import { applyTheme, loadWebFonts, setWebFonts, ThemeManager } from "./workspace/theme";
 import { WidgetRegistry } from "./workspace/widget";
 import { Workspace } from "./workspace/workspace";
 
@@ -36,6 +36,7 @@ const registry = new WidgetRegistry().register(plotWidget).register(emptyWidget)
 
 const themes = new ThemeManager(safeStorage(), applyTheme, matchMedia("(prefers-color-scheme: light)").matches);
 themes.apply();
+setWebFonts(loadWebFonts(safeStorage()));
 
 const say = (text: string, error = false) => bus.emit("say", { text, error });
 const start = (source: Source) =>

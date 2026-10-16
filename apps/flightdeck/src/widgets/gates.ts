@@ -56,6 +56,8 @@ class GatesWidget {
   private dc: ChannelMap[] = [];
   private matrix: CouplingMatrix = {};
   private stageInner = "";
+  private offer: { node: string; gates: [string, string]; c_21: number; c_12: number } | null = null;
+  private readonly offerBox: HTMLDivElement;
   private readonly grid: HTMLDivElement;
   private readonly note: HTMLDivElement;
   private readonly offs: (() => void)[] = [];
@@ -67,6 +69,7 @@ class GatesWidget {
   ) {
     this.grid = h("div", { className: "grid" });
     this.note = h("div", { className: "foot hint" });
+    this.offerBox = h("div", { className: "offer" });
     const reset = h("button", { type: "button", text: "identity", title: "No couplings: every axis moves its own gate only", attrs: { "data-reset": "" } });
     reset.addEventListener("click", () => {
       this.matrix = {};
@@ -75,13 +78,18 @@ class GatesWidget {
       this.publish();
     });
     head.append(reset);
-    body.append(h("div", { className: "matrix" }, h("div", { className: "hint", text: "row: the gate an axis steps; columns: how much each other gate moves with it (V/V). A stepped axis takes its row as SweepAxis.couplings (ADR 0049)." }), this.grid, this.note));
+    body.append(h("div", { className: "matrix" }, h("div", { className: "hint", text: "row: the gate an axis steps; columns: how much each other gate moves with it (V/V). A stepped axis takes its row as SweepAxis.couplings (ADR 0049)." }), this.grid, this.offerBox, this.note));
     this.offs.push(
       ctx.bus.on("sweep:axes", ({ kind, inner }) => {
         this.stageInner = kind === "stage" ? inner.replace(/_pulse$/, "") : "";
         this.render();
       }),
       ctx.bus.on("layout:changed", () => this.publish()),
+      // a finished tune-up's virtual-gate coefficients (ADR 0049) are offered, never applied unasked
+      ctx.bus.on("tuneup:outputs", (o) => {
+        this.offer = o;
+        this.renderOffer();
+      }),
     );
     void ctx.api
       .stand()
@@ -115,6 +123,23 @@ class GatesWidget {
 
   private publish(): void {
     this.ctx.bus.emit("gates:couplings", { matrix: this.matrix });
+  }
+
+  /** "apply c_21, c_12 from node X": row g1 ← g2 = c_21 (moving virtual gate 1 moves g2 by c_21 V/V), row g2 ← g1 = c_12. */
+  private renderOffer(): void {
+    const o = this.offer;
+    if (!o) return this.offerBox.replaceChildren();
+    const [g1, g2] = o.gates;
+    const apply = h("button", { type: "button", text: `apply from ${o.node}: ${g1}→${g2} = ${o.c_21.toPrecision(3)}, ${g2}→${g1} = ${o.c_12.toPrecision(3)}`, attrs: { "data-apply": "" } });
+    apply.addEventListener("click", () => {
+      (this.matrix[g1] ??= {})[g2] = o.c_21;
+      (this.matrix[g2] ??= {})[g1] = o.c_12;
+      this.save();
+      this.render();
+      this.publish();
+      this.ctx.bus.emit("say", { text: `virtual gates: ${g1}/${g2} couplings taken from ${o.node}`, error: false });
+    });
+    this.offerBox.replaceChildren(apply);
   }
 
   private render(): void {

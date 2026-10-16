@@ -17,6 +17,7 @@ import {
   resizeColumn,
   resizeRows,
   saveLayout,
+  setPaneState,
   setWidget,
   split,
 } from "./layout";
@@ -38,13 +39,13 @@ export class Workspace {
   private layout: Layout;
   private readonly cols: Record<Column, HTMLElement>;
   private readonly panes = new Map<string, PaneEls>();
-  private readonly ctx: Omit<WidgetContext, "bus" | "paneId">;
+  private readonly ctx: Omit<WidgetContext, "bus" | "paneId" | "pane">;
 
   constructor(
     private readonly root: HTMLElement,
     private readonly registry: WidgetRegistry,
     private readonly bus: Bus,
-    ctx: Omit<WidgetContext, "bus" | "layout" | "paneId">,
+    ctx: Omit<WidgetContext, "bus" | "layout" | "paneId" | "pane">,
     layout: Layout,
   ) {
     this.layout = layout;
@@ -118,7 +119,7 @@ export class Workspace {
           e.mounted.unmount();
           e.slot.replaceChildren();
           e.body.replaceChildren();
-          e.mounted = this.registry.mount(p.widget, p.id, e.body, e.slot, this.bus, this.ctx);
+          e.mounted = this.registry.mount(p.widget, p.id, e.body, e.slot, this.bus, this.paneCtx(p));
         }
         children.push(e.section);
       });
@@ -145,8 +146,23 @@ export class Workspace {
       this.commit(split(this.layout, p.id, widget, this.height(column)).layout);
     });
     closeButton.addEventListener("click", () => this.commit(close(this.layout, p.id)));
-    const mounted = this.registry.mount(p.widget, p.id, body, slot, this.bus, this.ctx);
+    const mounted = this.registry.mount(p.widget, p.id, body, slot, this.bus, this.paneCtx(p));
     return { section, title, picker, sub, slot, splitButton, closeButton, body, mounted };
+  }
+
+  /** The context one pane's widget mounts with: the shared one plus this pane's remembered state. */
+  private paneCtx(p: Pane): Omit<WidgetContext, "bus" | "paneId"> {
+    const state = this.layout[columnOf(this.layout, p.id)!].find((x) => x.id === p.id)?.state;
+    return {
+      ...this.ctx,
+      pane: {
+        state,
+        save: (next) => {
+          this.layout = setPaneState(this.layout, p.id, next);
+          saveLayout(this.layout);
+        },
+      },
+    };
   }
 
   /** Titles, pickers, enabled buttons: everything in a head that depends on the layout around the pane. */

@@ -15,6 +15,8 @@ export interface WidgetContext {
   readonly params: URLSearchParams;
   /** The pane this mount lives in; events that target a pane name it. */
   readonly paneId: string;
+  /** This pane's remembered view state and how to update it; persisted with the layout (ADR 0061). */
+  readonly pane: { readonly state: Record<string, unknown> | undefined; save(state: Record<string, unknown>): void };
   /** Layout operations a widget may ask for: another plot pane (null when refused), the plot panes by label. */
   readonly layout: { addPlotPane(): string | null; plotPanes(): { id: string; label: string }[] };
 }
@@ -70,6 +72,7 @@ export class WidgetRegistry {
   /** Mount a widget into a pane with a bus scoped to that mount. A single-instance widget that is
    * already mounted gets a notice instead, so the layout can name it twice without breaking. */
   mount(id: string, paneId: string, body: HTMLElement, head: HTMLElement, bus: Bus, ctx: Omit<WidgetContext, "bus" | "paneId">): Mounted {
+    // (the context carries this pane's remembered state; the workspace supplies it per pane)
     const widget = this.widgets.get(id) ?? this.widgets.get("empty");
     if (!widget) throw new Error(`no widget ${id} and no empty widget to fall back on`);
     const scoped = new ScopedBus(bus);

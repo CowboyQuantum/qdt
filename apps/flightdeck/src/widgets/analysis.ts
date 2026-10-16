@@ -33,6 +33,8 @@ class AnalysisWidget {
   private methods: MethodSpec[] = [];
   private records: MeasurementRecord[] = [];
   private lastResult: AnalysisResult | null = null;
+  /** paneId → the record a plot pane shows (null when unstored), from `plot:view`. */
+  private readonly shown = new Map<string, string | null>();
   private readonly record: HTMLSelectElement;
   private readonly method: HTMLSelectElement;
   private readonly params: HTMLDivElement;
@@ -76,6 +78,12 @@ class AnalysisWidget {
     this.offs.push(
       ctx.bus.on("analysis:record", ({ recordId }) => this.select(recordId)),
       ctx.bus.on("records:changed", () => void this.refreshRecords()),
+      ctx.bus.on("plot:view", ({ paneId, registryRef, datasetId }) => {
+        if (datasetId === null) this.shown.delete(paneId);
+        else this.shown.set(paneId, registryRef);
+        this.fillRecords();
+      }),
+      ctx.bus.on("layout:changed", () => this.fillRecords()),
       ctx.bus.on("stream:dataset", ({ store }) => {
         const off = store.onUpdate((u) => {
           if (!u.final) return;
@@ -115,12 +123,25 @@ class AnalysisWidget {
       this.say(describe(e), true);
       return;
     }
+    this.fillRecords();
+  }
+
+  /** The picker: the records plot panes show first ("Plot N · …"), then every stored record, newest first. */
+  private fillRecords(): void {
     const had = this.record.value;
+    const byId = new Map(this.records.map((r) => [r.record_id, r]));
+    const inPlots = this.ctx.layout
+      .plotPanes()
+      .map((p) => ({ label: p.label, ref: this.shown.get(p.id) ?? null }))
+      .filter((x): x is { label: string; ref: string } => !!x.ref);
+    const line = (r: MeasurementRecord) => `${short(r.record_id)} ${r.definition_name} · ${r.started_at.slice(0, 19).replace("T", " ")} · ${r.outcome}`;
+    const plotGroup = h("optgroup", { label: "shown in a plot" }, ...inPlots.map((x) => new Option(`${x.label} · ${byId.has(x.ref) ? line(byId.get(x.ref)!) : short(x.ref)}`, x.ref)));
     this.record.replaceChildren(
       new Option("— pick a record (or press analyse in History)", ""),
-      ...[...this.records].reverse().map((r) => new Option(`${short(r.record_id)} ${r.definition_name} · ${r.started_at.slice(0, 19).replace("T", " ")} · ${r.outcome}`, r.record_id)),
+      ...(inPlots.length ? [plotGroup] : []),
+      h("optgroup", { label: "stored" }, ...[...this.records].reverse().map((r) => new Option(line(r), r.record_id))),
     );
-    this.record.value = this.records.some((r) => r.record_id === had) ? had : "";
+    this.record.value = this.records.some((r) => r.record_id === had) || inPlots.some((x) => x.ref === had) ? had : "";
   }
 
   /** History's "analyse": the record is selected here (fetched if the list is behind). */

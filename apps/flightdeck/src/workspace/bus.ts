@@ -36,6 +36,8 @@ export interface Events {
   "levels:changed": Record<string, never>;
   /** History's "analyse": the Analysis widget selects this record. */
   "analysis:record": { recordId: string; name: string };
+  /** An accepted tune-up node produced virtual-gate coefficients: the gates it names and the values (ADR 0049). */
+  "tuneup:outputs": { node: string; gates: [string, string]; c_21: number; c_12: number };
   /** A run reached a terminal state: a record may have landed. */
   "records:changed": Record<string, never>;
   /** A point on a map was clicked: coordinate names and values (rule 8: never a channel). */

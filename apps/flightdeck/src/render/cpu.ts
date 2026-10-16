@@ -1,7 +1,7 @@
 // CPU reference renderer for a 2D map: the oracle for snapshot tests and the fallback without WebGL2.
 // Orientation: outer (row) index 0 at the bottom, inner (column) index 0 at the left.
 import type { TypedArray } from "../stream/decode";
-import { MISSING, viridis } from "./colormap";
+import { type Colormap, colormap, MISSING } from "./colormap";
 import type { MapRenderer } from "./map";
 
 export interface Range {
@@ -21,7 +21,7 @@ export function finiteRange(values: TypedArray): Range | null {
   return min <= max ? { min, max } : null;
 }
 
-export function renderRGBA(values: TypedArray, shape: [number, number], range: Range): Uint8ClampedArray {
+export function renderRGBA(values: TypedArray, shape: [number, number], range: Range, name: Colormap = "viridis"): Uint8ClampedArray {
   const [rows, cols] = shape;
   const out = new Uint8ClampedArray(rows * cols * 4);
   const span = range.max - range.min || 1;
@@ -29,7 +29,7 @@ export function renderRGBA(values: TypedArray, shape: [number, number], range: R
     const y = rows - 1 - r; // image row 0 is the top
     for (let c = 0; c < cols; c++) {
       const v = Number(values[r * cols + c]);
-      const px = Number.isNaN(v) ? MISSING : viridis((v - range.min) / span);
+      const px = Number.isNaN(v) ? MISSING : colormap(name, (v - range.min) / span);
       out.set(px, (y * cols + c) * 4);
     }
   }
@@ -45,8 +45,15 @@ export class CpuMap implements MapRenderer {
   private mapped: Range | null = null;
   private rows = 0;
   private cols = 0;
+  private cmap: Colormap = "viridis";
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
+
+  setColormap(name: Colormap): void {
+    if (name === this.cmap) return;
+    this.cmap = name;
+    this.mapped = null; // the next draw re-maps every row
+  }
 
   resize(rows: number, cols: number): void {
     [this.rows, this.cols] = [rows, cols];
@@ -84,7 +91,7 @@ export class CpuMap implements MapRenderer {
   }
 
   private mapRows(r0: number, r1: number, range: Range): void {
-    const rgba = renderRGBA(this.values!.subarray(r0 * this.cols, r1 * this.cols) as TypedArray, [r1 - r0, this.cols], range);
+    const rgba = renderRGBA(this.values!.subarray(r0 * this.cols, r1 * this.cols) as TypedArray, [r1 - r0, this.cols], range, this.cmap);
     // renderRGBA puts its row 0 at the bottom of its block; place the block so map row r0 lands at y = rows-1-r0
     this.image!.data.set(rgba, (this.rows - r1) * this.cols * 4);
   }

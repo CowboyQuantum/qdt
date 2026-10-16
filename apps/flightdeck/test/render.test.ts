@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { viridis } from "../src/render/colormap";
+import { COLORMAPS, colormap, lut, viridis } from "../src/render/colormap";
 import { finiteRange, renderRGBA } from "../src/render/cpu";
 import { columnCut, displayMap, scratch } from "../src/render/display";
 import { ReplaySource } from "../src/sources/replay";
@@ -28,6 +28,26 @@ describe("colormap", () => {
   });
 });
 
+describe("the other colormaps (ADR 0061)", () => {
+  it("magma and grey run from dark to light through a 256-entry LUT the CPU and the GPU read alike", () => {
+    expect(COLORMAPS).toEqual(["viridis", "magma", "grey"]);
+    expect(colormap("grey", 0)).toEqual([0, 0, 0, 255]);
+    expect(colormap("grey", 1)).toEqual([255, 255, 255, 255]);
+    expect(colormap("grey", 0.5).slice(0, 3)).toEqual([128, 128, 128]);
+    expect(colormap("magma", 0)).toEqual([0, 0, 4, 255]);
+    expect(colormap("magma", 1)).toEqual([252, 253, 191, 255]);
+    const mid = colormap("magma", 0.5);
+    expect(mid[0]).toBeGreaterThan(150); // the warm middle of magma
+    expect(colormap("magma", -1)).toEqual(colormap("magma", 0)); // clamped
+    expect(colormap("viridis", 0.5)).toEqual(viridis(0.5));
+    const table = lut("grey");
+    expect(table.length).toBe(1024);
+    for (let i = 1; i < 256; i++) expect(table[i * 4]!).toBeGreaterThanOrEqual(table[(i - 1) * 4]!); // monotone
+    // the CPU path samples the LUT the way a LINEAR texture does: between entries
+    expect(colormap("grey", 100.4 / 255).slice(0, 3)).toEqual([100, 100, 100]);
+  });
+});
+
 describe("CPU reference render (oracle for the WebGL path)", () => {
   it("renders the map fixture to a stable image", async () => {
     const s = await store("synthetic_map_64");
@@ -36,6 +56,8 @@ describe("CPU reference render (oracle for the WebGL path)", () => {
     const rgba = renderRGBA(map.values, map.shape as [number, number], range);
     expect(rgba.length).toBe(64 * 64 * 4);
     expect(sha256(new Uint8Array(rgba.buffer) as never)).toMatchSnapshot();
+    // the default colormap is viridis: the same bytes as asking for it by name
+    expect(sha256(new Uint8Array(renderRGBA(map.values, map.shape as [number, number], range, "viridis").buffer) as never)).toBe(sha256(new Uint8Array(rgba.buffer) as never));
   });
 
   it("draws unwritten (NaN) cells in the missing colour, row 0 at the bottom", () => {

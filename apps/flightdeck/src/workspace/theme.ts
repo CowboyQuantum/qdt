@@ -82,6 +82,38 @@ export function applyTheme(t: Theme, root: HTMLElement = document.documentElemen
   root.dataset.themeName = t.name;
 }
 
+export const WEBFONTS_KEY = "flightdeck.webfonts.v1";
+const WEBFONTS_HREF = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap";
+
+/** Load the Plex web fonts the built-in themes name, or not: a per-browser choice (ADR 0061), off by
+ * default because a bench is offline and the stacks fall back to system fonts. */
+export function setWebFonts(on: boolean, doc: Document = document): void {
+  const had = doc.getElementById("webfonts");
+  if (on && !had) {
+    const link = doc.createElement("link");
+    link.id = "webfonts";
+    link.rel = "stylesheet";
+    link.href = WEBFONTS_HREF;
+    doc.head.append(link);
+  } else if (!on && had) had.remove();
+}
+
+export function loadWebFonts(storage: Pick<Storage, "getItem"> | null): boolean {
+  try {
+    return storage?.getItem(WEBFONTS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveWebFonts(on: boolean, storage: Pick<Storage, "setItem"> | null): void {
+  try {
+    storage?.setItem(WEBFONTS_KEY, on ? "1" : "0");
+  } catch {
+    /* no storage */
+  }
+}
+
 export const THEME_KEY = "flightdeck.theme.v1";
 export const CUSTOM_THEMES_KEY = "flightdeck.themes.v1";
 

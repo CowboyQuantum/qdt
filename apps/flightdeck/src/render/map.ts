@@ -1,6 +1,7 @@
 // 2D map renderers behind one interface, so the #9 benchmark compares like with like (ADR 0012).
 // All take the full row-major map plus a dirty row range; row 0 is drawn at the bottom.
 import type { TypedArray } from "../stream/decode";
+import type { Colormap } from "./colormap";
 import { CpuMap, type Range } from "./cpu";
 import { WebGL2Map } from "./webgl2";
 
@@ -18,6 +19,8 @@ export interface MapRenderer {
   readonly shape: [number, number];
   /** Release the canvas's drawing resources when its pane closes; a WebGL context is lost on purpose. */
   dispose(): void;
+  /** Colour mapping for every draw from now on (ADR 0061); the next draw re-maps the whole image. */
+  setColormap(name: Colormap): void;
 }
 
 // regl was benchmarked as a candidate and rejected (ADR 0013; code at d9909b3).

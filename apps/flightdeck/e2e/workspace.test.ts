@@ -110,11 +110,20 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await page.keyboard.press("Escape");
   await page.locator(".col.center .pane [data-menu]").first().click();
   expect(await page.locator(".col.center .pane").first().locator(".menu.plot input[name=swap]").isChecked()).toBe(false);
+  await page.locator(".col.center .pane").first().locator(".menu.plot select[name=colormap]").selectOption("magma");
   await page.keyboard.press("Escape");
   await page.reload();
   await page.waitForFunction(() => /\(complete\)/.test(document.querySelector("#status")?.textContent ?? ""));
   expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history", "empty"]);
   expect(await widgets(page, "center")).toEqual(["plot", "plot"]);
+  // each pane's view came back with it (ADR 0061): Plot 1 in magma, Plot 2 swapped with its cut
+  await page.locator(".col.center .pane [data-menu]").first().click();
+  expect(await page.locator(".col.center .pane").first().locator(".menu.plot select[name=colormap]").inputValue()).toBe("magma");
+  await page.keyboard.press("Escape");
+  await page.locator(".col.center .pane").nth(1).locator("[data-menu]").click();
+  expect(await page.locator(".col.center .pane").nth(1).locator(".menu.plot input[name=swap]").isChecked()).toBe(true);
+  expect(await page.locator(".col.center .pane").nth(1).locator(".menu.plot input[name=cut]").inputValue()).toBe("0.25");
+  await page.keyboard.press("Escape");
   await page.locator(".col.center .pane").nth(1).locator("[data-close]").click();
   await page.locator(".col.right .pane").nth(3).locator("[data-close]").click();
   expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);

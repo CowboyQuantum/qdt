@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { chromium, type Browser } from "playwright-core";
 import { preview, type PreviewServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { COLORMAPS, type Colormap } from "../src/render/colormap";
 import { finiteRange, renderRGBA } from "../src/render/cpu";
 import { ReplaySource } from "../src/sources/replay";
 import { consume } from "../src/sources/source";
@@ -32,20 +33,22 @@ afterAll(async () => {
   await new Promise((r) => server?.httpServer.close(r));
 });
 
-async function reference() {
+async function reference(colormap: Colormap) {
   const stores = await consume(new ReplaySource(recording(NAME), NAME));
   const map = stores.get(oracle(NAME).dataset_id)!.get("signal");
   const [rows, cols] = map.shape as [number, number];
-  return { rgba: renderRGBA(map.values, [rows, cols], finiteRange(map.values)!), rows, cols };
+  return { rgba: renderRGBA(map.values, [rows, cols], finiteRange(map.values)!, colormap), rows, cols };
 }
 
-describe.each(["webgl2", "cpu"])("renderer %s", (renderer) => {
+const cases = (["webgl2", "cpu"] as const).flatMap((renderer) => COLORMAPS.map((colormap) => ({ renderer, colormap })));
+
+describe.each(cases)("renderer $renderer, colormap $colormap", ({ renderer, colormap }) => {
   it("draws the map fixture like the CPU reference", async () => {
     const page = await browser.newPage({ viewport: { width: 1200, height: 1300 } });
     await page.route("**/fixture.qdtrec", (route) =>
       route.fulfill({ body: Buffer.from(recording(NAME)), contentType: "application/octet-stream" }),
     );
-    await page.goto(`${app}?replay=/fixture.qdtrec&renderer=${renderer}&bench=1`);
+    await page.goto(`${app}?replay=/fixture.qdtrec&renderer=${renderer}&colormap=${colormap}&bench=1`);
     await page.waitForFunction(() => window.__flightdeck?.complete || window.__flightdeck?.error, null, { polling: 50 });
     // one more frame so the final draw has landed
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -58,7 +61,7 @@ describe.each(["webgl2", "cpu"])("renderer %s", (renderer) => {
     expect(error).toBeNull();
     expect(name).toBe(renderer);
 
-    const ref = await reference();
+    const ref = await reference(colormap);
     const cell = { w: width / ref.cols, h: height / ref.rows };
     let worst = 0;
     for (let y = 0; y < ref.rows; y++) {

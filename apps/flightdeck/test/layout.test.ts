@@ -17,6 +17,7 @@ import {
   resizeRows,
   saveLayout,
   serializeLayout,
+  setPaneState,
   setWidget,
   split,
   type Layout,
@@ -205,5 +206,30 @@ describe("persistence", () => {
     expect(() => saveLayout(l, broken)).not.toThrow();
     expect(loadLayout(KNOWN, broken).right).toHaveLength(3);
     expect(loadLayout(KNOWN, null).center).toHaveLength(1);
+  });
+});
+
+describe("pane state (ADR 0061)", () => {
+  it("is remembered with the layout, dropped when the pane takes another widget, and ignored when malformed", () => {
+    let l = single();
+    const id = l.center[0]!.id;
+    l = setPaneState(l, id, { transform: "grad", swap: true, colormap: "magma", cut: 0.25 });
+    expect(l.center[0]!.state).toEqual({ transform: "grad", swap: true, colormap: "magma", cut: 0.25 });
+    expect(setPaneState(l, "nope", { a: 1 })).toBe(l);
+    const back = parseLayout(serializeLayout(l), KNOWN);
+    expect(back.center[0]!.state).toEqual({ transform: "grad", swap: true, colormap: "magma", cut: 0.25 });
+    expect(back.left[0]!.state).toBeUndefined();
+    // a side pane's state goes with the widget that wrote it
+    const side = setPaneState(l, l.left[0]!.id, { x: 1 });
+    expect(setWidget(side, side.left[0]!.id, "history").left[0]!.state).toBeUndefined();
+    // malformed state is dropped, and so is state whose widget was replaced by `empty`
+    const raw = JSON.parse(serializeLayout(l)) as { center: { state: unknown }[]; left: { widget: string; state?: unknown }[] };
+    raw.center[0]!.state = [1, 2];
+    raw.left[0]!.state = { keep: true };
+    raw.left[0]!.widget = "gone";
+    const parsed = parseLayout(JSON.stringify(raw), KNOWN);
+    expect(parsed.center[0]!.state).toBeUndefined();
+    expect(parsed.left[0]!.widget).toBe("empty");
+    expect(parsed.left[0]!.state).toBeUndefined();
   });
 });

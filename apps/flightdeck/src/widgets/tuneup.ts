@@ -151,9 +151,23 @@ class TuneUpWidget {
     }
   }
 
+  /** An accepted node whose outputs carry `c_21`/`c_12` (ADR 0049): the gates are its definition's outer
+   * axis channel and its inner (pulse) axis channel without the `_pulse` suffix. */
+  private publishOutputs(t: TuneUp): void {
+    for (const o of t.outcomes ?? []) {
+      if (o.status !== "accepted" || !o.outputs || !("c_21" in o.outputs) || !("c_12" in o.outputs)) continue;
+      const node = this.nodes.find((n) => n.node_id === o.node_id);
+      const axes = node?.definition.axes ?? [];
+      if (axes.length < 2) continue;
+      const gates: [string, string] = [axes[0]!.channel, axes[1]!.channel.replace(/_pulse$/, "")];
+      this.ctx.bus.emit("tuneup:outputs", { node: o.node_id, gates, c_21: Number(o.outputs.c_21), c_12: Number(o.outputs.c_12) });
+    }
+  }
+
   private render(): void {
     const t = this.tuneup;
     if (!t) return this.state.replaceChildren();
+    if (TERMINAL.has(t.state)) this.publishOutputs(t);
     this.state.replaceChildren(
       h("div", { className: "tuneup-head", text: `${short(t.tuneup_id)} ${t.name} · ${t.state}${t.message ? ` · ${t.message}` : ""}` }),
       h(
