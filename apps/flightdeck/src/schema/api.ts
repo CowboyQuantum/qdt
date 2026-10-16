@@ -7,6 +7,7 @@ export interface QdtControlApi {
   Annotation?: Annotation;
   CalibrationNode?: CalibrationNode;
   Call?: Call;
+  Capture?: Capture;
   CapturedWaveform?: CapturedWaveform;
   ChannelLevel?: ChannelLevel;
   ChannelMap?: ChannelMap;
@@ -648,11 +649,9 @@ export interface SequencerProgram {
    */
   parameters?: SequencerParameter[];
   /**
-   * Result streams the program produces; positional, no in-band coordinates.
-   *
-   * @minItems 1
+   * Result streams the program produces; positional, no in-band coordinates. Empty when the stage is a stimulus whose readout is a shot capture on another instrument (ADR 0060).
    */
-  results: [SequencerResult, ...SequencerResult[]];
+  results?: SequencerResult[];
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */
@@ -731,8 +730,8 @@ export interface PulseSequence {
    * @minItems 1
    */
   body: [
-    Step | Ramp | Wait | Drive | Measure | Difference | Call,
-    ...(Step | Ramp | Wait | Drive | Measure | Difference | Call)[]
+    Step | Ramp | Wait | Drive | Measure | Capture | Difference | Call,
+    ...(Step | Ramp | Wait | Drive | Measure | Capture | Difference | Call)[]
   ];
   /**
    * Human-readable name.
@@ -892,6 +891,41 @@ export interface Measure {
   schema_version?: number;
 }
 /**
+ * Open a time window on a `WaveformSense` `channel` here in the shot, into the result stream
+ * `result`: one record per shot, `num` samples over `duration`, time counted from this point
+ * (ADR 0060). The shot waits for the window. The sequencer triggers the capture; the samples land on
+ * the declared grid (ADR 0015). The window is fixed per sweep, so it is never a Symbol.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "Capture".
+ */
+export interface Capture {
+  /**
+   * Logical WaveformSense channel (ChannelMap.logical).
+   */
+  channel: string;
+  /**
+   * Window length in integer nanoseconds, from this point of the shot.
+   */
+  duration: number;
+  /**
+   * Samples in the window: the declared time grid, filled exactly.
+   */
+  num: number;
+  /**
+   * Discriminator.
+   */
+  op?: "capture";
+  /**
+   * Result stream name; unique within the sequence; becomes a data variable over the sweep's axes, 'shot' when shots are kept, and its time axis.
+   */
+  result: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
  * `result = a − b`, per shot, from two measures earlier in the shot (e.g. a chopped readout).
  *
  * Computed by the sequencer before any reduction, so a mean of differences is what is recorded; the
@@ -959,8 +993,8 @@ export interface Segment {
    * @minItems 1
    */
   ops: [
-    Step | Ramp | Wait | Drive | Measure | Difference | Call,
-    ...(Step | Ramp | Wait | Drive | Measure | Difference | Call)[]
+    Step | Ramp | Wait | Drive | Measure | Capture | Difference | Call,
+    ...(Step | Ramp | Wait | Drive | Measure | Capture | Difference | Call)[]
   ];
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
