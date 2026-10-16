@@ -68,12 +68,12 @@ Ordered; one session each.
   user needs the same workspace.
 - ~~WebGL2 context cap~~ — closed by ADR 0055: six plot panes at most; a closed pane loses its context; the CPU renderer is the fallback when a context cannot be made.
 - ~~`GET /levels` readback semantics~~ — closed by ADR 0057: a new `GET /levels/state`, null where not sensed; limits are a browser setting until a stand declares them.
-- Script sandbox (server-side execution of restricted measurement scripts) — separate ADR.
+- Script sandbox (server-side execution of restricted measurement scripts) — separate ADR; the placeholder (ADR 0059) lints against an allow-list the sandbox ADR should generate.
 - Which widgets appear in the release mirror's first public build.
 - Whether uploaded themes are shared through the registry (a `Theme` record) or stay per browser. Default: per browser.
 
 ## Status
-IN PROGRESS (opened 2026-10-15 on the human's "go with 6b"; ADR 0054 accepted with it).
+DONE (opened 2026-10-15 on the human's "go with 6b"; closed 2026-10-16 after six sessions, ADR 0054–0059). Sessions below.
 Session 1 (2026-10-15): **the shell** (deliverable 1). Themes as data: `themes/{slate,paper,steel}.json`,
 `theme.schema.json`, `workspace/theme.ts` (validator, `themeStyle`, `applyTheme`, `ThemeManager` with
 load/export/per-browser persistence; the schema and the validator are held in step by a test; no Google Fonts
@@ -134,3 +134,9 @@ layout sweep + analysis + tune-up | plot | pulse + levels + history (`flightdeck
 `panel.ts` gone with every capability a widget; two plot panes show live and a record with independent cuts (e2e);
 exactly one Run bound to a compiled plan with identity and stale marker; layout persists and `+` refuses below the
 minimum height. Left: deliverable 6, the Script widget placeholder, then the step closes.
+Session 6 (2026-10-16): **the Script widget placeholder; the step closes** (deliverable 6, ADR 0059). `src/widgets/script.ts`:
+an editor (per browser) beside the allowed API as data (`sweep`, `levels`, `run`, `wait`, `analyze`, `device`), a stage
+button that lints (allow-list, a `qdt.x` without a call, brackets and quotes across lines, comments and strings
+ignored) and reports that nothing ran; no execution path. Every deliverable is done and every exit criterion is met
+(session 5). The open decisions below stay open and are carried in STATUS: layout as a schema object, the sandbox,
+the release mirror's first widgets, themes in the registry.
