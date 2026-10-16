@@ -22,7 +22,10 @@ export function mountStrip(header: HTMLElement, o: StripOptions): void {
   const liveText = h("span", { id: "live-text", text: "idle" });
   const pill = h("span", { id: "live-pill", className: "pill" }, h("span", { className: "dot" }), liveText);
   const nextRun = h("span", { id: "next-run", className: "kv" });
-  const run = h("button", { id: "run", className: "primary", type: "button", text: "Run", title: "Run the sweep as the control panel holds it" });
+  const plan = h("span", { id: "plan", className: "kv", title: "The last compiled plan; stale when an editor changed since" });
+  const run = h("button", { id: "run", className: "primary", type: "button", text: "Run", title: "Compile what the editors hold (if they changed) and run it" });
+  const runState = h("span", { id: "run-state", className: "kv" });
+  const abort = h("button", { id: "abort", type: "button", text: "abort", hidden: true });
   const status = h("span", { id: "status", className: "kv", text: "connecting…" });
   const progressBar = h("i");
   const progress = h("span", { id: "progress", className: "progress strip-progress", attrs: { role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "1" } }, progressBar);
@@ -36,7 +39,10 @@ export function mountStrip(header: HTMLElement, o: StripOptions): void {
     h("span", { className: "kv" }, "source ", source),
     pill,
     nextRun,
+    plan,
     run,
+    runState,
+    abort,
     h("span", { className: "spacer" }),
     status,
     progress,
@@ -60,7 +66,30 @@ export function mountStrip(header: HTMLElement, o: StripOptions): void {
   o.datasets.onSource((label) => (source.textContent = label));
 
   run.addEventListener("click", () => o.bus.emit("run:request", {}));
+  abort.addEventListener("click", () => o.bus.emit("run:abort", {}));
   o.bus.on("run:next", ({ summary }) => (nextRun.textContent = summary ? `next: ${summary}` : ""));
+  let planId = "";
+  o.bus.on("plan:compiled", ({ planId: id }) => {
+    planId = id;
+    plan.replaceChildren("plan ", h("b", { text: id.slice(0, 8) }));
+    plan.classList.remove("stale");
+  });
+  o.bus.on("plan:changed", () => {
+    if (!planId) return;
+    plan.replaceChildren("plan ", h("b", { text: planId.slice(0, 8) }), h("span", { className: "stale-mark", text: " · stale" }));
+    plan.classList.add("stale");
+  });
+  o.bus.on("run:state", ({ run: r }) => {
+    if (!r) {
+      runState.textContent = "";
+      abort.hidden = true;
+      return;
+    }
+    const terminal = ["completed", "aborted", "failed"].includes(r.state);
+    runState.replaceChildren("run ", h("b", { text: r.run_id.slice(0, 8) }), ` ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${r.record_id.slice(0, 8)}` : ""}`);
+    abort.hidden = terminal;
+    run.disabled = !terminal;
+  });
   o.bus.on("stream:state", ({ state, progress: p, summary }) => {
     pill.classList.toggle("live", state === "live");
     liveText.textContent = state;

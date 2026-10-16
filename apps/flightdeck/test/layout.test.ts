@@ -22,25 +22,34 @@ import {
   type Layout,
 } from "../src/workspace/layout";
 
-const KNOWN = ["plot", "control", "empty", "history"];
+const KNOWN = ["plot", "control", "empty", "history", "sweep", "pulse"];
+/** The default layout with one pane per column: the split/close arithmetic reads best from there. */
+const single = () => {
+  let l = defaultLayout();
+  l = close(l, l.left[1]!.id);
+  l = close(l, l.right[1]!.id);
+  return l;
+};
 const sum = (panes: { size: number }[]) => panes.reduce((a, p) => a + p.size, 0);
 const TALL = 10 * MIN_PANE_HEIGHT;
 
 describe("default layout", () => {
-  it("is the control panel left, one plot centre, an empty pane right, sides narrower than the centre", () => {
+  it("is sweep + control left, one plot centre, pulse + history right, sides narrower than the centre", () => {
     const l = defaultLayout();
-    expect(l.left.map((p) => p.widget)).toEqual(["control"]);
+    expect(l.left.map((p) => p.widget)).toEqual(["sweep", "control"]);
     expect(l.center.map((p) => p.widget)).toEqual(["plot"]);
-    expect(l.right.map((p) => p.widget)).toEqual(["history"]);
-    expect(l.widths.left + l.widths.right).toBeLessThan(0.5);
+    expect(l.right.map((p) => p.widget)).toEqual(["pulse", "history"]);
+    expect(l.widths.left + l.widths.right).toBeLessThan(0.6);
+    expect(sum(l.left)).toBeCloseTo(1);
+    expect(sum(l.right)).toBeCloseTo(1);
     const ids = [...l.left, ...l.center, ...l.right].map((p) => p.id);
-    expect(new Set(ids).size).toBe(3);
+    expect(new Set(ids).size).toBe(5);
   });
 });
 
 describe("split", () => {
   it("halves the pane, puts the new one below it, keeps the column summing to 1", () => {
-    const l = defaultLayout();
+    const l = single();
     const { layout, pane } = split(l, l.right[0]!.id, "empty", TALL);
     expect(pane).not.toBeNull();
     expect(layout.right.map((p) => p.id)).toEqual([l.right[0]!.id, pane!.id]);
@@ -50,7 +59,7 @@ describe("split", () => {
   });
 
   it("splits in the middle of a stack and leaves the other panes' share alone", () => {
-    let l = defaultLayout();
+    let l = single();
     const a = l.left[0]!.id;
     l = split(l, a, "empty", TALL).layout;
     const b = l.left[1]!.id;
@@ -60,7 +69,7 @@ describe("split", () => {
   });
 
   it("refuses when the column is too short for one more pane at the minimum height", () => {
-    const l = defaultLayout();
+    const l = single();
     expect(canSplit(l, "left", 2 * MIN_PANE_HEIGHT)).toBe(true);
     expect(canSplit(l, "left", 2 * MIN_PANE_HEIGHT - 1)).toBe(false);
     const r = split(l, l.left[0]!.id, "empty", 2 * MIN_PANE_HEIGHT - 1);
@@ -100,7 +109,7 @@ describe("split", () => {
 
 describe("close", () => {
   it("gives the closed pane's height to the one above, or below for the first", () => {
-    let l = defaultLayout();
+    let l = single();
     const a = l.left[0]!.id;
     l = split(l, a, "empty", TALL).layout;
     const b = l.left[1]!.id;
@@ -114,7 +123,7 @@ describe("close", () => {
   });
 
   it("keeps the last pane of a column", () => {
-    const l = defaultLayout();
+    const l = single();
     expect(close(l, l.center[0]!.id)).toBe(l);
   });
 });
@@ -130,7 +139,7 @@ describe("setWidget", () => {
 
 describe("resize", () => {
   it("moves the boundary between two panes, clamped, keeping their total", () => {
-    let l = defaultLayout();
+    let l = single();
     l = split(l, l.left[0]!.id, "empty", TALL).layout;
     const r = resizeRows(l, "left", 0, 0.7);
     expect(r.left[0]!.size).toBeCloseTo(0.7);
@@ -153,7 +162,7 @@ describe("resize", () => {
 
 describe("persistence", () => {
   it("round-trips widgets, sizes and widths; pane ids are fresh", () => {
-    let l = defaultLayout();
+    let l = single();
     l = split(l, l.left[0]!.id, "empty", TALL).layout;
     l = resizeRows(l, "left", 0, 0.7);
     l = resizeColumn(l, "right", 0.25);
@@ -178,7 +187,7 @@ describe("persistence", () => {
   it("saves to and loads from a storage, and survives a storage that throws or is missing", () => {
     const store = new Map<string, string>();
     const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
-    let l = defaultLayout();
+    let l = single();
     l = split(l, l.right[0]!.id, "empty", TALL).layout;
     saveLayout(l, storage);
     expect(store.has(LAYOUT_KEY)).toBe(true);
@@ -192,7 +201,7 @@ describe("persistence", () => {
       },
     };
     expect(() => saveLayout(l, broken)).not.toThrow();
-    expect(loadLayout(KNOWN, broken).right).toHaveLength(1);
+    expect(loadLayout(KNOWN, broken).right).toHaveLength(2);
     expect(loadLayout(KNOWN, null).center).toHaveLength(1);
   });
 });

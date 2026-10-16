@@ -120,35 +120,41 @@
       table.ht td.id { font-family: var(--mono); font-size: 0.9em; color: var(--text-3); }
       table.ht tr.open td.shown { color: var(--sel); }
 
-      /* ---- widget: control (the Step 4b panel, mounted unchanged this session) ---- */
-      #control { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; font-size: 0.93em; }
-      #control h3 { margin: 10px 0 2px; font-size: 1em; color: var(--text-2); }
-      #control label { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
-      #control input, #control select { width: 55%; }
-      #control .axis { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; gap: 4px; }
-      #control .axis input, #control .axis select { width: 100%; }
-      #control .axis.head { color: var(--text-3); grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; }
-      #control ul { margin: 0; padding-left: 16px; max-height: 160px; overflow: auto; }
-      #control li { display: flex; gap: 6px; align-items: center; }
-      #control #params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
-      #control #params label { font-size: 0.93em; }
-      #control fieldset { border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
-      #control fieldset[hidden] { display: none; }
-      #control legend { color: var(--text-2); font-size: 0.93em; }
-      #control .op-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-end; }
-      #control .op-row label { display: flex; flex-direction: column; align-items: stretch; gap: 0; font-size: 0.8em; color: var(--text-3); flex: 1 1 60px; }
-      #control .op-row label input, #control .op-row label select { width: 100%; }
-      #control .op-row select.op { width: auto; }
-      #control .op-row .index { color: var(--text-3); width: 1.2em; }
-      #control .op-row button { padding: 0 5px; }
-      #control .level-row { display: flex; gap: 4px; align-items: center; }
-      #control .level-row select, #control .level-row input { width: auto; flex: 1 1 80px; }
-      #control .level-row button { padding: 0 5px; }
-      #control #level-errors, #control #sequence-errors { color: var(--warn); font-size: 0.93em; }
-      #control .buttons { display: flex; gap: 4px; flex-wrap: wrap; }
-      #control .buttons select { width: auto; }
-      #control #symbols label { font-size: 0.93em; }
-      #control #estimates { font: 0.93em var(--mono); white-space: pre; margin: 0; }
+      /* ---- form widgets: sweep, pulse, and what is left of the Step 4b panel ---- */
+      .form-widget { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 12px; font-size: 0.93em; }
+      .form-widget h3 { margin: 10px 0 2px; font-size: 1em; color: var(--text-2); }
+      .form-widget label { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+      .form-widget input, .form-widget select { width: 55%; }
+      .form-widget .axis { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; gap: 4px; }
+      .form-widget .axis input, .form-widget .axis select { width: 100%; }
+      .form-widget .axis.head { color: var(--text-3); grid-template-columns: 1fr 1fr 1fr 1fr 0.6fr; }
+      .form-widget ul { margin: 0; padding-left: 16px; max-height: 160px; overflow: auto; }
+      .form-widget li { display: flex; gap: 6px; align-items: center; }
+      .form-widget #params { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+      .form-widget #params label { font-size: 0.93em; }
+      .form-widget fieldset { border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
+      .form-widget fieldset[hidden] { display: none; }
+      .form-widget legend { color: var(--text-2); font-size: 0.93em; }
+      .form-widget .op-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-end; }
+      .form-widget .op-row label { display: flex; flex-direction: column; align-items: stretch; gap: 0; font-size: 0.8em; color: var(--text-3); flex: 1 1 60px; }
+      .form-widget .op-row label input, .form-widget .op-row label select { width: 100%; }
+      .form-widget .op-row select.op { width: auto; }
+      .form-widget .op-row .index { color: var(--text-3); width: 1.2em; }
+      .form-widget .op-row button { padding: 0 5px; }
+      .form-widget .level-row { display: flex; gap: 4px; align-items: center; }
+      .form-widget .level-row select, .form-widget .level-row input { width: auto; flex: 1 1 80px; }
+      .form-widget .level-row button { padding: 0 5px; }
+      .form-widget #level-errors, .form-widget #sequence-errors { color: var(--warn); font-size: 0.93em; }
+      .form-widget .buttons { display: flex; gap: 4px; flex-wrap: wrap; }
+      .form-widget .buttons select { width: auto; }
+      .form-widget .plan { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; font: 0.86em var(--mono); white-space: pre-wrap; color: var(--text-2); margin: 0; }
+      .form-widget ul.errors { color: var(--warn); font-size: 0.93em; }
+      .form-widget form { display: flex; flex-direction: column; gap: 6px; }
+      .strip #plan.stale b { color: var(--warn); }
+      .strip .stale-mark { color: var(--warn); }
+      .strip #run-state { font-size: 0.93em; }
+      .form-widget #symbols label { font-size: 0.93em; }
+      .form-widget #estimates { font: 0.93em var(--mono); white-space: pre; margin: 0; }
 
       @media (max-width: 900px) {
         .ws { display: flex; flex-direction: column; overflow: auto; gap: 8px; }

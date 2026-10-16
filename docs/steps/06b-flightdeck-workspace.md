@@ -102,3 +102,14 @@ one store are byte-identical (`render.test.ts`). The e2e tests address panes by 
 `control.test.ts` opens the run's record from History into Plot 2 while Plot 1 follows live. Not done: colormap
 in the menu (one viridis formula shared by shader and oracle; a renderer slice of its own); per-pane view state
 across a reload. Next: deliverable 3, the Sweep and Pulse widgets with Run bound to the compiled plan.
+Session 3 (2026-10-16): **Sweep + Pulse widgets, one Run** (deliverable 3, ADR 0056). `src/widgets/sweep.ts` (the
+form over `control/sweeps.ts`: kind, axes, sensor, shots, capture, operating-point levels, options; a compile button;
+it holds the compiled plan, answers the strip's Run by compiling again when stale and starting the run, follows the
+run) and `src/widgets/pulse.ts` (the editor over `control/sequence.ts`; follows the Sweep widget's template through
+`sweep:axes`, publishes `pulse:sequence`). The strip shows `plan 1234abcd`, marks it `· stale` on an edit, shows the
+run's state and an abort; Run is disabled while a run is live. `panel.ts` lost the sweep form, the pulse editor and
+the Runs list (850 → 330 lines); the tune-up runner has its own options field. Default layout sweep + control | plot |
+pulse + history under `flightdeck.layout.v2`. `e2e/control.test.ts` compiles, sees the identity and the stale
+marker, runs from the strip. Exit criterion "exactly one Run control, bound to a compiled plan with a visible
+identity and stale marker" met. Next: deliverable 4, the Levels widget with readbacks (needs `GET /levels` with
+`LevelSense` readbacks on `qdt-server`, its own ADR) and the Virtual gates widget.

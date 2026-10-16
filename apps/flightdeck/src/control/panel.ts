@@ -1,28 +1,11 @@
-// The control panel (Step 4b, ADR 0032): craft a sweep, run it, watch its Run, browse records, run a
-// curated analysis, put overlays and outputs on the stream. Talks to qdt-server through ApiClient only.
-// The view itself (what is drawn) stays a function of the Dataset stream (rule 8).
+// The control panel (Step 4b, ADR 0032), shrinking one widget per session (ADR 0054): what remains is
+// the held operating point (click-to-set, ADR 0053), the records list, a curated analysis and the
+// tune-up runner (ADR 0050). The sweep form and the pulse editor became the Sweep and Pulse widgets
+// (ADR 0056), History the records browser (ADR 0055). Talks to qdt-server through ApiClient only.
 import { ApiClient, ApiError } from "../api/client";
-import type { AnalysisResult, CalibrationNode, ChannelMap, FixedLevel, MeasurementRecord, MethodSpec, Run, SweepDefinition, TuneUp } from "../schema/api";
+import type { AnalysisResult, CalibrationNode, ChannelMap, FixedLevel, MeasurementRecord, MethodSpec, TuneUp } from "../schema/api";
 import { check, defaults, overrides, parse, type ParamValues } from "./methods";
-import {
-  buildBindings,
-  buildSequence,
-  fieldUnit,
-  measuredResults,
-  moveRow,
-  newRow,
-  OP_FIELDS,
-  OP_KINDS,
-  symbolInText,
-  syncBindings,
-  templateRows,
-  unusedStageAxes,
-  type BindingRow,
-  type FieldName,
-  type OpKind,
-  type OpRow,
-} from "./sequence";
-import { axisName, buildLevels, captureSweep, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels } from "./sweeps";
+import { standChannels, type StandChannels } from "./sweeps";
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { text?: string } = {}, ...children: (Node | string)[]) => {
   const el = document.createElement(tag);
@@ -34,7 +17,6 @@ const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
 };
 
 const short = (id: string) => id.slice(0, 8);
-const TERMINAL = new Set(["completed", "aborted", "failed"]);
 const TUNEUP_TERMINAL = new Set(["completed", "stopped", "failed"]);
 
 /** A clicked point as the setpoint it means: the coordinates whose names are DC channels of the stand
@@ -69,41 +51,23 @@ export interface ControlHost {
 
 export class ControlPanel {
   private stand: StandChannels = { dc: [], pulse: [], sensors: [], waveforms: [] };
-  private channels: ChannelMap[] = [];
-  /** The stage's pulse sequence as the editor holds it; follows the template until edited. */
-  private rows: OpRow[] = [];
-  private bindings: BindingRow[] = [];
-  private rowsEdited = false;
-  /** The operating point as typed (ADR 0038): DC levels held for the whole sweep. */
-  private levelRows: LevelRow[] = [];
   private methods: MethodSpec[] = [];
   private nodes: CalibrationNode[] = [];
   private tuneup: TuneUp | null = null;
   private records: MeasurementRecord[] = [];
   private selectedRecord: MeasurementRecord | null = null;
   private lastResult: AnalysisResult | null = null;
-  private readonly runs = new Map<string, Run>();
   private readonly els: {
-    form: HTMLFormElement;
-    runsList: HTMLUListElement;
     recordsList: HTMLUListElement;
     method: HTMLSelectElement;
     params: HTMLDivElement;
     analysisTarget: HTMLSpanElement;
     estimates: HTMLPreElement;
-    sequence: HTMLFieldSetElement;
-    ops: HTMLDivElement;
-    symbols: HTMLDivElement;
-    sequenceErrors: HTMLUListElement;
-    levels: HTMLDivElement;
-    levelErrors: HTMLUListElement;
     nodes: HTMLDivElement;
+    tuneupOptions: HTMLInputElement;
     tuneupState: HTMLDivElement;
     setpoint: HTMLDivElement;
     held: HTMLDivElement;
-    capture: HTMLFieldSetElement;
-    /** Parts of the form a capture does not use (the inner axis, the sensor, the shots). */
-    sweepOnly: HTMLElement[];
   };
 
   constructor(
@@ -112,25 +76,16 @@ export class ControlPanel {
     private readonly host: ControlHost,
   ) {
     this.els = {
-      form: h("form", { id: "sweep" }),
-      runsList: h("ul", { id: "runs" }),
       recordsList: h("ul", { id: "records" }),
       method: h("select", { id: "method" }),
       params: h("div", { id: "params" }),
       analysisTarget: h("span", { id: "analysis-target", text: "no record selected" }),
       estimates: h("pre", { id: "estimates" }),
-      sequence: h("fieldset", { id: "sequence" }),
-      ops: h("div", { id: "ops" }),
-      symbols: h("div", { id: "symbols" }),
-      sequenceErrors: h("ul", { id: "sequence-errors" }),
-      levels: h("div", { id: "levels" }),
-      levelErrors: h("ul", { id: "level-errors" }),
       nodes: h("div", { id: "nodes" }),
+      tuneupOptions: h("input", { id: "tuneup-options", name: "tuneup_options", value: '{"seed": 1, "noise": true}' }),
       tuneupState: h("div", { id: "tuneup-state" }),
       setpoint: h("div", { id: "setpoint" }),
       held: h("div", { id: "held-levels" }),
-      capture: h("fieldset", { id: "capture" }),
-      sweepOnly: [],
     };
     this.build();
   }
@@ -139,10 +94,10 @@ export class ControlPanel {
     try {
       const [stand, methods, nodes] = await Promise.all([this.api.stand(), this.api.methods(), this.api.nodes()]);
       this.stand = standChannels(stand);
-      this.channels = [...stand.channels];
       this.methods = methods;
       this.nodes = nodes;
-      this.fillSelects();
+      this.els.method.replaceChildren(...this.methods.map((m) => h("option", { value: m.name, text: m.title })));
+      this.fillParams();
       this.renderNodes();
       await this.refreshRecords();
       await this.refreshHeld();
@@ -154,60 +109,6 @@ export class ControlPanel {
   // --- layout --------------------------------------------------------------------------------------
 
   private build(): void {
-    const f = this.els.form;
-    const field = (label: string, input: HTMLElement) => h("label", {}, label, input);
-    const num = (name: string, value: number, step = "any") => h("input", { name, type: "number", value: String(value), step });
-    const axisRow = (prefix: string, a: AxisForm) =>
-      h(
-        "div",
-        { className: "axis" },
-        h("select", { name: `${prefix}_channel` }),
-        num(`${prefix}_start`, a.start),
-        num(`${prefix}_stop`, a.stop),
-        num(`${prefix}_num`, a.num, "1"),
-      );
-    const sweepOnly = (el: HTMLElement) => {
-      this.els.sweepOnly.push(el);
-      return el;
-    };
-    f.append(
-      h("h3", { text: "Sweep" }),
-      field(
-        "kind",
-        h(
-          "select",
-          { name: "kind" },
-          h("option", { value: "stage", text: "stage: inner axis pulsed" }),
-          h("option", { value: "dc", text: "DC: both axes stepped, sensed" }),
-          h("option", { value: "capture", text: "capture: a time-resolved record" }),
-        ),
-      ),
-      field("name", h("input", { name: "name", value: "stability" })),
-      h("div", { className: "axis head" }, ...["channel", "start", "stop", "num"].map((t) => h("span", { text: t }))),
-      h("div", {}, "outer", axisRow("outer", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
-      sweepOnly(h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 }))),
-      sweepOnly(field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" }))),
-      sweepOnly(field("sensor", h("select", { name: "sensor" }))),
-      sweepOnly(field("shots", num("shots", 1, "1"))),
-      this.buildCapture(),
-      this.buildOperatingPoint(),
-      this.buildSequenceEditor(),
-      field("options", h("input", { name: "options", value: '{"seed": 1, "noise": true}' })),
-      h("button", { type: "submit", text: "run" }),
-    );
-    f.addEventListener("submit", (e) => {
-      e.preventDefault();
-      void this.submit();
-    });
-    (f.elements.namedItem("kind") as HTMLSelectElement).addEventListener("change", () => this.fillSelects());
-    // the template follows the inner axis and the sensor until the sequence is edited; axis names feed the bindings
-    for (const name of ["inner_channel", "inner_name", "sensor", "outer_channel", "capture_channel"]) {
-      (f.elements.namedItem(name) as HTMLElement).addEventListener("change", () => {
-        this.followTemplate();
-        this.validateLevels(); // a newly swept channel may clash with a held one
-      });
-    }
-
     const analysis = h(
       "div",
       { id: "analysis" },
@@ -230,6 +131,7 @@ export class ControlPanel {
       h("h3", { text: "Tune-up" }),
       h("div", { className: "hint", text: "calibration nodes this stand can run (ADR 0048–0050); the server orders them by their dependencies and stops at the first that is not accepted" }),
       this.els.nodes,
+      h("label", {}, "options ", this.els.tuneupOptions),
       h("div", { className: "buttons" },
         h("button", { type: "button", id: "run-tuneup", text: "run tune-up", onclick: () => void this.startTuneUp() }),
         h("button", { type: "button", id: "stop-tuneup", text: "stop", onclick: () => void this.stopTuneUp() }),
@@ -247,10 +149,7 @@ export class ControlPanel {
     );
 
     this.root.append(
-      f,
       operating,
-      h("h3", { text: "Runs" }),
-      this.els.runsList,
       h("h3", {}, "Records ", h("button", { type: "button", text: "refresh", onclick: () => void this.refreshRecords() })),
       this.els.recordsList,
       analysis,
@@ -322,7 +221,7 @@ export class ControlPanel {
     const node_ids = this.selectedNodeIds();
     if (!node_ids.length) return this.host.say("pick at least one node", true);
     try {
-      const options = JSON.parse(this.value("options") || "{}") as Record<string, string | number | boolean>;
+      const options = JSON.parse(this.els.tuneupOptions.value || "{}") as Record<string, string | number | boolean>;
       this.tuneup = await this.api.startTuneUp({ node_ids: node_ids as [string, ...string[]], options });
       this.renderTuneUp();
       this.host.say(`tune-up ${short(this.tuneup.tuneup_id)} queued`);
@@ -376,264 +275,7 @@ export class ControlPanel {
     );
   }
 
-  private fillSelects(): void {
-    const f = this.els.form;
-    const kind = (f.elements.namedItem("kind") as HTMLSelectElement).value;
-    const fill = (name: string, items: { logical: string }[], preferred: string[]) => {
-      const s = f.elements.namedItem(name) as HTMLSelectElement;
-      // keep the user's choice on a refill (it may be "", e.g. no outer axis); the first fill takes the preferred
-      const had = s.dataset.filled ? s.value : null;
-      s.replaceChildren(...items.map((c) => h("option", { value: c.logical, text: c.logical })));
-      s.value = items.some((c) => c.logical === had) ? had! : (preferred.find((p) => items.some((c) => c.logical === p)) ?? items[0]?.logical ?? "");
-      if (items.length) s.dataset.filled = "1";
-    };
-    fill("outer_channel", [...this.stand.dc, { logical: "" }], ["P1", "SG"]);
-    const none = (f.elements.namedItem("outer_channel") as HTMLSelectElement).querySelector('option[value=""]');
-    if (none) none.textContent = "— none (1-D)";
-    fill("inner_channel", kind === "stage" ? this.stand.pulse : this.stand.dc, ["P2_pulse", "bias"]);
-    fill("sensor", this.stand.sensors, ["sensor"]);
-    fill("capture_channel", this.stand.waveforms, ["scope1"]);
-    this.els.sequence.hidden = kind !== "stage";
-    this.els.capture.hidden = kind !== "capture";
-    for (const el of this.els.sweepOnly) {
-      // the stylesheet gives labels a display, which beats the UA's [hidden] rule: set both
-      el.hidden = kind === "capture";
-      el.style.display = kind === "capture" ? "none" : "";
-    }
-    this.followTemplate();
-    this.els.method.replaceChildren(...this.methods.map((m) => h("option", { value: m.name, text: m.title })));
-    this.fillParams();
-  }
-
-  // --- capture (ADR 0047): a WaveformSense record per point of the (optional) outer axis -------------
-
-  private buildCapture(): HTMLFieldSetElement {
-    const field = (label: string, input: HTMLElement) => h("label", {}, label, input);
-    const num = (name: string, value: number, step = "any") => h("input", { name, type: "number", value: String(value), step });
-    this.els.capture.append(
-      h("legend", { text: "capture (a WaveformSense record; the outer axis above steps it, or leave it at none)" }),
-      field("channel", h("select", { name: "capture_channel" })),
-      field("start (s)", num("capture_start", -0.001)),
-      field("stop (s)", num("capture_stop", 0.009)),
-      field("samples", num("capture_num", 1000, "1")),
-      field("records per point", num("capture_records", 1, "1")),
-      field("variable", h("input", { name: "capture_result", value: "trace" })),
-      h("div", { className: "hint", text: "times are relative to the instrument's trigger; one record per frame lands on the declared grid" }),
-    );
-    return this.els.capture;
-  }
-
-  // --- operating point (ADR 0038): DC levels set before the scan, held throughout -------------------
-
-  private buildOperatingPoint(): HTMLFieldSetElement {
-    const add = () => {
-      const touched = this.touchedChannels();
-      const free = this.stand.dc.find((c) => !touched.includes(c.logical) && !this.levelRows.some((r) => r.channel === c.logical));
-      this.levelRows = [...this.levelRows, { channel: free?.logical ?? "", value: "0" }];
-      this.renderLevels();
-    };
-    return h(
-      "fieldset",
-      { id: "operating-point" },
-      h("legend", { text: "operating point (DC levels held for the whole sweep)" }),
-      this.els.levels,
-      h("div", { className: "buttons" }, h("button", { type: "button", text: "add level", onclick: add })),
-      h("div", { className: "hint", text: "gates not listed keep whatever level they have; a pulse on a gate's _pulse line adds to its level here" }),
-      this.els.levelErrors,
-    );
-  }
-
-  /** Channels the sweep itself steps or senses: not available to the operating point. */
-  private touchedChannels(): string[] {
-    const kind = this.value("kind");
-    if (kind === "capture") return [this.value("outer_channel"), this.value("capture_channel")].filter(Boolean);
-    const out = [this.value("inner_channel"), this.value("outer_channel")];
-    if (kind === "dc") out.push(this.value("sensor"));
-    return out.filter(Boolean);
-  }
-
-  private renderLevels(): void {
-    this.els.levels.replaceChildren(
-      ...this.levelRows.map((row, i) => {
-        const channel = h("select", { name: "level_channel" }, ...this.stand.dc.map((c) => h("option", { value: c.logical, text: c.logical })));
-        channel.value = row.channel;
-        channel.addEventListener("change", () => {
-          row.channel = channel.value;
-          this.validateLevels();
-        });
-        const value = h("input", { name: "level_value", value: row.value, placeholder: "level (V)" });
-        value.addEventListener("input", () => {
-          row.value = value.value;
-          this.validateLevels();
-        });
-        const remove = () => {
-          this.levelRows = this.levelRows.filter((_, j) => j !== i);
-          this.renderLevels();
-        };
-        return h("div", { className: "level-row" }, channel, value, h("span", { text: "V" }), h("button", { type: "button", text: "✕", title: "remove", onclick: remove }));
-      }),
-    );
-    this.validateLevels();
-  }
-
-  private validateLevels(): ReturnType<typeof buildLevels> {
-    const built = buildLevels(this.levelRows, this.stand.dc, this.touchedChannels());
-    this.els.levelErrors.replaceChildren(...built.errors.map((e) => h("li", { text: e })));
-    return built;
-  }
-
-  // --- pulse-sequence editor (ADR 0035: a form over PulseSequence, one row per primitive) --------------
-
-  private buildSequenceEditor(): HTMLFieldSetElement {
-    const add = h("select", { id: "add-op" }, ...OP_KINDS.map((k) => h("option", { value: k, text: k })));
-    const reset = () => {
-      this.rowsEdited = false;
-      this.followTemplate();
-    };
-    this.els.sequence.append(
-      h("legend", { text: "pulse sequence (per shot)" }),
-      this.els.ops,
-      h(
-        "div",
-        { className: "buttons" },
-        add,
-        h("button", { type: "button", text: "add op", onclick: () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels, measuredResults(this.rows))]) }),
-        h("button", { type: "button", text: "reset to template", onclick: reset }),
-      ),
-      h("div", { className: "hint", text: "a value is a number (V, ns, Hz), a symbol name, or symbol ± offset (v_P2 + 0.002); bind each symbol below to an axis (swept) or a number" }),
-      h("div", { className: "hint", text: "difference: result = a − b of two earlier measures, per shot (chopped readout); recorded beside them" }),
-      h("div", { className: "hint", text: "a pulse level adds to the gate's DC level, holds until the next op on that line, and returns to 0 at the start of every shot" }),
-      this.els.symbols,
-      this.els.sequenceErrors,
-    );
-    return this.els.sequence;
-  }
-
-  private value(name: string): string {
-    return (this.els.form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value;
-  }
-
-  /** Axis names as the sweep will have them, outer to inner: what a symbol may be bound to. */
-  private axisNames(): string[] {
-    const inner = axisName({ channel: this.value("inner_channel"), start: 0, stop: 0, num: 1, name: this.value("inner_name").trim() || undefined });
-    const outer = this.value("outer_channel");
-    return outer ? [axisName({ channel: outer, start: 0, stop: 0, num: 1 }), inner] : [inner];
-  }
-
-  /** Until the user edits the sequence, it is the one-step template for the current inner axis and sensor. */
-  private followTemplate(): void {
-    if (!this.rowsEdited) {
-      const inner = this.axisNames().at(-1)!;
-      this.rows = templateRows({ channel: this.value("inner_channel"), symbol: `v_${inner}`, sensor: this.value("sensor"), stepNs: 500, measureNs: 2000, result: "I_sensor" });
-      this.bindings = [];
-    }
-    this.renderOps();
-  }
-
-  private editRows(rows: OpRow[]): void {
-    this.rows = rows;
-    this.rowsEdited = true;
-    this.renderOps();
-  }
-
-  private renderOps(): void {
-    const byName = new Map(this.channels.map((c) => [c.logical, c]));
-    this.els.ops.replaceChildren(
-      ...this.rows.map((row, i) => {
-        const opSelect = h("select", { className: "op", title: "primitive" }, ...OP_KINDS.map((k) => h("option", { value: k, text: k })));
-        opSelect.value = row.op;
-        opSelect.addEventListener("change", () => {
-          // a new primitive starts prefilled; it keeps the channel when that channel suits it
-          const next = newRow(opSelect.value as OpKind, this.channels, measuredResults(this.rows.slice(0, i)));
-          const kept = row.fields.channel && byName.get(row.fields.channel);
-          if (kept && "channel" in next.fields && (kept.quantity === "current") === (next.op === "measure")) next.fields.channel = kept.logical;
-          this.editRows(this.rows.map((r, j) => (j === i ? next : r)));
-        });
-        const cells = (OP_FIELDS[row.op] as readonly FieldName[]).map((field) => {
-          const value = row.fields[field] ?? "";
-          let input: HTMLInputElement | HTMLSelectElement;
-          if (field === "channel") {
-            const wanted = row.op === "measure" ? "current" : "voltage";
-            const options = this.channels.filter((c) => c.quantity === wanted);
-            input = h("select", { name: field }, ...options.map((c) => h("option", { value: c.logical, text: c.logical })));
-            if (value && !options.some((c) => c.logical === value)) input.append(h("option", { value, text: `${value}?` }));
-            input.value = value;
-          } else {
-            const unit = field === "result" ? "" : fieldUnit(field, byName.get(row.fields.channel ?? ""));
-            const label = `${field}${unit ? ` (${unit})` : ""}`;
-            input = h("input", { name: field, value, placeholder: label, title: label });
-          }
-          input.addEventListener(field === "channel" ? "change" : "input", () => {
-            row.fields[field] = input.value;
-            this.rowsEdited = true;
-            if (field === "channel") this.renderOps(); // units in the placeholders follow the channel
-            else this.validateSequence();
-          });
-          input.dataset.field = field;
-          return h("label", { title: field }, h("span", { className: "field", text: field }), input);
-        });
-        return h(
-          "div",
-          { className: "op-row" },
-          h("span", { className: "index", text: String(i + 1) }),
-          opSelect,
-          ...cells,
-          h("button", { type: "button", text: "↑", title: "earlier", onclick: () => this.editRows(moveRow(this.rows, i, -1)) }),
-          h("button", { type: "button", text: "↓", title: "later", onclick: () => this.editRows(moveRow(this.rows, i, 1)) }),
-          h("button", { type: "button", text: "✕", title: "remove", onclick: () => this.editRows(this.rows.filter((_, j) => j !== i)) }),
-        );
-      }),
-    );
-    this.validateSequence();
-  }
-
-  /** Rebuild the sequence, refresh the symbol bindings, and list what the server would refuse. */
-  private validateSequence(): string[] {
-    const built = buildSequence("sequence", this.rows, this.channels);
-    const axes = this.axisNames();
-    const before = this.bindings.map((b) => b.symbol).join(",");
-    this.bindings = syncBindings(built.symbols.keys(), this.bindings, axes);
-    // re-render the bindings only when the set of symbols changed, so typing in one keeps its focus
-    if (this.bindings.map((b) => b.symbol).join(",") !== before || this.els.symbols.dataset.axes !== axes.join(",")) {
-      this.renderBindings(built.symbols, axes);
-    }
-    const bound = buildBindings(this.bindings, axes);
-    this.showBindingsOnCells(axes);
-    const errors = [...built.errors, ...bound.errors];
-    if (!bound.errors.length) errors.push(...unusedStageAxes(bound.bindings, axes.slice(-1)));
-    this.els.sequenceErrors.replaceChildren(...errors.map((e) => h("li", { text: e })));
-    return errors;
-  }
-
-  /** Over each value cell holding a symbol, say what it takes: `level ← P2 (swept)`, `duration ← 300`. */
-  private showBindingsOnCells(axes: string[]): void {
-    const targets = new Map(this.bindings.map((b) => [b.symbol, b.target.trim()]));
-    for (const input of this.els.ops.querySelectorAll<HTMLInputElement>("input[data-field]")) {
-      const span = input.previousElementSibling as HTMLSpanElement | null;
-      if (!span) continue;
-      const field = input.dataset.field!;
-      const t = targets.get(symbolInText(input.value) ?? "");
-      span.textContent = t === undefined ? field : `${field} ← ${t === "" ? "?" : axes.includes(t) ? `${t} (swept)` : t}`;
-    }
-  }
-
-  private renderBindings(units: Map<string, string>, axes: string[]): void {
-    this.els.symbols.dataset.axes = axes.join(",");
-    this.els.symbols.replaceChildren(
-      h("datalist", { id: "binding-axes" }, ...axes.map((a) => h("option", { value: a }))),
-      ...this.bindings.map((b) => {
-        const input = h("input", { name: `bind_${b.symbol}`, value: b.target, placeholder: "axis or number" });
-        input.setAttribute("list", "binding-axes");
-        input.addEventListener("input", () => {
-          // by symbol: syncBindings hands out fresh rows, so `b` may be stale by now
-          this.bindings = this.bindings.map((x) => (x.symbol === b.symbol ? { ...x, target: input.value } : x));
-          this.validateSequence();
-        });
-        const unit = units.get(b.symbol);
-        return h("label", {}, `${b.symbol}${unit ? ` (${unit})` : ""} ←`, input);
-      }),
-    );
-  }
+  // --- records and analysis ------------------------------------------------------------------------
 
   private fillParams(): void {
     const spec = this.methods.find((m) => m.name === this.els.method.value);
@@ -647,126 +289,6 @@ export class ControlPanel {
       this.els.params.append(h("label", { title: p.description }, `${p.name}${p.unit ? ` (${p.unit})` : ""} `, input));
     }
   }
-
-  // --- sweeps and runs -----------------------------------------------------------------------------
-
-  private readForm(): { definition: SweepDefinition; options: Record<string, string | number | boolean> } {
-    const f = this.els.form;
-    const v = (name: string) => (f.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value;
-    const axis = (prefix: string, name?: string): AxisForm => ({
-      channel: v(`${prefix}_channel`),
-      start: Number(v(`${prefix}_start`)),
-      stop: Number(v(`${prefix}_stop`)),
-      num: Number(v(`${prefix}_num`)),
-      ...(name ? { name } : {}),
-    });
-    const options = JSON.parse(v("options") || "{}") as Record<string, string | number | boolean>;
-    const sensor = v("sensor");
-    const innerName = v("inner_name").trim() || undefined;
-    const outer = v("outer_channel") ? axis("outer") : null;
-    const held = this.validateLevels();
-    if (held.errors.length) throw new Error(held.errors.join("; "));
-    const levels = held.levels;
-    if (v("kind") === "capture") {
-      return {
-        definition: captureSweep({
-          name: v("name"),
-          levels,
-          outer,
-          channel: v("capture_channel"),
-          startS: Number(v("capture_start")),
-          stopS: Number(v("capture_stop")),
-          num: Number(v("capture_num")),
-          records: Number(v("capture_records")),
-          result: v("capture_result").trim() || "trace",
-        }),
-        options,
-      };
-    }
-    if (v("kind") === "stage") {
-      const inner = this.stand.pulse.find((c) => c.logical === v("inner_channel"));
-      if (!inner) throw new Error("a stage sweep needs a pulse channel for its inner axis");
-      this.validateSequence(); // bring the bindings up to date with the axis names
-      return {
-        definition: stageSweep({
-          name: v("name"),
-          levels,
-          outer,
-          inner: axis("inner", innerName),
-          sensor,
-          instrument: inner.instrument,
-          shots: Number(v("shots")),
-          stepNs: 500,
-          measureNs: 2000,
-          result: "I_sensor",
-          sequence: { rows: this.rows, bindings: this.bindings, channels: this.channels },
-        }),
-        options,
-      };
-    }
-    return {
-      definition: dcSweep({ name: v("name"), levels, outer, inner: axis("inner", innerName), sensor, result: "I_sensor" }),
-      options,
-    };
-  }
-
-  private async submit(): Promise<void> {
-    try {
-      const { definition, options } = this.readForm();
-      const run = await this.api.startRun({ definition, options });
-      this.runs.set(run.run_id, run);
-      this.renderRuns();
-      this.host.say(`run ${short(run.run_id)} queued`);
-      void this.follow(run.run_id);
-    } catch (e) {
-      this.host.say(describe(e), true);
-    }
-  }
-
-  private async follow(runId: string): Promise<void> {
-    while (true) {
-      await new Promise((r) => setTimeout(r, 1000));
-      let run: Run;
-      try {
-        run = await this.api.run(runId);
-      } catch (e) {
-        this.host.say(describe(e), true);
-        return;
-      }
-      this.runs.set(runId, run);
-      this.renderRuns();
-      if (TERMINAL.has(run.state)) {
-        this.host.say(`run ${short(runId)} ${run.state}${run.error ? `: ${run.error}` : ""}`, run.state === "failed");
-        await this.refreshRecords();
-        return;
-      }
-    }
-  }
-
-  private renderRuns(): void {
-    this.els.runsList.replaceChildren(
-      ...[...this.runs.values()].reverse().map((r) =>
-        h(
-          "li",
-          {},
-          `${short(r.run_id)} ${r.definition_name} · ${r.state}${r.record_id ? ` → record ${short(r.record_id)}` : ""}`,
-          ...(TERMINAL.has(r.state) ? [] : [h("button", { type: "button", text: "abort", onclick: () => void this.abort(r.run_id) })]),
-        ),
-      ),
-    );
-  }
-
-  private async abort(runId: string): Promise<void> {
-    try {
-      this.runs.set(runId, await this.api.abort(runId));
-      this.renderRuns();
-      this.host.say(`run ${short(runId)} aborting`);
-    } catch (e) {
-      this.host.say(describe(e), true);
-    }
-  }
-
-  // --- records and analysis ------------------------------------------------------------------------
 
   async refreshRecords(): Promise<void> {
     try {
@@ -848,3 +370,6 @@ function describe(e: unknown): string {
   if (e instanceof ApiError) return `${e.status} ${e.detail}`;
   return e instanceof Error ? e.message : String(e);
 }
+
+// `defaults` stays exported from ./methods for the unit tests; the panel reads parameters through `parse`.
+void defaults;
