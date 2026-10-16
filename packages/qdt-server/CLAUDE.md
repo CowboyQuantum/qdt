@@ -21,6 +21,7 @@ qdt_server/
   OpenAPI document is generated from them and the UI's client is generated from that (ADR 0034).
 - The server never defines schema objects (that is `qdt-schemas`) and never computes an analysis itself
   (that is `qdt-analysis`): it compiles, executes, stores, serves.
+- `GET /levels/state` (ADR 0057) reports every level-setting or level-sensing channel's setpoint, held level and readback (null where the instrument refuses the channel) from one live instrument set the `RunManager` builds once and keeps; on the simulator that set is separate from a run's seeded device.
 - Runs, tune-ups and the held operating point (`/levels`, ADR 0053) live in memory; records, results and
   node outcomes are the durable things. A server restart forgets runs, tune-ups and the held levels,
   never what they produced: every record carries the operating point its sweep ran at, because the
