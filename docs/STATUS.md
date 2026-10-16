@@ -3,30 +3,21 @@
 > Rewritten at the end of every session. Never appended. History: `git log -- docs/STATUS.md`.
 > A fresh session must be able to continue from this file alone.
 
-**Current step:** none in progress. **Step 6b — Flight Deck workspace is DONE** (opened 2026-10-15, closed
-2026-10-16 after six sessions, ADR 0054–0059). Step 6 is DONE (its L3 confirmation is the first fridge task,
-below). **Step 7 waits for manager sign-off** (plan Open Decision #5); what comes next is the human's call.
-**Branch:** `step-6b/script-close` (PR against `main`; the human merges). PRs #25–#56 merged 2026-10-14/16.
-**Last session:** 2026-10-16, Step 6b session 6 (not at the bench). **The Script widget placeholder; the step
-closes** (ADR 0059). An editor (per browser) beside the allowed API as data (`sweep`, `levels`, `run`, `wait`,
-`analyze`, `device`), a stage button that lints (allow-list, a `qdt.x` without a call, brackets and quotes as a
-stack across lines, comments and strings ignored) and reports that nothing ran. No execution path; a sandbox is
-its own ADR. With it every Step 6b deliverable is done and every exit criterion met (table below); the step file
-and `docs/steps/README.md` say DONE.
-
-## Step 6b close-out
-| Exit criterion | State |
-|---|---|
-| `panel.ts` is gone; every former panel capability exists as a widget; all e2e green | ✔ (ADR 0058) |
-| Two plot panes show live and a stored record simultaneously with independent cuts | ✔ (ADR 0055; e2e) |
-| Exactly one Run control, bound to a compiled plan with a visible identity and stale marker | ✔ (ADR 0056) |
-| Layout persists and restores; `+` refuses below the min pane height | ✔ (ADR 0054; e2e) |
-
-Deliverables 1–6: shell (0054), plot panes + History (0055), Sweep + Pulse + one Run (0056), Levels + Virtual
-gates with `GET /levels/state` (0057), Analysis + Tune-up with the panel deleted (0058), Script placeholder
-(0059). Widgets: `plot`, `sweep`, `pulse`, `levels`, `gates`, `history`, `analysis`, `tuneup`, `script`, `empty`.
-Open decisions carried, not closed: layout as a schema object; the script sandbox (the allow-list should come
-from it); the release mirror's first widgets; themes in the registry.
+**Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
+steps, the human picks slices from the open decisions (this session took the first).
+**Branch:** `step-6/shot-captures` (PR against `main`; the human merges). PRs #25–#57 merged 2026-10-14/16.
+**Last session:** 2026-10-16, a Step 6 open decision (not at the bench). **The shot is the timeline** (ADR
+0060): the `PlayedWaveform` decision closed by not building it. The human saw the seam: a shot existed only
+inside the sequencer stage, a scope capture hung off the stepped point with its own trigger, and a played
+waveform would have been a third per-point thing. Now a **`capture` op** of the pulse sequence opens a scope
+window at that point of the shot (channel, fixed window in ns, samples, result): one record per shot, time
+from the capture, every shot kept. `step`/`ramp` on a sequencer line are the stimulus. The compiler lays a
+shot capture over the stepped axes, `shot` when shots > 1, and a time axis from 0; the executor arms the
+scope for one record per shot before the shots run and re-keys each record to its shot after; the simulated
+device skips the scope channel and runs its shots for the clock; a program may fill nothing. First slice
+limits: the scope is its own instrument (a capture on the sequencer's input is refused "not emitted yet");
+no stage axes with a shot capture; the OPX driver refuses a shot capture until it emits a trigger line.
+`captured` (ADR 0047) stays for passive monitoring. Flight Deck's pulse editor has a `capture` row.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
 1. Run the three-node tune-up (sensor-operating-point → charge-lattice → virtual-lattice) on a real device through
@@ -36,50 +27,58 @@ from it); the release mirror's first widgets; themes in the registry.
 3. A dated report in `bench/reports/` (the ladder has no fridge report format yet; write one with the first run).
 
 ## Done
-- **Steps 0–6 and 6b DONE.** ADR 0001–0059. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
-  stand/activity/pulse (0022; amended additively by 0037, 0038, 0047, 0049), identity/envelope/`qdt-hdf5-v1`
-  (0028), modeling (0033; Step 6 objects beside it by 0048–0050), control (0036; amended additively by 0046,
-  0050; `ChannelLevel` beside it by 0057). Registry DDL v3 (0026, 0029, 0050).
+- **Steps 0–6 and 6b DONE.** ADR 0001–0060. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021),
+  stand/activity/pulse (0022; amended additively by 0037, 0038, 0047, 0049, 0060), identity/envelope/
+  `qdt-hdf5-v1` (0028), modeling (0033; Step 6 objects beside it by 0048–0050), control (0036; amended
+  additively by 0046, 0050; `ChannelLevel` beside it by 0057). Registry DDL v3 (0026, 0029, 0050).
+- **Step 6b:** the workspace (0054–0059): `plot`, `sweep`, `pulse`, `levels`, `gates`, `history`, `analysis`,
+  `tuneup`, `script`, `empty`.
+- **This session:** `Capture` in the pulse vocabulary; `SequencerStage.captures()`, `SweepDefinition.capture_grids()`
+  and a generalised `capture_time_dim`; `SequencerProgram.results` may be empty; compile/execute/sim/OPX as
+  above; schema, executor and server tests (L2-3 as a shot through the API, τ recovered); exports regenerated.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- 395 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
-  hardware-only in `bench/`; Flight Deck 119 unit tests and 9 e2e.
+- 401 Python tests (+5 Postgres-parametrized), 4 skipped, 34 hardware-only in `packages/`, 16
+  hardware-only in `bench/`; Flight Deck 122 unit tests and 9 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6b/script-close` awaits the human.
+- Nothing uncommitted. PR for `step-6/shot-captures` awaits the human.
 
 ## Known broken / not yet real
-- **The Script widget runs nothing**: stage lints and says so; the allow-list is hand-written until a sandbox ADR
-  generates it.
-- **Flight Deck carry-overs (Step 6b):** an analysis names its record from History or the picker, not from a
-  plot pane yet; two widgets refresh records after a run (no server push); the simulator's live device and a
-  run's device diverge (ADR 0057); a simulated gate reads back null; the Levels widget polls every 2 s; limits
-  are a browser setting; the coupling matrix is per browser; a stage sweep needs the Pulse widget mounted; one
-  run at a time from the UI; Run compiles again when stale (0056); no colormap in the ⚙ menu; per-pane view state
-  does not survive a reload (0055); no Google Fonts link; the strip's stand/device read "?" without a server.
+- **A shot capture runs on the simulator only.** The sequencer-to-scope trigger is not in the protocols (ADR
+  0021 has no marker line); the OPX driver refuses a `capture` op with a clear message. On the bench L2-3 stays
+  the per-point capture with the pulse train played beside it (BENCH.md). The trigger line is the next slice.
+- **A capture on the sequencer's own input** (the OPX ADC) is refused at compile; it is the natural second slice
+  and would let stage axes return to a stage with a capture.
+- **A shot capture allows no stage axes** (the scope is armed per stepped point): step the axis instead.
+- **The simulated scope's record does not depend on the stimulus**: it is the run options' droop, as in ADR
+  0047; the sim wires no pulse line into the scope. Honest for the L0 model of L2-3, not a physics model.
+- **Averaging kept traces** is an analysis, not an executor job; no curated method does it yet.
+- Flight Deck carry-overs (Step 6b): an analysis names its record from History or the picker; the simulator's
+  live device and a run's device diverge (0057); a simulated gate reads back null; the Levels widget polls;
+  limits and the coupling matrix are per browser; a stage sweep needs the Pulse widget mounted; one run at a
+  time; Run compiles again when stale (0056); no colormap in the ⚙ menu; per-pane view state does not survive
+  a reload (0055); the Script widget runs nothing (0059); no Google Fonts link.
 - **`provenance_check.sh` matches bare substrings**; a word-boundary pattern is a one-line fix.
 - Step 6 carry-overs: the held operating point is server memory (a `stand_state` table later); click-to-set only
   for axes named after stand DC channels; `flank_offset_v` is a judgment (0052); the diamonds method needs a cold
   sensor (0030); `TuneUp` not persisted, one at a time, no resume/parallel (0050); the bench has one OPX pulse
   line and no `SG`/`bias`/`sensor`; `detect_transitions` reports `ok` on a constant map; `SimScenario.model`
-  overrides scalars only; QDAC-II quirks (BENCH.md); nothing in a sweep plays a waveform; captures sequential;
-  the trace view has no axes/labels/output curve; the exponential's edge detector is a heuristic (0046); the
-  plane fit is OLS (0045); OPX input offset not applied; `bench_report.py` does not redact serials; qm-qua
-  deprecations; zero-clipping in the dot model (0020); Postgres suite only in CI; `FINISH_LINE.md` TODO (human);
-  Windows pnpm via `corepack pnpm`.
+  overrides scalars only; QDAC-II quirks (BENCH.md); captures sequential; the trace view has no axes/labels/
+  output curve; the exponential's edge detector is a heuristic (0046); the plane fit is OLS (0045); OPX input
+  offset not applied; `bench_report.py` does not redact serials; qm-qua deprecations; zero-clipping in the dot
+  model (0020); Postgres suite only in CI; `FINISH_LINE.md` TODO (human); Windows pnpm via `corepack pnpm`.
 
 ## Next action
 **Human:**
-1. Merge the PR. Step 6b is closed; look at the whole workspace once in `pnpm dev` against `python -m qdt_server`.
-2. **Name what comes next.** Step 7 (other sources onto the substrate: `qdt-telemetry` ingest, the internal
-   extension, lab PC deployment) is gated by manager sign-off. Without it, the candidates are:
-   - a Step 6 Open decision with an ADR and a slice: `PlayedWaveform` (a waveform played inside a sweep, ADR
-     0047's other half), sub-ms stepping (Probe 04's consequence), how a sense range is declared;
-   - a `sensor_peak` method retiring `flank_offset_v` (ADR 0052);
-   - a bench session: a second OPX pulse line for the stability nodes, the QDevil report;
-   - Flight Deck follow-ups from the list above (a colormap choice, per-pane view state, "analyse the record in
-     Plot N", the tune-up's `virtual_gates` into the coupling matrix, a `records:changed` push).
-3. Step 6's Open decisions (its file) and the QDevil report still wait.
+1. Merge the PR; read ADR 0060 once more against the measurement you had in mind (the shot composes stimulus
+   and readout; captures are ops; no `PlayedWaveform`).
+2. **Name the next slice.** The ones ADR 0060 opens: the sequencer-to-scope trigger line (protocol + stand +
+   OPX driver; needs the bench and a scope on the OPX's trigger input), or a capture on the OPX's own ADC
+   (raw acquisition in the QUA emitter; also a bench slice). Or the other Step 6 open decisions: sub-ms
+   stepping; how a sense range is declared; a rest level at a sweep's end. Or a `sensor_peak` method; a bench
+   session (second OPX pulse line, the QDevil report); Flight Deck follow-ups.
+3. Step 7 when sign-off arrives.
 
 **Then (sessions):** the chosen item, on its own branch, with its ADR. A `tuneups` table and a `stand_state`
 table when something reads them; resume and parallel branches when a DAG needs them.
@@ -101,22 +100,23 @@ table when something reads them; resume and parallel branches when a DAG needs t
   first node first (ADR 0048); the second node is the virtual-gate stability diagram (ADR 0049); the persisted
   tune-up before a third node (ADR 0050); `qdt-telemetry` ingests, does not collect (ADR 0051); the third node is
   the sensor operating point (ADR 0052); click-to-set (ADR 0053); "let's strike the DAPS development for now";
-  the Step 6b spec arrives as a chat patch (ADR 0054); "let's put off L3 and close step 6": Step 6 closes on the
-  simulator, the L3 confirmation is the first fridge task; "go with 6b": Step 6b opens, ADR 0054 is accepted,
-  the shell is session 1.
-- **2026-10-16:** PRs #52–#56 merged without a word, so sessions 2–6 (ADR 0055–0059) followed the step file's
-  order, taking STATUS's stated defaults where a decision was pending; "the flight deck ci didn't pass": two
-  timing failures fixed in #56 (the Levels table keeps its rows across polls; e2e scenarios declare 180 s).
+  the Step 6b spec arrives as a chat patch (ADR 0054); "let's put off L3 and close step 6"; "go with 6b".
+- **2026-10-16:** PRs #52–#57 merged without a word, so Step 6b's six sessions (ADR 0054–0059) followed the step
+  file's order; "the flight deck ci didn't pass" (two timing fixes in #56); on the `PlayedWaveform` explanation:
+  "this is described too much within the class language … perhaps we need to go back to how sweeps and pulse
+  sequences (including readout) get composed", then **"go ahead and revise the adr and implement"**: the shot
+  is the timeline (ADR 0060), no `PlayedWaveform`.
 
 ## Decisions pending
-- **What follows Step 6b** (the list above).
+- **What follows** (the list above): the trigger line, the OPX-ADC capture, another Step 6 open decision, a
+  method, a bench session, Flight Deck follow-ups.
 - Deliverable 4's defaults, taken: readback null (not omitted); the limit a browser setting. Say if either changes.
 - Step 6b's Open decisions (its file): layout as a schema object; the script sandbox; the release mirror's
   first widgets; themes per browser or in the registry.
 - Flight Deck follow-ups: a Google Fonts link; a colormap choice; queueing a second run; the tune-up's
   `virtual_gates` into the coupling matrix; "analyse the record in Plot N"; per-pane view state across a reload.
-- Step 6's Open decisions (its file): `PlayedWaveform`; sub-ms stepping; how a sense range is declared;
-  a rest level at a sweep's end; the time-series view's remainder; the deferred physics.
+- Step 6's Open decisions (its file): sub-ms stepping; how a sense range is declared; a rest level at a sweep's
+  end; the time-series view's remainder; the deferred physics.
 - A `tuneups` table and a `stand_state` table; resume and parallel branches.
 - `detect_transitions` on a noiseless constant map (a method `VERSION` bump); a `sensor_peak` method.
 - `bench_report.py` and `*IDN?` serials; the dot model's zero-clipping; the diamond estimator on warm edges.

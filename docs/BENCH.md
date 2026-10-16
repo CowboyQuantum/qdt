@@ -134,7 +134,9 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
   Z, or terminated per the bias tee's datasheet). Through the server (ADR 0047): a capture sweep with no
   axis, `captured = [{channel: scope1, start_s, stop_s, num, records}]`, the OPX pulse train played
   beside it; the scope's trigger is set on the instrument (level, edge, source), not by the sweep. The
-  stand file lists the scope with `waveform_sense` and a voltage channel on its input.
+  stand file lists the scope with `waveform_sense` and a voltage channel on its input. The measurement's
+  honest shape is one shot, `step(rf, …); capture(scope1, …)` (ADR 0060); the OPX driver refuses it until
+  it emits a trigger line to the scope, so on the bench L2-3 stays the per-point form above for now.
 - **Oracle:** V(t) = A·e^(−t/τ) after the edge. τ is the bias tee's low-frequency time constant,
   1/(2π f_low) from its datasheet.
 - **Fit:** a single exponential (`qdt_analysis.exponential.fit_exponential`, ADR 0046) → `tau`, `amplitude`,
