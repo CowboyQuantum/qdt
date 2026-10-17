@@ -5,27 +5,27 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/probe-05` (PR against `main`; the human merges). PRs #25–#61 merged 2026-10-14/16.
-**Last session:** 2026-10-16, at the bench: **Probe 05** (`docs/probes/05-sequencer-trigger-lines.md`) and
-**ADR 0065**. The OPX's marker lines are real (3.27 V, 401 ns, 85 ns ahead of the analog edge) once the
-LF-FEM's digital I/O adapter is screwed on; the scope's AUX TRIG IN fires on them; the QDAC-II's list
-advances one point per marker on ext1 (5/5, three repeats, latency under 0.2 ms) once armed with
-`dc:init:cont on`, and restarts past its end. The scope driver now acquires by `:SINGle` + `:AER?` +
-`:RSTate?` with **segmented memory** for several records (10/10 records down to 20 ms apart; one
-`:DIGitize` per record cost 0.45 s and lost markers, and a `:DIGitize` left waiting wedged the scope until
-a HiSLIP device clear). **L2-4, the triggered staircase, passes through `qdt-server --stand`**
-(`bench/reports/2026-10-16-step6.md`): five records at their levels, 4 s, the DAC holding its last point.
-QDAC-II after its power cycle: outputs at 0 V with the setpoint reported, again; `*RST` fixed it.
+**Branch:** `step-6/pacing-in-the-plan` (PR against `main`; the human merges). PRs #25–#62 merged 2026-10-14/16.
+**Last session:** 2026-10-16, a design follow-up to ADR 0064, software only (**ADR 0066**). The human asked
+whether the Sweep widget was the right place for a stepping control and whether software versus hardware
+sweeps deserved a formal place in the code. They bundle two decisions: *what produces the level* (a DC line
+or a pulse in the shot: the axis's channel, the experiment's choice) and *who paces the DC steps* (the host
+or the sequencer's marker: the stand's wiring). The second is now the plan's: `resolve_pacing` in
+`qdt_lab.experiment` decides from the stand; `ExecutionPlan.pacing` records one `AxisPacing` per axis
+(`software`, `triggered` with its marker lines, `sequencer`) and the Dataset attrs carry `<axis>.pacing`;
+`SweepAxis.stepping` is a preference, default "auto" ("triggered" required, "software" forced); the executor
+reads the plan. The Sweep widget shows the per-axis pacing in its plan box and has an "outer stepping"
+select for stage sweeps. On the simulated stand "auto" triggers the DC axis (the device is its own
+sequencer); data are identical to host stepping, so every fixture held.
 
 ## Bench tasks — next bench session
 1. **L2-3 as one shot** (`bench/test_l2_paced.py`): re-wire ao1 → combiner pulse in, QDAC ch01 →
-   combiner DC in, board out → scope ch1 (the 2026-10-16 session had ao1 direct into the scope for
-   Probe 05); run first with the scope self-triggering (no `trigger_from` on scope0), then with the
-   marker. Commit the report.
-2. **The QDevil report:** the three findings in BENCH.md plus 2026-10-16: outputs at 0 V after a power
-   cycle until `*RST` (second time), ch02 not re-checked this session.
-3. Later: reading all segments in one transfer (readout is 0.3–0.5 s per segment); a second OPX pulse
-   line; an OPX-ADC capture.
+   combiner DC in, board out → scope ch1; run first with the scope self-triggering (no `trigger_from` on
+   scope0), then with the marker. Commit the report.
+2. **A stability diagram through the UI on the bench**, to see ADR 0066 there: the plan box should say
+   "P1: triggered on dac_trigger"; note that the OPX returns a triggered run's data only at the end (below).
+3. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
+   `*RST`, seen twice.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
 1. The four-node tune-up on a real device through `POST /tuneups`; compare outcomes to the sim's.
@@ -34,34 +34,38 @@ QDAC-II after its power cycle: outputs at 0 V with the setpoint reported, again;
 3. A dated report in `bench/reports/`.
 
 ## Done
-- **Steps 0–6 and 6b DONE.** ADR 0001–0065. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021; a sixth
+- **Steps 0–6 and 6b DONE.** ADR 0001–0066. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021; a sixth
   beside them by 0064, its past-the-end semantics by 0065), stand/activity/pulse (0022; amended additively by
-  0037, 0038, 0047, 0049, 0060, 0064), identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; 0048–0050,
-  0062), control (0036; 0046, 0050, 0057). Registry DDL v3 (0026, 0029, 0050).
-- **This session:** Probe 05 run and its doc filled; ADR 0065; `InfiniiVisionX` acquires by `:SINGle`
-  (+`:AER?`, `:RSTate?`) with segmented memory and a bounded wait, emulator alike; `QDac2.load` arms
-  `dc:init:cont on`, `get` queries in list mode, `release` holds the point the channel is at; the list
-  restarts past its end in the protocol, the simulated source, the emulator and the simulated device;
-  `MARKER_TO_ANALOG_NS`; `CAPTURE_ARM_GRACE_S` 0.5 s; the L2-4 row passes; BENCH.md and the example stand.
+  0037, 0038, 0047, 0049, 0060, 0064; `stepping` made a preference and `ExecutionPlan.pacing` added by 0066),
+  identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; 0048–0050, 0062), control (0036; 0046, 0050,
+  0057). Registry DDL v3 (0026, 0029, 0050).
+- **This session:** ADR 0066 (ADR 0064's status line marks the partial supersession); `resolve_pacing`;
+  `AxisPacing` and `ExecutionPlan.pacing` with a consistency validator and `pacing_of` / `triggered_axis` /
+  `program_axes` / `software_axes` (the definition's helpers moved to the plan); the compiler explains a
+  once-per-point result on a host-stepped axis; the Sweep widget's plan box and stepping select; the Step 6
+  file's Probe 05 note that missed last session.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- 433 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 18
-  hardware-only in `bench/`; Flight Deck 124 unit tests and 13 e2e.
+- 442 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 18
+  hardware-only in `bench/`; Flight Deck 127 unit tests and 13 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6/probe-05` awaits the human.
+- Nothing uncommitted. PR for `step-6/pacing-in-the-plan` awaits the human.
 
 ## Known broken / not yet real
-- **L2-3 as one shot is unrun** (the combiner is not wired); the self-trigger interim and the marker form
-  are both untested on a real droop.
-- **Segment readout is 0.3–0.5 s each** over the socket after the acquisition; a thousand-shot sweep spends
-  minutes reading. One transfer for all segments is the next scope slice.
-- **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off (the simulator shows
-  the markers); BENCH.md says to check it.
-- **The marker-to-analog delay (85 ns) is recorded, not applied**; a shot capture's record starts at the
-  marker.
+- **On the OPX a triggered run's data arrive when the program ends** (the driver fetches once), so with
+  "auto" a bench stability diagram's live view fills at the end instead of row by row. "software" in the
+  Sweep widget is the override; streaming per row in the driver is the fix.
+- **A stage with no axis of its own and one shot** records a once-per-point result only where the axis is
+  triggered; host-stepped, the older rule (a stage result needs an axis or kept shots) applies and the
+  compiler says so. Lifting that rule is a separate slice.
+- **Timing now depends on the stand:** host stepping added a job submission per point that may have hidden
+  a too-short `settle_s`; triggered, exactly the declared settle is waited. Check stand files' settles.
+- **L2-3 as one shot is unrun** (the combiner is not wired).
+- **Segment readout is 0.3–0.5 s each** over the socket; one transfer for all segments is a scope slice.
+- **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off; BENCH.md says to check.
+- **The marker-to-analog delay (85 ns) is recorded, not applied.**
 - **A triggered axis through the combiner's DC side is still 50 ms per point** (its 20 Hz low-pass).
-- **Flight Deck's Sweep widget has no `stepping` control**; a triggered sweep is posted by hand or by a node.
 - **`provenance_check.sh` matches bare substrings**; a word-boundary pattern is a one-line fix.
 - Carry-overs unchanged: a retune needs a held level (0062); the fitted width is thermal only in linear
   response; the simulated sensor's neighbouring peaks bias the background; the UI's run queue has no
@@ -76,12 +80,11 @@ QDAC-II after its power cycle: outputs at 0 V with the setpoint reported, again;
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge the PR; decide whether to re-wire the combiner for L2-3 as one shot now or leave it for
-the next bench session; name the next slice. Candidates: the Sweep widget's `stepping`; one transfer for
-all segments; a second OPX pulse line (ao2 → scope ch2; two lines in one shot, their skew); an OPX-ADC
-capture (a capture on the sequencer's own input, Probe 02's loopback; short windows only); how a sense
-range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel
-branches. Step 7 when sign-off arrives.
+**Human:** merge the PR; name the next slice. Candidates: the OPX streaming a triggered run per row (it
+matters now that "auto" triggers on the bench); one transfer for all scope segments; a stage result once
+per point with no stage axis; the bench tasks above; a second OPX pulse line; an OPX-ADC capture; how a
+sense range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and
+parallel branches. Step 7 when sign-off arrives.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -111,11 +114,13 @@ branches. Step 7 when sign-off arrives.
   externally" (ADR 0063); "I want to have the ability to sweep the dac by default, and only sweep the opx in the
   case that I'm sweeping a pulse amplitude within a shot pulse sequence", with the DAC stepped by a trigger line
   from the sequencer (ADR 0064); "start the code work now and I'll set up the instruments and let you know when
-  to run that probe"; then at the bench: "run the probe"; the digital I/O adapter screwed on; the QDAC's trigger
-  moved to the right port (ADR 0065).
+  to run that probe"; at the bench: "run the probe"; the digital I/O adapter screwed on; the QDAC's trigger moved
+  to the right port (ADR 0065); on the stepping control: "Is this the right place to put this? I'm wondering if
+  it's worth formalizing a software sweep versus a hardware sweep in the code", then **"do this"** to the
+  recommendation that the stand decides and the plan records it (ADR 0066).
 
 ## Decisions pending
-- **What follows** (the candidates above); whether L2-3 as one shot is run before the next slice.
+- **What follows** (the candidates above).
 - Deliverable 4's defaults, taken: readback null (not omitted); the limit a browser setting. Say if either changes.
 - Step 6b's Open decisions (its file): layout as a schema object; the script sandbox; the release mirror's
   first widgets; themes per browser or in the registry.
