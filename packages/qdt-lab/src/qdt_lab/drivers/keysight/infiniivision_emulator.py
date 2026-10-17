@@ -45,10 +45,13 @@ class InfiniiVisionEmulator:
     on t = position - range/10 + i*range/points (LEFT reference: one division in from the left edge,
     as the instrument does; xreference 0), quantized to int16 codes of `yincrement` volts (yorigin 0,
     yreference 0), for the waveform source channel; in segmented mode one `:SINGle` captures
-    `:ACQuire:SEGMented:COUNt` records at once and `:ACQuire:SEGMented:INDex k` selects one. `:RSTate?`
-    reads STOP at once (an emulated trigger is instant). `points` caps
-    the raw points; fewer are captured when `:WAVeform:POINts` asks for fewer. `segmented=False`
-    emulates an instrument without the mode (`:ACQuire:MODE?` stays RTIM)."""
+    `:ACQuire:SEGMented:COUNt` records at once and `:ACQuire:SEGMented:INDex k` selects one; with
+    `:WAVeform:SEGMented:ALL ON` one `:WAVeform:DATA?` returns every segment in turn while the preamble
+    still describes one. `:RSTate?` reads STOP at once (an emulated trigger is instant). `points` caps the
+    raw points; fewer are captured when `:WAVeform:POINts` asks for fewer. `segmented=False` emulates an
+    instrument without the mode (`:ACQuire:MODE?` stays RTIM); `all_segments=False` one without the
+    one-transfer readout, which queues -113 for the command, as an instrument does for an unknown header,
+    instead of raising like every other unknown command."""
 
     def __init__(
         self,
@@ -56,10 +59,14 @@ class InfiniiVisionEmulator:
         points: int = 2000,
         yincrement: float = 1e-4,
         segmented: bool = True,
+        all_segments: bool = True,
     ) -> None:
         self.signal: Signal = signal or ring_down
         self.points, self.yincrement = points, yincrement
         self.supports_segmented = segmented
+        self.supports_all_segments = all_segments
+        self.all_segments = False
+        self.errors: list[str] = []
         self.log: list[str] = []
         self.range: float = 1e-3
         self.position: float = 0.0
@@ -113,6 +120,13 @@ class InfiniiVisionEmulator:
             if self.acquire_mode != "SEGM" or not 1 <= k <= len(self._captures):
                 raise ValueError(f"no segment {k} ({len(self._captures)} acquired)")
             self._index = k - 1
+        elif head == ":WAVeform:SEGMented:ALL" and arg in ("ON", "OFF"):
+            if self.supports_all_segments:
+                self.all_segments = arg == "ON"
+            else:
+                self.errors.append('-113,"Undefined header;WAVEFORM:SEGMENTED:ALL"')
+        elif command == "*CLS":
+            self.errors.clear()
         elif command == ":SINGle":
             self._single()
         elif command in (":STOP", ":TRIGger:FORCe"):
@@ -152,6 +166,8 @@ class InfiniiVisionEmulator:
             return self.trigger.get(":TRIGger:SWEep", "AUTO")
         if command == ":ACQuire:MODE?":
             return self.acquire_mode
+        if command == ":SYSTem:ERRor?":
+            return self.errors.pop(0) if self.errors else '+0,"No error"'
         if command == ":WAVeform:PREamble?":
             xinc, xorig, codes = self._served()
             return f"1,0,{codes.size},1,{xinc:.12e},{xorig:.12e},0,{self.yincrement:.12e},0.0,0"
@@ -167,6 +183,8 @@ class InfiniiVisionEmulator:
         missing = set(_SETTINGS) - set(self.settings)
         if missing:
             raise ValueError(f"waveform transfer not configured: {sorted(missing)}")
+        if self.all_segments and self.acquire_mode == "SEGM":
+            return np.concatenate([codes for _, _, codes in self._captures])
         return self._served()[2].copy()
 
     def _served(self) -> tuple[float, float, np.ndarray]:
