@@ -171,7 +171,13 @@ def test_a_tuneup_is_the_lifecycle_of_nodes_in_dependency_order():
         depends_on=deps,
     )
     now = datetime(2026, 10, 15, tzinfo=UTC)
-    base = {"tuneup_id": "ab" * 16, "name": "t", "stand_id": "s", "device_id": "d", "created_at": now}
+    base = {
+        "tuneup_id": "ab" * 16,
+        "name": "t",
+        "stand_id": "s",
+        "device_id": "d",
+        "created_at": now,
+    }
     queued = TuneUp(nodes=(node("a"), node("b", ("a",))), state="queued", **base)
     assert queued.outcomes == () and queued.scenario_id is None
     accepted = NodeOutcome(
