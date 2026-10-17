@@ -241,3 +241,175 @@ def test_a_line_must_be_a_digital_output():
     program = paced_program(lines=True, triggered=False)
     with pytest.raises(ValueError, match="is an ao, not an do"):
         Opx1000(_FakeQMM(), bad).compile(program)
+
+
+# --- results stream per row (ADR 0015's chunking; ADR 0066's live view) -------------------------------
+
+
+class _Stream:
+    """A result stream that grows by `feed` values per poll of its count, as a running job's does."""
+
+    def __init__(self, values, feed):
+        self.values, self.feed, self.available, self.fetches = np.asarray(values), feed, 0, []
+
+    def count_so_far(self):
+        self.available = min(self.values.size, self.available + self.feed)
+        return self.available
+
+    def fetch(self, item):
+        assert item.stop <= self.available, "fetched values the OPX had not produced yet"
+        self.fetches.append((item.start, item.stop))
+        return self.values[item]
+
+    def fetch_all(self):
+        return self.values
+
+
+class _Handles:
+    def __init__(self, streams):
+        self.streams = streams
+
+    def get(self, name):
+        return self.streams[name]
+
+    def is_processing(self):
+        return any(s.available < s.values.size for s in self.streams.values())
+
+    def wait_for_all_values(self):
+        for s in self.streams.values():
+            s.available = s.values.size
+
+
+def _paced_program(rows: int, points: int) -> tuple[Opx1000, object, dict]:
+    """The chopped stage with its P2 axis inside a triggered V axis: results over (n_V, n_P2)."""
+    from qdt_lab.experiment import TriggeredStep
+
+    opx = Opx1000(_FakeQMM(), LINED)
+    stage = SequencerStage.model_validate(
+        {
+            "instrument": "opx",
+            "axes": ["P2"],
+            "sequence": PulseSequence(
+                name="chop",
+                body=(
+                    Step(channel="P2_pulse", level=Symbol(name="v_P2", unit="V"), duration=200),
+                    Measure(channel="sensor", duration=1000, result="I_on"),
+                    Step(channel="P2_pulse", level=0.0, duration=200),
+                    Measure(channel="sensor", duration=1000, result="I_off"),
+                    Difference(result="dI", a="I_on", b="I_off"),
+                ),
+            ).model_dump(),
+            "bindings": [{"symbol": "v_P2", "axis": "P2"}],
+            "shots": 3,
+            "reduce": {"I_on": "mean", "I_off": "mean", "dI": "mean"},
+        }
+    )
+    axes = {
+        "V": SweepAxis(name="V", channel="P1", start=0.0, stop=1.0, num=rows, stepping="triggered"),
+        "P2": SweepAxis(name="P2", channel="P2_pulse", start=0.0, stop=0.1, num=points),
+    }
+    program, _ = QuaEmitter().emit(
+        stage,
+        axes,
+        {c.logical: c for c in LINED},
+        triggered=TriggeredStep(axis="V", lines=("dac_trigger",), settle_ns=0),
+    )
+    compiled = opx.compile(program)
+    params = {p.name: 0 for p in program.parameters} | {"n_V": rows, "n_P2": points, "shots": 3}
+    return opx, compiled, params
+
+
+def _slab(rows: int, points: int):
+    from datetime import UTC, datetime
+
+    from qdt_schemas.data import Dataset, DataVariable, Dimension, SourceDescriptor
+
+    return Dataset(
+        dataset_id="paced:stage",
+        name="paced (stage)",
+        dims=(Dimension(name="V", size=rows), Dimension(name="P2", size=points)),
+        data_vars=tuple(
+            DataVariable(name=n, dims=("V", "P2"), unit="V", dtype="float64")
+            for n in ("I_on", "I_off", "dI")
+        ),
+        source=SourceDescriptor(kind="live", label="paced"),
+        created_at=datetime(2026, 10, 16, tzinfo=UTC),
+    )
+
+
+def test_a_two_axis_run_streams_one_row_of_its_first_axis_per_frame_as_the_opx_produces_it(
+    monkeypatch,
+):
+    monkeypatch.setattr(opx1000, "RESULT_POLL_S", 0.0)
+    rows, points = 4, 5
+    opx, compiled, params = _paced_program(rows, points)
+    assert [r.dims for r in compiled.program.results] == [("n_V", "n_P2")] * 3
+    n = rows * points * 3
+    on, off = np.arange(n, dtype=float), np.arange(n, dtype=float) * 0.5
+    streams = {"I_on": _Stream(on, feed=7), "I_off": _Stream(off, feed=7)}
+    monkeypatch.setattr(
+        opx,
+        "_submit",
+        lambda compiled, values: type("J", (), {"result_handles": _Handles(streams)})(),
+    )
+    source = _RunSource(opx, compiled, params, _slab(rows, points))
+    frames = list(source.frames())
+    assert len(frames) == rows * 3  # one frame per result per row
+    assert [f.chunk.seq for f in frames] == list(range(rows * 3))
+    assert [f.chunk.final for f in frames] == [False] * (rows * 3 - 1) + [True]
+    assert [(s.dim, s.start, s.stop) for s in frames[3].chunk.region] == [
+        ("V", 1, 2),
+        ("P2", 0, points),
+    ]
+    assert streams["I_on"].fetches == [(r * points * 3, (r + 1) * points * 3) for r in range(rows)]
+    whole = source.results({"I_on": on, "I_off": off})  # what one fetch at the end gives
+    for f in frames:
+        (name,) = f.chunk.variables
+        row = f.chunk.region[0].start
+        np.testing.assert_allclose(f.arrays[name], whole[name][row : row + 1])
+
+
+def test_a_run_that_ends_short_raises_instead_of_waiting(monkeypatch):
+    monkeypatch.setattr(opx1000, "RESULT_POLL_S", 0.0)
+    opx, compiled, params = _paced_program(4, 5)
+    half = np.zeros(4 * 5 * 3 // 2)
+    streams = {"I_on": _Stream(half, feed=5), "I_off": _Stream(half, feed=5)}
+    monkeypatch.setattr(
+        opx,
+        "_submit",
+        lambda compiled, values: type("J", (), {"result_handles": _Handles(streams)})(),
+    )
+    frames = _RunSource(opx, compiled, params, _slab(4, 5)).frames()
+    with pytest.raises(RuntimeError, match="ended with 30 of 45 values on 'I_on'"):
+        list(frames)
+
+
+def test_a_one_axis_run_is_one_frame_per_result_when_it_is_done(monkeypatch):
+    opx = Opx1000(_FakeQMM(), CHANNELS)
+    compiled = opx.compile(chopped_program())
+    params = {p.name: 0 for p in compiled.program.parameters} | {"n_P2": 11, "shots": 3}
+    data = np.arange(33, dtype=float)
+    streams = {"I_on": _Stream(data, feed=1), "I_off": _Stream(data, feed=1)}
+    monkeypatch.setattr(
+        opx,
+        "_submit",
+        lambda compiled, values: type("J", (), {"result_handles": _Handles(streams)})(),
+    )
+    from datetime import UTC, datetime
+
+    from qdt_schemas.data import Dataset, DataVariable, Dimension, SourceDescriptor
+
+    slab = Dataset(
+        dataset_id="d",
+        name="d",
+        dims=(Dimension(name="P2", size=11),),
+        data_vars=tuple(
+            DataVariable(name=n, dims=("P2",), unit="V", dtype="float64")
+            for n in ("I_on", "I_off", "dI")
+        ),
+        source=SourceDescriptor(kind="live", label="d"),
+        created_at=datetime(2026, 10, 16, tzinfo=UTC),
+    )
+    frames = list(_RunSource(opx, compiled, params, slab).frames())
+    assert [f.chunk.variables for f in frames] == [("I_on",), ("I_off",), ("dI",)]
+    assert streams["I_on"].fetches == []  # fetched whole, after the run

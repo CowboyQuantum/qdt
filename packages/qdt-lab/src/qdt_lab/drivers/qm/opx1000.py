@@ -33,6 +33,7 @@ Calibration constants, measured on the bench (Probe 02, docs/probes/02-opx-input
 import json
 import math
 import re
+import time
 import uuid
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
@@ -691,9 +692,16 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
 # --- sources -------------------------------------------------------------------------------------
 
 
+RESULT_POLL_S = 0.02
+"""Between polls of a result stream's count while a run streams its rows."""
+
+
 class _RunSource:
-    """The `Source` an `Opx1000.run` returns: submits on first iteration, fetches when done, one
-    frame per result (whole stage at once; the executor runs one stage per stepped point)."""
+    """The `Source` an `Opx1000.run` returns: submits on first iteration, then yields the results as they
+    arrive, chunked as ADR 0015 chunks every sequencer's results: a result over one program axis (or none)
+    is one frame when the run is done; over two or more, one slab of its first axis per frame, fetched as
+    soon as the OPX has produced it, so a live view fills row by row (a triggered DC axis of ADR 0066 is
+    the first axis). The conformance program (`flat_index`) is fetched whole."""
 
     def __init__(
         self,
@@ -704,8 +712,15 @@ class _RunSource:
     ):
         self._opx, self._compiled, self._params, self.dataset = opx, compiled, parameters, dataset
 
-    def results(self, fetched: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
-        """Fetched per-shot values → declared result arrays (pure; used by tests with fake fetches)."""
+    def _axes(self, dims: tuple[str, ...]) -> list[int]:
+        """The sizes of a result's program axes (its dims without the kept `shots`)."""
+        return [self._params[d] for d in dims if d != "shots"]
+
+    def results(
+        self, fetched: Mapping[str, np.ndarray], rows: int | None = None
+    ) -> dict[str, np.ndarray]:
+        """Fetched per-shot values → declared result arrays (pure; used by tests with fake fetches). With
+        `rows`, the fetch holds only that many slabs of the first program axis, and so does the result."""
         program, plan = self._compiled.program, self._compiled.plan
         if plan["kind"] == "flat_index":
             shape = program.result_shape("data", self._params)
@@ -719,7 +734,9 @@ class _RunSource:
             per_shot[r] = per_shot[a] - per_shot[b]
         out = {}
         for res in program.results:
-            dims = [self._params[d] for d in res.dims if d != "shots"]
+            dims = self._axes(res.dims)
+            if rows is not None and dims:
+                dims[0] = rows
             values = per_shot[res.name].reshape(*dims, shots)
             how = plan["reduce"].get(res.name, "keep")
             if how == "mean":
@@ -732,36 +749,76 @@ class _RunSource:
         return out
 
     def frames(self) -> Iterator[Frame]:
-        program = self._compiled.program
+        program, plan = self._compiled.program, self._compiled.plan
         values = [int(self._params[p.name]) for p in program.parameters]
         job = self._opx._submit(self._compiled, values)
         handles = job.result_handles
-        handles.wait_for_all_values()
-        names = (
-            ["data"]
-            if self._compiled.plan["kind"] == "flat_index"
-            else list(self._compiled.plan["measures"])
-        )
-        fetched = {r: handles.get(r).fetch_all() for r in names}
-        arrays = self.results(fetched)
-        variables = {v.name: v for v in self.dataset.data_vars}
         results = list(program.results)
-        for seq, res in enumerate(results):
+        axes = self._axes(results[0].dims) if results else []  # every result is over the same axes
+        if plan["kind"] == "flat_index" or len(axes) < 2:
+            handles.wait_for_all_values()
+            names = ["data"] if plan["kind"] == "flat_index" else list(plan["measures"])
+            fetched = {r: handles.get(r).fetch_all() for r in names}
+            yield from self._frames(self.results(fetched), start=0, rows=None, seq=0, last=True)
+            return
+        # ADR 0015: one slab of the first program axis per frame, as soon as every stream holds it
+        rows, per_row = axes[0], math.prod(axes[1:]) * int(self._params.get("shots", 1))
+        streams = {r: handles.get(r) for r in plan["measures"]}
+        seq = 0
+        for row in range(rows):
+            want = (row + 1) * per_row
+            for name, stream in streams.items():
+                _wait_for_values(handles, stream, name, want)
+            fetched = {
+                name: _flat(stream.fetch(slice(row * per_row, want)))
+                for name, stream in streams.items()
+            }
+            frames = list(
+                self._frames(
+                    self.results(fetched, rows=1), start=row, rows=1, seq=seq, last=row == rows - 1
+                )
+            )
+            seq += len(frames)
+            yield from frames
+
+    def _frames(
+        self, arrays: Mapping[str, np.ndarray], start: int, rows: int | None, seq: int, last: bool
+    ) -> Iterator[Frame]:
+        """One frame per result: the whole result (`rows` None) or `rows` slabs of its first axis from
+        `start`; the last frame of the last chunk is final."""
+        variables = {v.name: v for v in self.dataset.data_vars}
+        results = list(self._compiled.program.results)
+        for k, res in enumerate(results):
             a = arrays[res.name]
+            dims = variables[res.name].dims
+            region = tuple(
+                IndexSlice(dim=d, start=start, stop=start + n)
+                if i == 0 and rows is not None
+                else IndexSlice(dim=d, start=0, stop=n)
+                for i, (d, n) in enumerate(zip(dims, a.shape, strict=True))
+            )
             yield Frame(
                 DatasetChunk(
                     dataset_id=self.dataset.dataset_id,
-                    seq=seq,
-                    region=tuple(
-                        IndexSlice(dim=d, start=0, stop=s)
-                        for d, s in zip(variables[res.name].dims, a.shape, strict=True)
-                    ),
+                    seq=seq + k,
+                    region=region,
                     variables=(res.name,),
                     produced_at=datetime.now(UTC),
-                    final=seq == len(results) - 1,
+                    final=last and k == len(results) - 1,
                 ),
                 {res.name: a},
             )
+
+
+def _wait_for_values(handles, stream, name: str, count: int) -> None:
+    """Wait until `stream` holds `count` values; raise when the job stops processing before it does
+    (a program that ended short or was halted), instead of waiting for values that never come."""
+    while stream.count_so_far() < count:
+        if not handles.is_processing() and stream.count_so_far() < count:
+            raise RuntimeError(
+                f"the OPX program ended with {stream.count_so_far()} of {count} values on {name!r}"
+            )
+        time.sleep(RESULT_POLL_S)
 
 
 class _RecordSource:
