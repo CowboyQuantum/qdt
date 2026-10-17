@@ -86,7 +86,8 @@ class PulseWidget {
       ctx.bus.on("sweep:axes", ({ kind, axes, inner, sensor }) => {
         const changed = axes.join(",") !== this.axes.join(",") || inner !== this.inner || sensor !== this.sensor || kind !== this.kind;
         [this.axes, this.inner, this.sensor, this.kind] = [axes, inner, sensor, kind];
-        this.note.textContent = kind === "stage" ? "" : `the ${kind} sweep has no stage; this sequence applies to a stage sweep`;
+        // ADR 0067: a DC or capture sweep read in the shot builds its own one-op shot, never this sequence
+        this.note.textContent = kind === "stage" ? "" : `this sequence applies to a stage sweep; a ${kind} sweep reads per point, or in a one-op shot of its own`;
         if (changed) this.followTemplate();
       }),
       ctx.bus.on("layout:changed", () => this.publish()),
