@@ -156,6 +156,9 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
   const body = built.sequence?.body ?? [];
   const results = body.flatMap((op) => (op.op === "measure" || op.op === "difference" || op.op === "capture" ? [op.result] : []));
   if (built.sequence && !body.some((op) => op.op === "measure" || op.op === "capture")) errors.push("the sequence measures or captures nothing");
+  // the server's rule (ADR 0060): a shot capture's scope is armed per stepped point, so a stage with a capture
+  // has no pulsed axis; this sweep always pulses one, so the error shows here instead of at compile
+  if (body.some((op) => op.op === "capture")) errors.push("a capture in the shot needs a stage without a pulsed axis (ADR 0060), which the Sweep widget does not build yet; the capture kind records per point");
   errors.push(...checkResults(results, axisNames));
   if (errors.length) throw new Error(errors.join("; "));
   return {

@@ -319,8 +319,8 @@ describe("capture rows (ADR 0060)", () => {
     expect(two.errors[0]).toMatch(/already a result/);
   });
 
-  it("a stage sweep with a capture and no measure is a readout", () => {
-    const d = stageSweep({
+  it("a stage sweep refuses a capture row while it pulses an axis, as the server does (ADR 0060)", () => {
+    const build = () => stageSweep({
       name: "step response",
       inner: { channel: "P2_pulse", start: 0, stop: 0.1, num: 4 },
       sensor: "sensor",
@@ -331,6 +331,8 @@ describe("capture rows (ADR 0060)", () => {
       result: "I_sensor",
       sequence: { rows: [template[0]!, newRow("capture", channels)], bindings: [{ symbol: "v_P2", target: "P2" }], channels },
     });
-    expect(d.stage!.sequence!.body.map((o) => o.op)).toEqual(["step", "capture"]);
+    // the scope is armed per stepped point, so a shot with a capture has no pulsed axis; the server refused
+    // this definition at compile, and the builder now refuses it while the row is typed
+    expect(build).toThrow(/needs a stage without a pulsed axis/);
   });
 });
