@@ -328,3 +328,56 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   await page.waitForFunction(() => (document.querySelector(".pane[data-widget=history]")?.textContent ?? "").includes("virtual-gate lattice"), null, { timeout: 20_000 });
   await page.close();
 }, 180_000);
+
+it("advances the innermost DC axis by the sequencer's trigger: a DC map read in the shot, a capture moved into the shot", async () => {
+  // ADR 0064, 0066: the simulated device loads lists and is its own sequencer, so it triggers itself
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page.on("pageerror", (e) => console.error("page error:", e));
+  await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
+  const sweep = page.locator(".pane[data-widget=sweep]");
+  const hint = () => sweep.locator("[data-stepping-hint]").textContent();
+  await page.waitForFunction(() => /dot's trigger/.test(document.querySelector(".pane[data-widget=sweep] [data-stepping-hint]")?.textContent ?? ""));
+  // a stage sweep's outer DC axis can be triggered; the pulsed axis is the sequencer's own
+  expect(await hint()).toMatch(/the outer axis \(P1\) can instead be loaded as a list and advanced by dot's trigger/);
+  // a DC map: the inner axis triggered, the sensor read in a one-measure shot
+  await sweep.locator("select[name=kind]").selectOption("dc");
+  await sweep.locator("select[name=inner_channel]").selectOption("P2");
+  await sweep.locator("input[name=name]").fill("e2e triggered map");
+  await sweep.locator("input[name=outer_num]").fill("6");
+  await sweep.locator("input[name=inner_num]").fill("8");
+  expect(await sweep.locator("input[name=shots]").isVisible()).toBe(false); // sensed per point: no shots
+  expect(await sweep.locator("select[name=stepping] option[value=triggered]").isDisabled()).toBe(false);
+  await sweep.locator("select[name=stepping]").selectOption("triggered");
+  expect(await hint()).toMatch(/P2 is loaded as a list and advanced by dot; the sensor is read in the shot/);
+  expect(await sweep.locator("input[name=shot_measure_ns]").isVisible()).toBe(true);
+  await sweep.locator("input[name=shots]").fill("2");
+  expect(await page.textContent("#next-run")).toBe("next: e2e triggered map · dc · P1 6 × P2 8 (triggered)");
+  if (process.env.FLIGHTDECK_SHOTS) await page.screenshot({ path: `${process.env.FLIGHTDECK_SHOTS}/sweep-stepping.png` });
+  await sweep.locator("[data-compile]").click();
+  await page.waitForFunction(() => /P2 triggered/.test(document.querySelector(".pane[data-widget=sweep] .plan")?.textContent ?? ""));
+  expect(await sweep.locator(".plan").textContent()).toMatch(/e2e triggered map · P1 6 × P2 8 · 48 pts .* stage program · P2 triggered/);
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e triggered map · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.waitForFunction(() => /e2e triggered map · I_sensor · heatmap/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
+
+  // a capture: triggered, the record moves into the shot and starts at its marker (the start is pinned at 0)
+  await sweep.locator("select[name=kind]").selectOption("capture");
+  await sweep.locator("select[name=outer_channel]").selectOption("P1");
+  await sweep.locator("input[name=name]").fill("e2e staircase");
+  await sweep.locator("input[name=capture_num]").fill("200");
+  await sweep.locator("select[name=stepping]").selectOption("triggered");
+  expect(await hint()).toMatch(/the record is captured in the shot from its marker/);
+  expect(await sweep.locator("input[name=capture_start]").isDisabled()).toBe(true);
+  expect(await sweep.locator("input[name=capture_start]").inputValue()).toBe("0");
+  expect(await sweep.locator("input[name=capture_pace_ms]").isVisible()).toBe(true);
+  await sweep.locator("input[name=capture_pace_ms]").fill("0");
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e staircase · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
+  expect(await sweep.locator(".plan").textContent()).toMatch(/e2e staircase · P1 6 × time 200 · 1,200 pts .* P1 triggered/);
+  // back to software: the per-point capture, its start restored
+  await sweep.locator("select[name=stepping]").selectOption("software");
+  expect(await sweep.locator("input[name=capture_start]").isDisabled()).toBe(false);
+  expect(await sweep.locator("input[name=capture_start]").inputValue()).toBe("-0.001");
+  expect(await sweep.locator("input[name=capture_pace_ms]").isVisible()).toBe(false);
+  await page.close();
+}, 180_000);

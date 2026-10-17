@@ -4,32 +4,54 @@
 // starts the run and follows it (`run:state`). Editing after a compile marks the plan stale
 // (`plan:changed`); Run then compiles again before it runs, so what runs is always what the editors hold.
 // The pulse sequence comes from the Pulse widget over the bus (`pulse:sequence`); this widget tells it
-// the axes and the sensor the template follows (`sweep:axes`).
+// the axes and the sensor the template follows (`sweep:axes`). The stepping control (ADR 0066) lets the
+// innermost stepped axis be advanced by the sequencer's trigger (ADR 0064) where the stand can do it.
 import { ApiError } from "../api/client";
-import type { ChannelMap, ExecutionPlan, Run, SweepDefinition } from "../schema/api";
+import type { ChannelMap, ExecutionPlan, Run, StandConfig, SweepDefinition } from "../schema/api";
 import type { BindingRow, OpRow } from "../control/sequence";
-import { axisName, buildLevels, captureSweep, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels } from "../control/sweeps";
+import {
+  axisName,
+  buildLevels,
+  captureSweep,
+  companionErrors,
+  dcSweep,
+  stageSweep,
+  standChannels,
+  steppingFor,
+  type AxisForm,
+  type LevelRow,
+  type StandChannels,
+  type SteppingChoice,
+  type SweepKind,
+} from "../control/sweeps";
 import { h } from "../workspace/dom";
 import type { Widget, WidgetContext } from "../workspace/widget";
 
 const short = (id: string) => id.slice(0, 8);
 const TERMINAL = new Set(["completed", "aborted", "failed"]);
 
-export type SweepKind = "stage" | "dc" | "capture";
+export type { SweepKind };
 
 /** One line about a compiled plan for the strip and the widget: axes, points, channels, a stage program. */
 export function planSummary(plan: ExecutionPlan): string {
   const dims = plan.dataset.dims ?? [];
   const points = dims.reduce((a, d) => a * (d.size ?? 1), 1);
   const axes = dims.map((d) => `${d.name} ${d.size ?? "?"}`).join(" × ");
-  return `${plan.definition.name} · ${axes || "no axes"} · ${points.toLocaleString()} pts · ${plan.channels.length} channels${plan.stage_program ? " · stage program" : ""}`;
+  const triggered = (plan.definition.axes ?? []).find((a) => a.stepping === "triggered");
+  return `${plan.definition.name} · ${axes || "no axes"} · ${points.toLocaleString()} pts · ${plan.channels.length} channels${plan.stage_program ? " · stage program" : ""}${triggered ? ` · ${triggered.name} triggered` : ""}`;
 }
 
 /** The next-run line before anything is compiled: what the form says. Pure. */
 export function formSummary(v: (name: string) => string): string {
   const kind = v("kind");
   const outer = v("outer_channel");
-  const parts = [outer && `${outer} ${v("outer_num")}`, kind === "capture" ? `${v("capture_channel")} ${v("capture_num")} samples` : `${v("inner_channel")} ${v("inner_num")}`].filter(Boolean);
+  // the triggered axis is the innermost stepped one: a DC sweep's inner axis, else the outer one (ADR 0066)
+  const trig = v("stepping") === "triggered" ? (kind === "dc" ? "inner" : "outer") : "";
+  const mark = (part: string, which: string) => (trig === which ? `${part} (triggered)` : part);
+  const parts = [
+    outer && mark(`${outer} ${v("outer_num")}`, "outer"),
+    kind === "capture" ? `${v("capture_channel")} ${v("capture_num")} samples` : mark(`${v("inner_channel")} ${v("inner_num")}`, "inner"),
+  ].filter(Boolean);
   return `${v("name") || "sweep"} · ${kind} · ${parts.join(" × ")}`;
 }
 
@@ -46,6 +68,9 @@ export const sweepWidget: Widget = {
 
 class SweepWidget {
   private stand: StandChannels = { dc: [], pulse: [], sensors: [], waveforms: [] };
+  private standConfig: StandConfig | null = null;
+  /** What the stepping control offers now: the axis, and the sequencer or why not (ADR 0066). */
+  private choice: SteppingChoice = { axis: null, channel: "", reason: "the stand is not loaded yet" };
   private channels: ChannelMap[] = [];
   private levelRows: LevelRow[] = [];
   private sequence: { rows: OpRow[]; bindings: BindingRow[]; errors: string[] } | null = null;
@@ -63,6 +88,10 @@ class SweepWidget {
   private readonly levelErrors: HTMLUListElement;
   private readonly planBox: HTMLPreElement;
   private readonly sweepOnly: HTMLElement[] = [];
+  private readonly steppingHint: HTMLDivElement;
+  private readonly shotsField: HTMLElement;
+  private readonly measureField: HTMLElement;
+  private readonly paceField: HTMLElement;
   private readonly offs: (() => void)[] = [];
 
   constructor(
@@ -75,6 +104,10 @@ class SweepWidget {
     this.levels = h("div", { className: "levels" });
     this.levelErrors = h("ul", { className: "errors level-errors" });
     this.planBox = h("pre", { className: "plan", text: "not compiled" });
+    this.steppingHint = h("div", { className: "hint stepping-hint", attrs: { "data-stepping-hint": "" } });
+    this.shotsField = h("label", {}, "shots", h("input", { name: "shots", type: "number", value: "1", step: "1" }));
+    this.measureField = h("label", {}, "integration (ns)", h("input", { name: "shot_measure_ns", type: "number", value: "2000", step: "1" }));
+    this.paceField = h("label", {}, "between records (ms)", h("input", { name: "capture_pace_ms", type: "number", value: "50", step: "any" }));
     this.build();
     body.append(h("div", { className: "form-widget" }, this.form));
     const compile = h("button", { type: "button", text: "compile", title: "Compile the sweep on the server and show the plan", attrs: { "data-compile": "" } });
@@ -113,6 +146,7 @@ class SweepWidget {
   private async init(): Promise<void> {
     try {
       const stand = await this.ctx.api.stand();
+      this.standConfig = stand;
       this.stand = standChannels(stand);
       this.channels = [...stand.channels];
       this.fillSelects();
@@ -145,6 +179,7 @@ class SweepWidget {
       field("stop (s)", num("capture_stop", 0.009)),
       field("samples", num("capture_num", 1000, "1")),
       field("records per point", num("capture_records", 1, "1")),
+      this.paceField,
       field("variable", h("input", { name: "capture_result", value: "trace" })),
       h("div", { className: "hint", text: "times are relative to the instrument's trigger; one record per frame lands on the declared grid" }),
     );
@@ -171,9 +206,20 @@ class SweepWidget {
       h("div", { className: "axis head" }, ...["channel", "start", "stop", "num"].map((t) => h("span", { text: t }))),
       h("div", {}, "outer", axisRow("outer", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
       sweepOnly(h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 }))),
+      field(
+        "stepping",
+        h(
+          "select",
+          { name: "stepping", title: "How the innermost stepped axis advances (ADR 0064)" },
+          h("option", { value: "software", text: "software: set each point", title: "the executor sets and settles each level" }),
+          h("option", { value: "triggered", text: "triggered by the sequencer", title: "loaded as a list, advanced by the sequencer's trigger (ADR 0064)" }),
+        ),
+      ),
+      this.steppingHint,
       sweepOnly(field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" }))),
       sweepOnly(field("sensor", h("select", { name: "sensor" }))),
-      sweepOnly(field("shots", num("shots", 1, "1"))),
+      this.shotsField,
+      this.measureField,
       this.capture,
       h(
         "fieldset",
@@ -216,12 +262,51 @@ class SweepWidget {
     fill("sensor", this.stand.sensors, ["sensor"]);
     fill("capture_channel", this.stand.waveforms, ["scope1"]);
     this.capture.hidden = kind !== "capture";
-    for (const el of this.sweepOnly) {
-      // the stylesheet gives labels a display, which beats the UA's [hidden] rule: set both
-      el.hidden = kind === "capture";
-      el.style.display = kind === "capture" ? "none" : "";
-    }
+    for (const el of this.sweepOnly) show(el, kind !== "capture");
     this.renderLevels();
+    this.refreshStepping();
+  }
+
+  /** The stepping control (ADR 0066): which axis it applies to, whether the stand can trigger it (else the
+   * option is disabled and the hint says why), and the fields a triggered kind needs. */
+  private refreshStepping(): void {
+    const kind = this.value("kind") as SweepKind;
+    const select = this.form.elements.namedItem("stepping") as HTMLSelectElement;
+    this.choice = this.standConfig
+      ? steppingFor(this.standConfig, kind, { outer: this.value("outer_channel"), inner: this.value("inner_channel"), sensor: this.value("sensor"), capture: this.value("capture_channel") })
+      : { axis: null, channel: "", reason: "the stand is not loaded yet" };
+    const can = !!this.choice.sequencer;
+    const option = select.querySelector<HTMLOptionElement>('option[value="triggered"]')!;
+    option.disabled = !can;
+    if (!can && select.value === "triggered") select.value = "software";
+    select.title = can ? `How ${this.choice.channel} advances (ADR 0064)` : `triggered stepping is unavailable: ${this.choice.reason}`;
+    const trig = select.value === "triggered";
+    const { channel, sequencer } = this.choice;
+    const which = this.choice.axis === "inner" ? "inner" : "outer";
+    this.steppingHint.textContent = !can
+      ? `triggered stepping is unavailable: ${this.choice.reason}`
+      : !trig
+        ? `the ${which} axis (${channel}) can instead be loaded as a list and advanced by ${sequencer}'s trigger`
+        : kind === "stage"
+          ? `${channel} is loaded as a list and advanced by ${sequencer} at each point; the pulsed axis and the shots run inside each point`
+          : kind === "dc"
+            ? `${channel} is loaded as a list and advanced by ${sequencer}; the sensor is read in the shot (one measure, shots averaged), not sensed per point`
+            : `${channel} is loaded as a list and advanced by ${sequencer}; the record is captured in the shot from its marker (t = 0), one per shot, and the shot waits before the next point`;
+    show(this.shotsField, kind === "stage" || (kind === "dc" && trig));
+    show(this.measureField, kind === "dc" && trig);
+    show(this.paceField, kind === "capture" && trig);
+    // in the shot a record starts at its capture: the start is 0 while triggered, and comes back after
+    const start = this.form.elements.namedItem("capture_start") as HTMLInputElement;
+    if (kind === "capture" && trig) {
+      if (!start.disabled) {
+        start.dataset.was = start.value;
+        start.value = "0";
+        start.disabled = true;
+      }
+    } else if (start.disabled) {
+      start.value = start.dataset.was ?? start.value;
+      start.disabled = false;
+    }
   }
 
   /** Channels the sweep itself steps or senses: not available to the operating point. */
@@ -278,6 +363,7 @@ class SweepWidget {
 
   /** Anything in the form changed: the next-run line, the Pulse widget's template, and the plan goes stale. */
   private changed(): void {
+    this.refreshStepping();
     this.ctx.bus.emit("run:next", { summary: formSummary((n) => this.value(n)) });
     this.emitAxes();
     this.markStale();
@@ -310,11 +396,22 @@ class SweepWidget {
     const options = JSON.parse(v("options") || "{}") as Record<string, string | number | boolean>;
     const sensor = v("sensor");
     const innerName = v("inner_name").trim() || undefined;
-    const outer = v("outer_channel") ? axis("outer") : null;
+    // ADR 0066: the stepping applies to the innermost stepped axis, when the stand can trigger it
+    const triggered = v("stepping") === "triggered";
+    const sequencer = this.choice.sequencer ?? "";
+    if (triggered && !sequencer) throw new Error(`triggered stepping is unavailable: ${this.choice.reason}`);
+    const trig = (form: AxisForm): AxisForm => {
+      if (!triggered || !this.standConfig) return form;
+      const errors = companionErrors(this.standConfig, form.couplings, sequencer);
+      if (errors.length) throw new Error(errors.join("; "));
+      return { ...form, stepping: "triggered" };
+    };
+    const kind = v("kind");
+    const outer = v("outer_channel") ? (kind === "dc" ? axis("outer") : trig(axis("outer"))) : null;
     const held = this.validateLevels();
     if (held.errors.length) throw new Error(held.errors.join("; "));
     const levels = held.levels;
-    if (v("kind") === "capture") {
+    if (kind === "capture") {
       return {
         definition: captureSweep({
           name: v("name"),
@@ -326,11 +423,12 @@ class SweepWidget {
           num: Number(v("capture_num")),
           records: Number(v("capture_records")),
           result: v("capture_result").trim() || "trace",
+          ...(triggered ? { shot: { instrument: sequencer, paceNs: Math.round(Number(v("capture_pace_ms")) * 1e6) } } : {}),
         }),
         options,
       };
     }
-    if (v("kind") === "stage") {
+    if (kind === "stage") {
       const inner = this.stand.pulse.find((c) => c.logical === v("inner_channel"));
       if (!inner) throw new Error("a stage sweep needs a pulse channel for its inner axis");
       const seq = this.sequence;
@@ -353,7 +451,18 @@ class SweepWidget {
         options,
       };
     }
-    return { definition: dcSweep({ name: v("name"), levels, outer, inner: axis("inner", innerName), sensor, result: "I_sensor" }), options };
+    return {
+      definition: dcSweep({
+        name: v("name"),
+        levels,
+        outer,
+        inner: trig(axis("inner", innerName)),
+        sensor,
+        result: "I_sensor",
+        ...(triggered ? { shot: { instrument: sequencer, measureNs: Number(v("shot_measure_ns")), shots: Number(v("shots")) } } : {}),
+      }),
+      options,
+    };
   }
 
   /** Compile on the server: the plan's identity goes to the strip, its summary into the widget. */
@@ -430,6 +539,12 @@ class SweepWidget {
       this.say(describe(e), true);
     }
   }
+}
+
+/** Show or hide a form row; the stylesheet gives labels a display, which beats the UA's [hidden] rule: set both. */
+function show(el: HTMLElement, on: boolean): void {
+  el.hidden = !on;
+  el.style.display = on ? "" : "none";
 }
 
 function describe(e: unknown): string {
