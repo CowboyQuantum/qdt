@@ -46,8 +46,8 @@ describe("sweep builders", () => {
 
   it("refuses a forced trigger where every point is read from the host", () => {
     const triggered = { channel: "P1", start: 0, stop: 1, num: 5, stepping: "triggered" as const };
-    expect(() => dcSweep({ name: "dc", inner: triggered, sensor: "sensor", result: "I" })).toThrow(/a triggered axis needs a stage sweep/);
-    expect(() => captureSweep({ name: "c", outer: triggered, channel: "scope1", startS: 0, stopS: 1e-3, num: 100, records: 1, result: "trace" })).toThrow(/a triggered axis needs a stage sweep/);
+    expect(() => dcSweep({ name: "dc", inner: triggered, sensor: "sensor", result: "I" })).toThrow(/read per point, a DC sweep is stepped from the host/);
+    expect(() => captureSweep({ name: "c", outer: triggered, channel: "scope1", startS: 0, stopS: 1e-3, num: 100, records: 1, result: "trace" })).toThrow(/read per point, a capture sweep is stepped from the host/);
     expect(dcSweep({ name: "dc", inner: { ...triggered, stepping: "software" }, sensor: "sensor", result: "I" }).axes![0]!.stepping).toBe("software");
   });
 

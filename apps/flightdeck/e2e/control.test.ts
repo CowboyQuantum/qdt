@@ -82,7 +82,7 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   // ADR 0066: the stand decides how each axis advances and the plan says so; the simulated device is its own
   // sequencer, so 'auto' triggers the DC axis with no marker line
   expect(await page.textContent(".pane[data-widget=sweep] .plan")).toMatch(/P1: triggered by the sequencer itself\nP2: swept in the sequence/);
-  expect(await page.inputValue(".pane[data-widget=sweep] select[name=outer_stepping]")).toBe("auto");
+  expect(await page.inputValue(".pane[data-widget=sweep] select[name=stepping]")).toBe("auto");
   await page.fill(".pane[data-widget=sweep] input[name=inner_num]", "40");
   await page.waitForFunction(() => /stale/.test(document.querySelector("#plan")?.textContent ?? ""));
   await page.fill(".pane[data-widget=sweep] input[name=inner_num]", "48");
@@ -330,5 +330,63 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   await page.waitForFunction(() => /held: SG = /.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""), null, { timeout: 10_000 });
   // both sweeps were runs and records like any other
   await page.waitForFunction(() => (document.querySelector(".pane[data-widget=history]")?.textContent ?? "").includes("virtual-gate lattice"), null, { timeout: 20_000 });
+  await page.close();
+}, 180_000);
+
+it("reads in the shot (ADR 0067): a DC map whose sensor is integrated in the shot, a capture recorded in the shot", async () => {
+  // the readout is the sweep's choice; the pacing is the stand's (ADR 0066): the simulated device is its own
+  // sequencer, so 'auto' triggers the innermost DC axis once the reading is in the shot
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page.on("pageerror", (e) => console.error("page error:", e));
+  await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
+  const sweep = page.locator(".pane[data-widget=sweep]");
+  await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
+
+  // a DC map: per point the sensor is sensed and there is no shot; in the shot it is integrated by the device
+  await sweep.locator("select[name=kind]").selectOption("dc");
+  await sweep.locator("select[name=inner_channel]").selectOption("P2");
+  await sweep.locator("input[name=name]").fill("e2e map in the shot");
+  await sweep.locator("input[name=outer_num]").fill("6");
+  await sweep.locator("input[name=inner_num]").fill("8");
+  expect(await sweep.locator("select[name=readout]").inputValue()).toBe("point");
+  expect(await sweep.locator("input[name=shots]").isVisible()).toBe(false);
+  expect(await sweep.locator("select[name=stepping]").isVisible()).toBe(false); // read per point: the host steps it
+  expect(await sweep.locator("[data-readout-hint]").textContent()).toMatch(/can instead be read in a shot of dot/);
+  await sweep.locator("select[name=readout]").selectOption("shot");
+  expect(await sweep.locator("[data-readout-hint]").textContent()).toMatch(/sensor is integrated by dot in a one-measure shot/);
+  expect(await sweep.locator("input[name=shot_measure_ns]").isVisible()).toBe(true);
+  expect(await sweep.locator("[data-stepping-hint]").textContent()).toMatch(/applies to P2, the innermost DC axis/);
+  // read in the shot, a host-stepped DC point has no axis for its measure (ADR 0066): software is not offered
+  expect(await sweep.locator("select[name=stepping] option[value=software]").evaluate((o) => (o as HTMLOptionElement).disabled)).toBe(true);
+  await sweep.locator("input[name=shots]").fill("2");
+  expect(await page.textContent("#next-run")).toBe("next: e2e map in the shot · dc in the shot · P1 6 × P2 8");
+  if (process.env.FLIGHTDECK_SHOTS) await page.screenshot({ path: `${process.env.FLIGHTDECK_SHOTS}/sweep-readout.png` });
+  await sweep.locator("[data-compile]").click();
+  await page.waitForFunction(() => /P2: triggered/.test(document.querySelector(".pane[data-widget=sweep] .plan")?.textContent ?? ""));
+  expect(await sweep.locator(".plan").textContent()).toMatch(/e2e map in the shot · P1 6 × P2 8 · 48 pts .* stage program\nP1: stepped from the host\nP2: triggered by the sequencer itself/);
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e map in the shot · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
+  await page.waitForFunction(() => /e2e map in the shot · I_sensor · heatmap/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
+
+  // a capture: in the shot the record starts at its marker (start pinned at 0), a wait follows it
+  await sweep.locator("select[name=kind]").selectOption("capture");
+  await sweep.locator("select[name=outer_channel]").selectOption("P1");
+  await sweep.locator("input[name=name]").fill("e2e staircase");
+  await sweep.locator("input[name=capture_num]").fill("200");
+  await sweep.locator("select[name=readout]").selectOption("shot");
+  expect(await sweep.locator("[data-readout-hint]").textContent()).toMatch(/scope1 is captured in a shot of dot from its marker/);
+  expect(await sweep.locator("input[name=capture_start]").isDisabled()).toBe(true);
+  expect(await sweep.locator("input[name=capture_start]").inputValue()).toBe("0");
+  expect(await sweep.locator("input[name=capture_pace_ms]").isVisible()).toBe(true);
+  await sweep.locator("input[name=capture_pace_ms]").fill("0");
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e staircase · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
+  expect(await sweep.locator(".plan").textContent()).toMatch(/e2e staircase · P1 6 × time 200 · 1,200 pts .*\nP1: triggered by the sequencer itself/);
+  // back to per point: the capture of ADR 0047, its start restored, no wait, no stepping
+  await sweep.locator("select[name=readout]").selectOption("point");
+  expect(await sweep.locator("input[name=capture_start]").isDisabled()).toBe(false);
+  expect(await sweep.locator("input[name=capture_start]").inputValue()).toBe("-0.001");
+  expect(await sweep.locator("input[name=capture_pace_ms]").isVisible()).toBe(false);
+  expect(await sweep.locator("select[name=stepping]").isVisible()).toBe(false);
   await page.close();
 }, 180_000);
