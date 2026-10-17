@@ -6,7 +6,7 @@ resolved, the `Dataset` declared, the stage's program emitted by the backend's `
 returns a stream `Source`.
 """
 
-from .compile import compile_sweep
+from .compile import compile_sweep, resolve_pacing
 from .emit import DEFAULT_SCALES, Emitter, QuaEmitter, SimulatedEmitter, TriggeredStep, scale_for
 from .execute import Executor, build_backends
 from .record import RunRecorder
@@ -21,5 +21,6 @@ __all__ = [
     "TriggeredStep",
     "build_backends",
     "compile_sweep",
+    "resolve_pacing",
     "scale_for",
 ]

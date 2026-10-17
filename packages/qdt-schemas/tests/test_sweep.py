@@ -1,3 +1,6 @@
+import json
+import pathlib
+
 import pytest
 from pydantic import ValidationError
 
@@ -380,7 +383,9 @@ def test_a_shot_capture_keeps_every_shot_and_needs_a_stage_without_stage_axes():
     )
 
 
-# --- the sequencer paces the scan: a triggered stepped axis (ADR 0064) ------------------------------
+# --- pacing: the definition prefers, the plan decides (ADR 0064, 0066) --------------------------------
+
+FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
 def _triggered(**axis_kw) -> SweepDefinition:
@@ -403,22 +408,20 @@ def _triggered(**axis_kw) -> SweepDefinition:
     )
 
 
-def test_a_triggered_axis_is_the_innermost_stepped_axis_the_sequencer_advances():
-    d = _triggered(stepping="triggered")
-    assert d.triggered_axis().name == "gate_R"
-    assert [a.name for a in d.program_axes()] == ["gate_R", "gate_L"]
-    assert [a.name for a in d.stepped_axes()] == [
-        "gate_R"
-    ]  # still stepped: the DAC moves, by trigger
-    assert SweepDefinition.model_validate_json(d.model_dump_json()) == d
-    assert "stepping" not in stability().model_dump()["axes"][0]  # the default keeps content hashes
+def test_stepping_is_a_preference_whose_default_auto_is_not_serialized():
+    d = stability()
+    assert all(a.stepping == "auto" for a in d.axes)
     assert (
-        _triggered().triggered_axis() is None
-        and _triggered().program_axes() == _triggered().stage_axes()
-    )
+        "stepping" not in d.model_dump()["axes"][0]
+    )  # existing definitions keep their content hash
+    for preference in ("software", "triggered"):
+        forced = _triggered(stepping=preference)
+        assert forced.model_dump()["axes"][0]["stepping"] == preference
+        assert SweepDefinition.model_validate_json(forced.model_dump_json()) == forced
+    assert [a.name for a in _triggered(stepping="triggered").stepped_axes()] == ["gate_R"]
 
 
-def test_a_triggered_axis_needs_the_sequencer_in_the_loop_and_nothing_per_point():
+def test_a_forced_trigger_needs_the_sequencer_in_the_loop_and_nothing_per_point():
     base = _triggered(stepping="triggered")
     with pytest.raises(ValidationError, match="innermost stepped axis"):
         SweepDefinition.model_validate(
@@ -448,16 +451,17 @@ def test_a_triggered_axis_needs_the_sequencer_in_the_loop_and_nothing_per_point(
                 ],
             }
         )
-    with pytest.raises(ValidationError, match="swept by the sequencer, not triggered"):
-        SweepDefinition.model_validate(
-            base.model_dump()
-            | {
-                "axes": [
-                    base.axes[0].model_dump() | {"stepping": "software"},
-                    base.axes[1].model_dump() | {"stepping": "triggered"},
-                ]
-            }
-        )
+    for preference in ("software", "triggered"):
+        with pytest.raises(ValidationError, match="is swept by the sequencer; stepping"):
+            SweepDefinition.model_validate(
+                base.model_dump()
+                | {
+                    "axes": [
+                        base.axes[0].model_dump() | {"stepping": "auto"},
+                        base.axes[1].model_dump() | {"stepping": preference},
+                    ]
+                }
+            )
     with pytest.raises(ValidationError, match="needs a stage with a sequence"):
         SweepDefinition(
             name="dc",
@@ -468,3 +472,65 @@ def test_a_triggered_axis_needs_the_sequencer_in_the_loop_and_nothing_per_point(
         SweepDefinition.model_validate(
             base.model_dump() | {"sensed": [{"name": "I_dc", "channel": "sensor_dc"}]}
         )
+    # 'auto' asks nothing of the definition: the compiler falls back to the executor where it must
+    SweepDefinition.model_validate(
+        _triggered().model_dump() | {"sensed": [{"name": "I_dc", "channel": "sensor_dc"}]}
+    )
+
+
+def _plan(pacing=None):
+    from qdt_schemas.activity import ExecutionPlan
+
+    raw = json.loads((FIXTURES / "ExecutionPlan" / "v2.json").read_text())
+    if pacing is not None:
+        raw["pacing"] = pacing
+    return ExecutionPlan.model_validate(raw)
+
+
+def test_a_plan_records_how_each_axis_advances():
+    """ADR 0066: P1 (a DC line) and P2 (a pulse line in the stage) in the committed v2 plan."""
+    legacy = _plan()
+    assert legacy.pacing == () and "pacing" not in legacy.model_dump()  # its content hash keeps
+    assert [legacy.pacing_of(a).pacing for a in ("P1", "P2")] == ["software", "sequencer"]
+    assert legacy.triggered_axis() is None
+    assert [a.name for a in legacy.program_axes()] == ["P2"]
+    assert [a.name for a in legacy.software_axes()] == ["P1"]
+
+    paced = _plan(
+        [
+            {"axis": "P1", "pacing": "triggered", "lines": ["dac_trigger"]},
+            {"axis": "P2", "pacing": "sequencer"},
+        ]
+    )
+    assert paced.pacing_of("P1").lines == ("dac_trigger",)
+    assert paced.triggered_axis().name == "P1"
+    assert [a.name for a in paced.program_axes()] == ["P1", "P2"]
+    assert paced.software_axes() == ()
+    with pytest.raises(KeyError):
+        paced.pacing_of("P3")
+
+
+@pytest.mark.parametrize(
+    ("pacing", "match"),
+    [
+        ([{"axis": "P1", "pacing": "software"}], "every axis once, in order"),
+        (
+            [{"axis": "P2", "pacing": "sequencer"}, {"axis": "P1", "pacing": "software"}],
+            "every axis once, in order",
+        ),
+        (
+            [{"axis": "P1", "pacing": "sequencer"}, {"axis": "P2", "pacing": "sequencer"}],
+            "exactly the stage axes",
+        ),
+        (
+            [
+                {"axis": "P1", "pacing": "software", "lines": ["dac_trigger"]},
+                {"axis": "P2", "pacing": "sequencer"},
+            ],
+            "only a triggered axis has marker lines",
+        ),
+    ],
+)
+def test_a_plans_pacing_is_consistent_with_its_definition(pacing, match):
+    with pytest.raises(ValidationError, match=match):
+        _plan(pacing)

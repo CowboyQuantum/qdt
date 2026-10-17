@@ -161,8 +161,8 @@ class Executor:
 
     def _frames(self) -> Iterator[Frame]:
         plan, definition = self.plan, self.plan.definition
-        triggered = definition.triggered_axis()
-        stepped = tuple(a for a in definition.stepped_axes() if a is not triggered)
+        triggered = plan.triggered_axis()  # how each axis advances is the plan's (ADR 0066)
+        stepped = plan.software_axes()
         innermost = stepped[-1].name if stepped else None
         has_repeat = definition.repeats != 1
         repeats = itertools.count() if definition.repeats is None else range(definition.repeats)
@@ -409,8 +409,7 @@ class _Drain:
 
 def stage_slab(plan: ExecutionPlan) -> Dataset:
     """The inner Dataset the sequencer fills per stepped point: stage axes (+ shot), stage results."""
-    definition = plan.definition
-    inner = {a.name for a in definition.program_axes()} | {SHOT_DIM}
+    inner = {a.name for a in plan.program_axes()} | {SHOT_DIM}
     dims = tuple(d for d in plan.dataset.dims if d.name in inner)
     if not dims:
         raise ValueError("a stage needs at least one inner axis or kept shots")
@@ -442,7 +441,7 @@ def shot_capture_slab(plan: ExecutionPlan, capture: Capture) -> Dataset:
     record per shot on the capture's time axis from 0 (ADR 0060), times the points of a triggered axis
     (ADR 0064). The executor re-keys record → (point,) shot."""
     shots = plan.definition.stage.shots
-    triggered = plan.definition.triggered_axis()
+    triggered = plan.triggered_axis()
     if triggered is not None:
         shots *= triggered.num
     tdim = plan.definition.capture_time_dim(capture.result)

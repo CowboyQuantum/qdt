@@ -756,7 +756,9 @@ def paced_stand(trigger_from: bool = True) -> StandConfig:
     )
 
 
-def paced_definition(shots=1, outer=False, capture=False, couple=False) -> SweepDefinition:
+def paced_definition(
+    shots=1, outer=False, capture=False, couple=False, stepping="triggered"
+) -> SweepDefinition:
     body = [Step(channel="rf", level=Symbol(name="v", unit="V"), duration=200)]
     body.append(
         Capture(channel="scope1", duration=8_000_000, num=50, result="trace")
@@ -770,7 +772,7 @@ def paced_definition(shots=1, outer=False, capture=False, couple=False) -> Sweep
             start=0.0,
             stop=1.0,
             num=3,
-            stepping="triggered",
+            stepping=stepping,
             couplings={"W": -0.5} if couple else {},
         )
     ]
@@ -879,8 +881,9 @@ def test_a_scope_with_a_trigger_line_gets_its_marker_in_the_program():
     assert {c.logical: c.role for c in plan.channels}["scope_trigger"] == "sequencer"
 
 
-def test_a_triggered_axis_needs_the_capability_and_a_trigger_line_from_the_sequencer():
-    with pytest.raises(ValueError, match="lacks capability 'triggered_level_source'"):
+def test_a_forced_trigger_needs_the_capability_and_a_trigger_line_from_the_sequencer():
+    """ADR 0066: 'triggered' is required, so a stand that cannot honour it is a compile error."""
+    with pytest.raises(ValueError, match="'V' is set to 'triggered', but .* cannot step a list"):
         compile_sweep(paced_definition(), pulsed_scope_stand_with_v(), EMITTERS)
     with pytest.raises(ValueError, match="has no settings\\['trigger_from'\\]"):
         compile_sweep(paced_definition(), paced_stand(trigger_from=False), EMITTERS)
@@ -969,3 +972,98 @@ def test_a_shot_capture_is_drained_while_the_shots_play():
             .run()
             .frames()
         )
+
+
+# --- pacing is the plan's: 'auto' lets the stand decide (ADR 0066) ------------------------------------
+
+
+def test_auto_pacing_triggers_the_innermost_dc_axis_on_a_stand_that_wires_it():
+    """The definition says nothing about pacing; the stand's wiring decides; the plan and the Dataset
+    record what was decided, so every record says how it was taken."""
+    plan = compile_sweep(paced_definition(outer=True, stepping="auto"), paced_stand(), EMITTERS)
+    assert "stepping" not in plan.definition.model_dump()["axes"][1]
+    assert [(p.axis, p.pacing, p.lines) for p in plan.pacing] == [
+        ("B", "software", ()),
+        ("V", "triggered", ("dac_trigger",)),
+    ]
+    assert (plan.dataset.attrs["B.pacing"], plan.dataset.attrs["V.pacing"]) == (
+        "software",
+        "triggered",
+    )
+    roles = {c.logical: c.role for c in plan.channels}
+    assert (roles["B"], roles["V"], roles["dac_trigger"]) == (
+        "level_source",
+        "triggered_level_source",
+        "sequencer",
+    )
+    dac = SimulatedLevelSource()
+    seq = TriggeringSequencer(dac, 3)
+    list(Executor(plan, {"dac": dac, "seq": seq}, sleep=lambda s: None).run().frames())
+    assert seq.markers == 6 and seq.levels_seen == [(0.0,), (0.5,), (1.0,)] * 2
+
+
+def test_auto_pacing_steps_in_software_where_a_trigger_cannot_run():
+    def pacing(definition, stand_config):
+        plan = compile_sweep(definition, stand_config, EMITTERS)
+        return {p.axis: p.pacing for p in plan.pacing}, plan
+
+    # no wiring, no capability, or a preference for software: the executor sets every point
+    # three shots kept: stepped from the host, the stage needs an axis of its own (the shots)
+    for definition, stand_config in (
+        (paced_definition(shots=3, stepping="auto"), paced_stand(trigger_from=False)),
+        (paced_definition(shots=3, stepping="auto"), pulsed_scope_stand_with_v()),
+        (paced_definition(shots=3, stepping="software"), paced_stand()),
+    ):
+        modes, plan = pacing(definition, stand_config)
+        assert modes == {"V": "software"}
+        assert {c.logical: c.role for c in plan.channels}["V"] == "level_source"
+        assert "triggered" not in json.loads(plan.stage_program.body)
+        assert plan.stage_program.parameters[0].name == "v"  # the axis value, set per point
+        dac = SpyLevelSource()
+        list(
+            Executor(plan, {"dac": dac, "seq": SimulatedSequencer()}, sleep=lambda s: None)
+            .run()
+            .frames()
+        )
+        assert [v for ch, v in dac.calls if ch == "ch00"] == [0.0, 0.5, 1.0]
+    # one shot per point compiles only where the program owns the axis, and the error says so
+    with pytest.raises(ValueError, match="steps from the host .* no axis to lay it over"):
+        compile_sweep(paced_definition(stepping="auto"), paced_stand(trigger_from=False), EMITTERS)
+    assert (
+        compile_sweep(paced_definition(stepping="auto"), paced_stand(), EMITTERS)
+        .pacing_of("V")
+        .pacing
+        == "triggered"
+    )
+    # something sensed per point, or no sequenced stage: the same
+    assert pacing(stepped_definition(), stand())[0] == {
+        "gate_R": "software",
+        "gate_L_dc": "software",
+    }
+    assert pacing(staged_definition(), stand())[0] == {"gate_R": "software", "gate_L": "sequencer"}
+
+
+def test_a_stand_whose_trigger_line_is_not_the_sequencers_is_an_error_even_on_auto():
+    """A wrong `trigger_from` is a stand file error; falling back would hide it."""
+    wrong = paced_stand().model_copy(
+        update={
+            "instruments": tuple(
+                i.model_copy(update={"settings": {"trigger_from": "scope1"}})
+                if i.id == "dac"
+                else i
+                for i in paced_stand().instruments
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="not a channel of the sequencer"):
+        compile_sweep(paced_definition(stepping="auto"), wrong, EMITTERS)
+
+
+def test_resolve_pacing_is_pure_and_matches_the_plan():
+    from qdt_lab.experiment import resolve_pacing
+
+    definition = paced_definition(outer=True, stepping="auto")
+    assert (
+        resolve_pacing(definition, paced_stand())
+        == compile_sweep(definition, paced_stand(), EMITTERS).pacing
+    )
