@@ -79,6 +79,10 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.locator(".pane[data-widget=sweep] [data-compile]").click();
   await page.waitForFunction(() => /^plan [0-9a-f]{8}$/.test(document.querySelector("#plan")?.textContent ?? ""));
   expect(await page.textContent(".pane[data-widget=sweep] .plan")).toMatch(/e2e stability · P1 48 × P2 48 · 2,304 pts/);
+  // ADR 0066: the stand decides how each axis advances and the plan says so; the simulated device is its own
+  // sequencer, so 'auto' triggers the DC axis with no marker line
+  expect(await page.textContent(".pane[data-widget=sweep] .plan")).toMatch(/P1: triggered by the sequencer itself\nP2: swept in the sequence/);
+  expect(await page.inputValue(".pane[data-widget=sweep] select[name=outer_stepping]")).toBe("auto");
   await page.fill(".pane[data-widget=sweep] input[name=inner_num]", "40");
   await page.waitForFunction(() => /stale/.test(document.querySelector("#plan")?.textContent ?? ""));
   await page.fill(".pane[data-widget=sweep] input[name=inner_num]", "48");
