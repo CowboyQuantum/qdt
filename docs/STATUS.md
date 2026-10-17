@@ -5,18 +5,25 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/pacing-in-the-plan` (PR against `main`; the human merges). PRs #25–#62 merged 2026-10-14/16.
-**Last session:** 2026-10-16, a design follow-up to ADR 0064, software only (**ADR 0066**). The human asked
-whether the Sweep widget was the right place for a stepping control and whether software versus hardware
-sweeps deserved a formal place in the code. They bundle two decisions: *what produces the level* (a DC line
-or a pulse in the shot: the axis's channel, the experiment's choice) and *who paces the DC steps* (the host
-or the sequencer's marker: the stand's wiring). The second is now the plan's: `resolve_pacing` in
-`qdt_lab.experiment` decides from the stand; `ExecutionPlan.pacing` records one `AxisPacing` per axis
-(`software`, `triggered` with its marker lines, `sequencer`) and the Dataset attrs carry `<axis>.pacing`;
-`SweepAxis.stepping` is a preference, default "auto" ("triggered" required, "software" forced); the executor
-reads the plan. The Sweep widget shows the per-axis pacing in its plan box and has an "outer stepping"
-select for stage sweeps. On the simulated stand "auto" triggers the DC axis (the device is its own
-sequencer); data are identical to host stepping, so every fixture held.
+**Branch:** `step-6/stage-capture-guard` (PR against `main`; the human merges). PRs #25–#63 merged 2026-10-14/16.
+**Last sessions:** 2026-10-16, two in parallel, software only.
+- **ADR 0066, pacing is the plan's** (merged as #63). The human asked whether the Sweep widget was the right
+  place for a stepping control and whether software versus hardware sweeps deserved a formal place in the code.
+  They bundle two decisions: *what produces the level* (a DC line or a pulse in the shot: the axis's channel,
+  the experiment's choice) and *who paces the DC steps* (the host or the sequencer's marker: the stand's
+  wiring). The second is now the plan's: `resolve_pacing` in `qdt_lab.experiment` decides from the stand;
+  `ExecutionPlan.pacing` records one `AxisPacing` per axis (`software`, `triggered` with its marker lines,
+  `sequencer`) and the Dataset attrs carry `<axis>.pacing`; `SweepAxis.stepping` is a preference, default
+  "auto" ("triggered" required, "software" forced); the executor reads the plan. The Sweep widget shows the
+  per-axis pacing in its plan box and has an "outer stepping" select for stage sweeps. On the simulated stand
+  "auto" triggers the DC axis (the device is its own sequencer); data are identical to host stepping.
+- **A stepping control in the Sweep widget** (#64, now a draft, superseded). Asked for in the other session
+  ("let's make a stepped control on the widget but postpone bench activites"), it was built as a user's choice
+  on the innermost stepped axis, the widget mirroring the compiler's wiring rules, with a DC sweep's sensor and
+  a capture's record moved into the shot when triggered. #63 merged first and ADR 0066 rejects deciding in the
+  widget from the stand, so #64 should be closed. One fix it found holds on main and is this branch: **the stage
+  builder refuses a capture row while it pulses an axis** (the server's rule since ADR 0060; the builder used to
+  send the definition and main's unit test asserted it), so the error shows while the row is typed.
 
 ## Bench tasks — next bench session
 1. **L2-3 as one shot** (`bench/test_l2_paced.py`): re-wire ao1 → combiner pulse in, QDAC ch01 →
@@ -39,20 +46,30 @@ sequencer); data are identical to host stepping, so every fixture held.
   0037, 0038, 0047, 0049, 0060, 0064; `stepping` made a preference and `ExecutionPlan.pacing` added by 0066),
   identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; 0048–0050, 0062), control (0036; 0046, 0050,
   0057). Registry DDL v3 (0026, 0029, 0050).
-- **This session:** ADR 0066 (ADR 0064's status line marks the partial supersession); `resolve_pacing`;
+- **ADR 0066's session:** ADR 0066 (ADR 0064's status line marks the partial supersession); `resolve_pacing`;
   `AxisPacing` and `ExecutionPlan.pacing` with a consistency validator and `pacing_of` / `triggered_axis` /
   `program_axes` / `software_axes` (the definition's helpers moved to the plan); the compiler explains a
   once-per-point result on a host-stepped axis; the Sweep widget's plan box and stepping select; the Step 6
-  file's Probe 05 note that missed last session.
+  file's Probe 05 note.
+- **This branch:** `stageSweep` refuses a capture row (it always pulses an axis); `test/sequence.test.ts`'s
+  capture test checks the refusal instead of the definition the server refused.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
 - 442 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 18
   hardware-only in `bench/`; Flight Deck 127 unit tests and 13 e2e.
 
 ## In flight
-- Nothing uncommitted. PR for `step-6/pacing-in-the-plan` awaits the human.
+- Nothing uncommitted. PR for `step-6/stage-capture-guard` awaits the human; **#64 is a superseded draft to close**.
 
 ## Known broken / not yet real
+- **The Sweep widget cannot build a triggered DC × DC map or a staircase.** Under ADR 0066 a triggered axis
+  needs its readout in the shot, and only the stage kind has a shot, always with a pulsed axis. The useful
+  remainder of #64 is a *readout* choice, not a pacing one: "read in the shot" for a DC sweep (the sequencer
+  integrates the sensor in a one-measure shot) and "record in the shot" for a capture (a capture op from its
+  marker, then a pacing wait); "auto" pacing would then trigger them on a wired stand. #64's builders for both
+  can be reused if the human wants this.
+- **The widget builds no stage without a pulsed axis**, so the Pulse widget's capture row is refused in a stage
+  sweep (now with a message); a stimulus plus a capture per point (L2-3 as one shot) is posted by hand.
 - **On the OPX a triggered run's data arrive when the program ends** (the driver fetches once), so with
   "auto" a bench stability diagram's live view fills at the end instead of row by row. "software" in the
   Sweep widget is the override; streaming per row in the driver is the fix.
@@ -80,11 +97,13 @@ sequencer); data are identical to host stepping, so every fixture held.
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge the PR; name the next slice. Candidates: the OPX streaming a triggered run per row (it
-matters now that "auto" triggers on the bench); one transfer for all scope segments; a stage result once
-per point with no stage axis; the bench tasks above; a second OPX pulse line; an OPX-ADC capture; how a
-sense range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and
-parallel branches. Step 7 when sign-off arrives.
+**Human:** merge this PR and close #64. Then say whether the Sweep widget should get the readout choices
+("read in the shot" for a DC sweep, "record in the shot" for a capture) so that "auto" pacing can trigger a DC
+map and a staircase built in the UI; or name another slice. Candidates: the OPX streaming a triggered run per
+row (it matters now that "auto" triggers on the bench); one transfer for all scope segments; a stage result
+once per point with no stage axis; the bench tasks above; a second OPX pulse line; an OPX-ADC capture; how a
+sense range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel
+branches. Step 7 when sign-off arrives.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -117,10 +136,11 @@ parallel branches. Step 7 when sign-off arrives.
   to run that probe"; at the bench: "run the probe"; the digital I/O adapter screwed on; the QDAC's trigger moved
   to the right port (ADR 0065); on the stepping control: "Is this the right place to put this? I'm wondering if
   it's worth formalizing a software sweep versus a hardware sweep in the code", then **"do this"** to the
-  recommendation that the stand decides and the plan records it (ADR 0066).
+  recommendation that the stand decides and the plan records it (ADR 0066); in a parallel session, "let's make a
+  stepped control on the widget but postpone bench activites" (#64, superseded by ADR 0066 before review).
 
 ## Decisions pending
-- **What follows** (the candidates above).
+- **What follows** (the candidates above), including the readout choices for DC and capture sweeps.
 - Deliverable 4's defaults, taken: readback null (not omitted); the limit a browser setting. Say if either changes.
 - Step 6b's Open decisions (its file): layout as a schema object; the script sandbox; the release mirror's
   first widgets; themes per browser or in the registry.
