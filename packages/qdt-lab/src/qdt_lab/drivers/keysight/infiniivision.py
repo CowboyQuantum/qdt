@@ -12,21 +12,32 @@ rising edge at `settings["trigger_level_v"]` (default `EXT_TRIGGER_LEVEL_V`), NO
 the triggered one or the acquisition times out, never a free-run.
 
 Acquisition is `:SINGle`, a wait for `:AER?` (armed), then a poll of `:RSTate?` until the scope
-reports STOP, never `:DIGitize`; with the trigger sweep AUTO (and no marker line) a trigger is forced
-after `AUTO_FORCE_S` so an untriggered capture free-runs as it did through `:DIGitize`: `:DIGitize` blocks the instrument's parser until it triggers, so an
-acquisition left waiting wedged every later session until a device clear (bench, 2026-10-16). With
-more than one record the scope acquires in **segmented** mode (`:ACQuire:MODE SEGMented`, one
-`:SINGle` catches every trigger in hardware, then each segment is read by index), when the instrument
-accepts it (the HD3 does; the mode is read back); otherwise one `:SINGle` per record, which costs
-about half a second each on the HD3 (Probe 05). The capture is converted to volts with the preamble
-and resampled onto the declared `LinearCoordinate` (`np.interp`): the producer aligns, never the
-consumer (ADR 0015). A declared grid reaching more than one sample interval outside the captured span
-raises. `settings["acquire_timeout_s"]` (default 600) bounds a wait for triggers that never come.
+reports STOP, never `:DIGitize`: `:DIGitize` blocks the instrument's parser until it triggers, so an
+acquisition left waiting wedged every later session until a device clear (bench, 2026-10-16). With the
+trigger sweep AUTO (and no marker line) a trigger is forced after `AUTO_FORCE_S`, so an untriggered
+capture free-runs as it did through `:DIGitize`.
+
+With more than one record the scope acquires in **segmented** mode (`:ACQuire:MODE SEGMented`: one
+`:SINGle` catches every trigger in hardware), when the instrument accepts it (the HD3 does; the mode is
+read back); otherwise one `:SINGle` per record, which costs about half a second each on the HD3
+(Probe 05). The segments are read **in one transfer** (`:WAVeform:SEGMented:ALL ON`, then one
+`:WAVeform:DATA?` holding every segment in turn) when the scope accepts the command and the block is
+exactly `records` segments of the preamble's length; otherwise segment by segment through
+`:ACQuire:SEGMented:INDex`, which cost 0.3–0.5 s each on the HD3 (Probe 05). Which way works is
+decided on the first segmented readout and kept (`segments_in_one_transfer`). Whether the HD3 takes the one
+transfer is `bench/test_scope_segments.py`'s to show; until it has run on the bench, the per-segment
+reads are what Probe 05 measured.
+
+A record is converted to volts with the preamble and resampled onto the declared `LinearCoordinate`
+(`np.interp`): the producer aligns, never the consumer (ADR 0015). A declared grid reaching more than
+one sample interval outside the captured span raises. `settings["acquire_timeout_s"]` (default 600)
+bounds a wait for triggers that never come.
 """
 
 import re
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import numpy as np
@@ -94,6 +105,8 @@ class InfiniiVisionX:
         self.max_records = max_records
         self.external_trigger_level_v = external_trigger_level_v
         self.acquire_timeout_s = acquire_timeout_s
+        self.segments_in_one_transfer: bool | None = None
+        """Whether segments are read in one transfer: None until the first segmented readout tries."""
         self._logical: dict[str, int] = {}
         for ch in channels:
             if ch.quantity != "voltage":
@@ -184,7 +197,7 @@ class InfiniiVisionX:
             t.write(":ACQuire:MODE RTIMe")
         times = np.linspace(start, stop, num)
         return _ScopeRecordSource(
-            t,
+            self,
             n,
             dataset,
             v.name,
@@ -203,13 +216,32 @@ class InfiniiVisionX:
         self._t.close()
 
 
+@dataclass(frozen=True)
+class _Preamble:
+    """The fields of `:WAVeform:PREamble?` a record needs."""
+
+    points: int
+    xinc: float
+    xorig: float
+    xref: float
+    yinc: float
+    yorig: float
+    yref: float
+
+
+def _error_code(reply: str) -> int:
+    """The number of a `:SYSTem:ERRor?` reply ('+0,"No error"', '-113,"Undefined header"')."""
+    return int(reply.split(",", 1)[0])
+
+
 class _ScopeRecordSource:
     """The `Source` an `InfiniiVisionX.arm` returns: one `:SINGle` for every record (segmented) or
-    per record, each waited for by polling the run bit, never by a blocking `:DIGitize`."""
+    per record, each waited for by polling the run state, never by a blocking `:DIGitize`; segments
+    read in one transfer when the scope can."""
 
     def __init__(
         self,
-        transport: ScpiTransport,
+        scope: InfiniiVisionX,
         channel: int,
         dataset: Dataset,
         variable: str,
@@ -223,7 +255,7 @@ class _ScopeRecordSource:
         timeout_s: float = ACQUIRE_TIMEOUT_S,
         auto: bool = False,
     ) -> None:
-        self._t, self._n = transport, channel
+        self._scope, self._t, self._n = scope, scope._t, channel
         self.dataset, self._variable, self._dtype = dataset, variable, dtype
         self._record_dim, self._time_dim, self._n_records = record_dim, time_dim, n_records
         self._times = times
@@ -256,39 +288,80 @@ class _ScopeRecordSource:
                 )
             time.sleep(POLL_S)
 
-    def record(self, index: int | None = None) -> np.ndarray:
-        """Read the acquired record (segment `index`, 1-based, when segmented) in volts on the
-        declared time grid."""
-        t = self._t
-        if index is not None:
-            t.write(f":ACQuire:SEGMented:INDex {index}")
-        pre = [p.strip() for p in t.query(":WAVeform:PREamble?").split(",")]
+    def _preamble(self) -> _Preamble:
+        pre = [p.strip() for p in self._t.query(":WAVeform:PREamble?").split(",")]
         if len(pre) != 10:
             raise ValueError(f"preamble has {len(pre)} fields, expected 10: {pre!r}")
         fmt = int(float(pre[0]))
         if fmt != 1:
             raise ValueError(f"preamble format {fmt} is not WORD (1)")
-        xinc, xorig, xref = float(pre[4]), float(pre[5]), float(pre[6])
-        yinc, yorig, yref = float(pre[7]), float(pre[8]), float(pre[9])
-        codes = t.query_block(":WAVeform:DATA?", "<i2")
-        if codes.size < 2 or not xinc > 0:
-            raise ValueError(f"capture too short to resample: {codes.size} points, xinc={xinc}")
-        volts = (codes.astype(np.float64) - yref) * yinc + yorig
-        captured = (np.arange(codes.size) - xref) * xinc + xorig
+        return _Preamble(
+            points=int(float(pre[2])),
+            xinc=float(pre[4]),
+            xorig=float(pre[5]),
+            xref=float(pre[6]),
+            yinc=float(pre[7]),
+            yorig=float(pre[8]),
+            yref=float(pre[9]),
+        )
+
+    def _resample(self, codes: np.ndarray, pre: _Preamble) -> np.ndarray:
+        """Raw codes of one record → volts on the declared time grid."""
+        if codes.size < 2 or not pre.xinc > 0:
+            raise ValueError(f"capture too short to resample: {codes.size} points, xinc={pre.xinc}")
+        volts = (codes.astype(np.float64) - pre.yref) * pre.yinc + pre.yorig
+        captured = (np.arange(codes.size) - pre.xref) * pre.xinc + pre.xorig
         lo, hi = self._times[0], self._times[-1]
-        if lo < captured[0] - xinc or hi > captured[-1] + xinc:
+        if lo < captured[0] - pre.xinc or hi > captured[-1] + pre.xinc:
             raise ValueError(
                 f"declared grid [{lo:.6g}, {hi:.6g}] s is outside the captured span "
                 f"[{captured[0]:.6g}, {captured[-1]:.6g}] s; check the timebase on the instrument"
             )
         return np.interp(self._times, captured, volts)
 
+    def record(self, index: int | None = None) -> np.ndarray:
+        """Read the acquired record (segment `index`, 1-based, when segmented) in volts on the
+        declared time grid."""
+        if index is not None:
+            self._t.write(f":ACQuire:SEGMented:INDex {index}")
+        pre = self._preamble()
+        return self._resample(self._t.query_block(":WAVeform:DATA?", "<i2"), pre)
+
+    def segments(self) -> list[np.ndarray] | None:
+        """Every segment of the acquisition in one transfer, each in volts on the declared grid; None
+        when the scope refuses `:WAVeform:SEGMented:ALL` or the block is not `records` segments of
+        the preamble's length, so the caller reads segment by segment. The first try decides for the
+        rest of the session (`InfiniiVisionX.segments_in_one_transfer`)."""
+        scope, t = self._scope, self._t
+        if scope.segments_in_one_transfer is False:
+            return None
+        pre = self._preamble()  # one segment's: every segment shares its grid
+        t.write("*CLS")  # so the next error read is this command's
+        t.write(":WAVeform:SEGMented:ALL ON")
+        if _error_code(t.query(":SYSTem:ERRor?")) != 0:
+            scope.segments_in_one_transfer = False
+            return None
+        try:
+            codes = t.query_block(":WAVeform:DATA?", "<i2")
+        finally:
+            t.write(":WAVeform:SEGMented:ALL OFF")
+        ok = codes.size == self._n_records * pre.points
+        if scope.segments_in_one_transfer is None:
+            scope.segments_in_one_transfer = ok
+        if not ok:
+            return None
+        return [self._resample(c, pre) for c in codes.reshape(self._n_records, pre.points)]
+
     def frames(self) -> Iterator[Frame]:
         n = self._times.size
+        records = None
         if self._segmented:
             self.acquire()
+            records = self.segments()
         for k in range(self._n_records):
-            if self._segmented:
+            if records is not None:
+                values = records[k]
+            elif self._segmented:
                 values = self.record(k + 1)
             else:
                 self.acquire()
