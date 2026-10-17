@@ -246,7 +246,9 @@ class TuneUp(QdtModel):
             missing = set()
             for d in set(n.depends_on) - seen:
                 taken = [b for b in n.inputs if b.node_id == d]
-                if not (taken and all(b.held for b in taken)) or d in {x.node_id for x in self.nodes}:
+                if not (taken and all(b.held for b in taken)) or d in {
+                    x.node_id for x in self.nodes
+                }:
                     missing.add(d)
             if missing:
                 raise ValueError(f"node {n.node_id!r} depends on {sorted(missing)}, not before it")

@@ -248,6 +248,49 @@
         "title": "Annotation",
         "type": "object"
       },
+      "AxisPacing": {
+        "additionalProperties": false,
+        "description": "How one axis of a plan advances, decided by the compiler from the stand (ADR 0066).",
+        "properties": {
+          "axis": {
+            "description": "Axis name (SweepAxis.name).",
+            "minLength": 1,
+            "title": "Axis",
+            "type": "string"
+          },
+          "lines": {
+            "default": [],
+            "description": "With 'triggered': the sequencer's marker channels (logical names) wired to the axis's instruments; empty when the sequencer sets the level itself.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "pacing": {
+            "description": "'software': the executor sets each level and waits its settle. 'triggered': the axis's instruments are loaded with its levels once and advanced by the stage sequencer's marker, the sequencer pacing the scan (ADR 0064). 'sequencer': swept inside the sequencer's program, a stage axis.",
+            "enum": [
+              "software",
+              "triggered",
+              "sequencer"
+            ],
+            "title": "Pacing",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "axis",
+          "pacing"
+        ],
+        "title": "AxisPacing",
+        "type": "object"
+      },
       "CalibrationNode": {
         "additionalProperties": false,
         "description": "One step of a tune-up as data: the experiment to run, the curated method that reads its record,\nthe rule that turns the estimates into a verdict and the quantities the next node needs. `inputs`\nname the places in `definition` an upstream node's outputs fill before the node runs.",
@@ -1156,7 +1199,7 @@
       },
       "ExecutionPlan": {
         "additionalProperties": false,
-        "description": "A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.\n\nStructural, not unrolled: the executor walks it (ADR 0019).",
+        "description": "A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.\n\nStructural, not unrolled: the executor walks it (ADR 0019). It records how each axis advances\n(`pacing`, ADR 0066): the definition says what is swept, the plan how.",
         "properties": {
           "attrs": {
             "additionalProperties": {
@@ -1194,6 +1237,15 @@
           "definition": {
             "$ref": "#/components/schemas/SweepDefinition",
             "description": "The experiment this plan was compiled from."
+          },
+          "pacing": {
+            "default": [],
+            "description": "How each axis advances, one entry per axis in the definition's order (ADR 0066). Empty in a plan compiled before it: then every stage axis is swept by the sequencer and every other axis is stepped by the executor.",
+            "items": {
+              "$ref": "#/components/schemas/AxisPacing"
+            },
+            "title": "Pacing",
+            "type": "array"
           },
           "plan_id": {
             "description": "Unique id; also the Dataset id.",
@@ -3386,9 +3438,10 @@
             "type": "number"
           },
           "stepping": {
-            "default": "software",
-            "description": "How a stepped axis advances (ADR 0064). 'software': the executor sets each level and settles (the default). 'triggered': the channel's instrument is loaded with the axis's levels once and advances one point per trigger the stage's sequencer plays, so the sequencer paces the whole scan; the axis (and its couplings) then needs a 'triggered_level_source' instrument, a stage with a sequence, and no sensed or per-point captured channels. At most one axis is triggered and it is the innermost stepped axis.",
+            "default": "auto",
+            "description": "A preference for how a stepped axis advances (ADR 0064, 0066); the compiler decides and records the result in ExecutionPlan.pacing. 'auto' (the default): triggered when the stand wires the axis's instruments to the stage's sequencer and the sweep allows it, otherwise stepped by the executor. 'software': the executor sets each level and settles. 'triggered': required, so a stand without the wiring is a compile error; the axis then is the innermost stepped axis of a sweep with a sequenced stage and nothing sensed or captured per point, and at most one axis is triggered. A stage axis is swept by the sequencer and takes 'auto' only.",
             "enum": [
+              "auto",
               "software",
               "triggered"
             ],

@@ -36,8 +36,11 @@ Carried from Step 5, each with its evidence; an ADR closes each one.
 - ~~**Sub-ms stepping.**~~ Closed by ADR 0064 (2026-10-16): the DAG's inner loop is a triggered DC step.
   `TriggeredLevelSource` beside the frozen five; `SweepAxis.stepping = "triggered"` for the innermost
   stepped axis, loaded as a QDAC-II list and advanced by the OPX's marker on `do2`; the program owns
-  the axis. Open after it: Probe 05 (the marker, the scope's re-arm, the list's first trigger), then
-  the L2-4 staircase row; segmented acquisition on the scope; the Sweep widget offering the stepping.
+  the axis. Probe 05 ran 2026-10-16 (ADR 0065): the scope acquires segmented by `:SINGle`, the QDAC-II
+  list re-arms per trigger and restarts past its end, and the L2-4 staircase passes. Pacing became the
+  plan's the same day (ADR 0066): the compiler decides from the stand, "auto" by default, and the Sweep
+  widget shows the decision and offers the override. Open after it: reading all segments in one
+  transfer; the OPX streaming a triggered run per row.
 - ~~The sequencer-to-scope trigger line~~ (left open by ADR 0060) — closed by ADR 0063: the OPX runs a
   shot capture now, the scope triggering itself until its stand entry names a marker line
   (`trigger_from`); the executor drains the capture while the shots play.

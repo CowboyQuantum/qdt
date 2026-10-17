@@ -5,6 +5,7 @@ export interface QdtControlApi {
   Affine?: Affine;
   AnalysisResult?: AnalysisResult;
   Annotation?: Annotation;
+  AxisPacing?: AxisPacing;
   CalibrationNode?: CalibrationNode;
   Call?: Call;
   Capture?: Capture;
@@ -294,6 +295,30 @@ export interface PayloadRef {
   type: "qdt-hdf5-v1";
 }
 /**
+ * How one axis of a plan advances, decided by the compiler from the stand (ADR 0066).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "AxisPacing".
+ */
+export interface AxisPacing {
+  /**
+   * Axis name (SweepAxis.name).
+   */
+  axis: string;
+  /**
+   * With 'triggered': the sequencer's marker channels (logical names) wired to the axis's instruments; empty when the sequencer sets the level itself.
+   */
+  lines?: string[];
+  /**
+   * 'software': the executor sets each level and waits its settle. 'triggered': the axis's instruments are loaded with its levels once and advanced by the stage sequencer's marker, the sequencer pacing the scan (ADR 0064). 'sequencer': swept inside the sequencer's program, a stage axis.
+   */
+  pacing: "software" | "triggered" | "sequencer";
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
  * One step of a tune-up as data: the experiment to run, the curated method that reads its record,
  * the rule that turns the estimates into a verdict and the quantities the next node needs. `inputs`
  * name the places in `definition` an upstream node's outputs fill before the node runs.
@@ -445,9 +470,9 @@ export interface SweepAxis {
    */
   start: number;
   /**
-   * How a stepped axis advances (ADR 0064). 'software': the executor sets each level and settles (the default). 'triggered': the channel's instrument is loaded with the axis's levels once and advances one point per trigger the stage's sequencer plays, so the sequencer paces the whole scan; the axis (and its couplings) then needs a 'triggered_level_source' instrument, a stage with a sequence, and no sensed or per-point captured channels. At most one axis is triggered and it is the innermost stepped axis.
+   * A preference for how a stepped axis advances (ADR 0064, 0066); the compiler decides and records the result in ExecutionPlan.pacing. 'auto' (the default): triggered when the stand wires the axis's instruments to the stage's sequencer and the sweep allows it, otherwise stepped by the executor. 'software': the executor sets each level and settles. 'triggered': required, so a stand without the wiring is a compile error; the axis then is the innermost stepped axis of a sweep with a sequenced stage and nothing sensed or captured per point, and at most one axis is triggered. A stage axis is swept by the sequencer and takes 'auto' only.
    */
-  stepping?: "software" | "triggered";
+  stepping?: "auto" | "software" | "triggered";
   /**
    * Value at the last index (inclusive).
    */
@@ -1413,7 +1438,8 @@ export interface EstimateSpec {
 /**
  * A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.
  *
- * Structural, not unrolled: the executor walks it (ADR 0019).
+ * Structural, not unrolled: the executor walks it (ADR 0019). It records how each axis advances
+ * (`pacing`, ADR 0066): the definition says what is swept, the plan how.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
  * via the `definition` "ExecutionPlan".
@@ -1431,6 +1457,10 @@ export interface ExecutionPlan {
   channels: ResolvedChannel[];
   dataset: Dataset;
   definition: SweepDefinition;
+  /**
+   * How each axis advances, one entry per axis in the definition's order (ADR 0066). Empty in a plan compiled before it: then every stage axis is swept by the sequencer and every other axis is stepped by the executor.
+   */
+  pacing?: AxisPacing[];
   /**
    * Unique id; also the Dataset id.
    */

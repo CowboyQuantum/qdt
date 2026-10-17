@@ -24,6 +24,33 @@ const stand: StandConfig = {
 } as StandConfig;
 
 describe("sweep builders", () => {
+  it("passes a stage sweep's stepping preference to its stepped axis, and leaves 'auto' unsaid (ADR 0066)", () => {
+    const base = {
+      name: "stability",
+      inner: { channel: "P2_pulse", start: 0.03, stop: 0.18, num: 48 },
+      sensor: "sensor",
+      instrument: "dot",
+      shots: 1,
+      stepNs: 500,
+      measureNs: 2000,
+      result: "I_sensor",
+    };
+    const outer = { channel: "P1", start: 0.03, stop: 0.18, num: 48 };
+    for (const stepping of ["software", "triggered"] as const) {
+      expect(stageSweep({ ...base, outer: { ...outer, stepping } }).axes![0]!.stepping).toBe(stepping);
+    }
+    expect("stepping" in stageSweep({ ...base, outer: { ...outer, stepping: "auto" } }).axes![0]!).toBe(false);
+    expect("stepping" in stageSweep({ ...base, outer }).axes![0]!).toBe(false);
+    expect(() => stageSweep({ ...base, outer, inner: { ...base.inner, stepping: "software" } })).toThrow(/a stage axis is swept in the sequence/);
+  });
+
+  it("refuses a forced trigger where every point is read from the host", () => {
+    const triggered = { channel: "P1", start: 0, stop: 1, num: 5, stepping: "triggered" as const };
+    expect(() => dcSweep({ name: "dc", inner: triggered, sensor: "sensor", result: "I" })).toThrow(/a triggered axis needs a stage sweep/);
+    expect(() => captureSweep({ name: "c", outer: triggered, channel: "scope1", startS: 0, stopS: 1e-3, num: 100, records: 1, result: "trace" })).toThrow(/a triggered axis needs a stage sweep/);
+    expect(dcSweep({ name: "dc", inner: { ...triggered, stepping: "software" }, sensor: "sensor", result: "I" }).axes![0]!.stepping).toBe("software");
+  });
+
   it("builds a stage sweep like qdt_sim.scenarios.stability", () => {
     const d = stageSweep({
       name: "stability",

@@ -8,7 +8,7 @@
 import { ApiError } from "../api/client";
 import type { ChannelMap, ExecutionPlan, Run, SweepDefinition } from "../schema/api";
 import type { BindingRow, OpRow } from "../control/sequence";
-import { axisName, buildLevels, captureSweep, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels } from "../control/sweeps";
+import { axisName, buildLevels, captureSweep, dcSweep, stageSweep, standChannels, type AxisForm, type LevelRow, type StandChannels, type Stepping } from "../control/sweeps";
 import { h } from "../workspace/dom";
 import type { Widget, WidgetContext } from "../workspace/widget";
 
@@ -23,6 +23,16 @@ export function planSummary(plan: ExecutionPlan): string {
   const points = dims.reduce((a, d) => a * (d.size ?? 1), 1);
   const axes = dims.map((d) => `${d.name} ${d.size ?? "?"}`).join(" × ");
   return `${plan.definition.name} · ${axes || "no axes"} · ${points.toLocaleString()} pts · ${plan.channels.length} channels${plan.stage_program ? " · stage program" : ""}`;
+}
+
+/** How each axis of a compiled plan advances (ADR 0066): the server decides from the stand, this says what
+ * it chose, one line per axis. Pure. */
+export function pacingLines(plan: ExecutionPlan): string[] {
+  return (plan.pacing ?? []).map((p) => {
+    if (p.pacing === "sequencer") return `${p.axis}: swept in the sequence`;
+    if (p.pacing === "software") return `${p.axis}: stepped from the host`;
+    return `${p.axis}: triggered ${p.lines?.length ? `on ${p.lines.join(", ")}` : "by the sequencer itself"}`;
+  });
 }
 
 /** The next-run line before anything is compiled: what the form says. Pure. */
@@ -63,6 +73,7 @@ class SweepWidget {
   private readonly levelErrors: HTMLUListElement;
   private readonly planBox: HTMLPreElement;
   private readonly sweepOnly: HTMLElement[] = [];
+  private readonly stageOnly: HTMLElement[] = [];
   private readonly offs: (() => void)[] = [];
 
   constructor(
@@ -138,6 +149,10 @@ class SweepWidget {
       this.sweepOnly.push(el);
       return el;
     };
+    const stageOnly = (el: HTMLElement) => {
+      this.stageOnly.push(el);
+      return el;
+    };
     this.capture.append(
       h("legend", { text: "capture (a WaveformSense record; the outer axis above steps it, or leave it at none)" }),
       field("channel", h("select", { name: "capture_channel" })),
@@ -170,6 +185,18 @@ class SweepWidget {
       field("name", h("input", { name: "name", value: "stability" })),
       h("div", { className: "axis head" }, ...["channel", "start", "stop", "num"].map((t) => h("span", { text: t }))),
       h("div", {}, "outer", axisRow("outer", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
+      stageOnly(
+        field(
+          "outer stepping",
+          h(
+            "select",
+            { name: "outer_stepping", title: "How the outer DC axis advances (ADR 0066); compile shows what the stand chose" },
+            h("option", { value: "auto", text: "auto: the stand decides" }),
+            h("option", { value: "software", text: "software: set from the host" }),
+            h("option", { value: "triggered", text: "triggered: required" }),
+          ),
+        ),
+      ),
       sweepOnly(h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 }))),
       sweepOnly(field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" }))),
       sweepOnly(field("sensor", h("select", { name: "sensor" }))),
@@ -220,6 +247,11 @@ class SweepWidget {
       // the stylesheet gives labels a display, which beats the UA's [hidden] rule: set both
       el.hidden = kind === "capture";
       el.style.display = kind === "capture" ? "none" : "";
+    }
+    for (const el of this.stageOnly) {
+      // a triggered axis needs a stage: a DC or capture sweep reads at every point (ADR 0064, 0066)
+      el.hidden = kind !== "stage";
+      el.style.display = kind !== "stage" ? "none" : "";
     }
     this.renderLevels();
   }
@@ -310,7 +342,7 @@ class SweepWidget {
     const options = JSON.parse(v("options") || "{}") as Record<string, string | number | boolean>;
     const sensor = v("sensor");
     const innerName = v("inner_name").trim() || undefined;
-    const outer = v("outer_channel") ? axis("outer") : null;
+    const outer = v("outer_channel") ? { ...axis("outer"), ...(v("kind") === "stage" ? { stepping: (v("outer_stepping") || "auto") as Stepping } : {}) } : null;
     const held = this.validateLevels();
     if (held.errors.length) throw new Error(held.errors.join("; "));
     const levels = held.levels;
@@ -364,7 +396,7 @@ class SweepWidget {
       this.compiled = { plan, definition, options };
       this.stale = false;
       const summary = planSummary(plan);
-      this.planBox.textContent = `plan ${plan.plan_id}\n${summary}`;
+      this.planBox.textContent = [`plan ${plan.plan_id}`, summary, ...pacingLines(plan)].join("\n");
       this.ctx.bus.emit("plan:compiled", { planId: plan.plan_id, summary });
       return this.compiled;
     } catch (e) {

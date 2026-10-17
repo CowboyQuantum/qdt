@@ -1,6 +1,6 @@
 # 0064 — The sequencer paces the bench: a `TriggeredLevelSource` beside the frozen five, a stepped axis advanced by the sequencer's marker (`SweepAxis.stepping = "triggered"`), the QDAC-II list mode
 
-**Status:** Accepted
+**Status:** Accepted — where pacing is decided, and the `stepping` default, superseded by 0066; `TriggeredLevelSource` and the triggered mechanics stand
 **Date:** 2026-10-16
 **Step:** 6 open decision (closes "sub-ms stepping"; adds a protocol beside ADR 0021's five; extends 0019, 0049)
 

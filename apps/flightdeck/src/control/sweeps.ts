@@ -16,7 +16,12 @@ export interface AxisForm {
   name?: string;
   /** A virtual gate (ADR 0049): other DC channels moved with this axis, volts per volt. Stepped axes only. */
   couplings?: Readonly<Record<string, number>>;
+  /** How a stepped axis advances (ADR 0066): a preference; the server decides "auto" from the stand's wiring
+   * and the compiled plan says what it chose. Only a stage sweep's stepped axis can be triggered. */
+  stepping?: Stepping;
 }
+
+export type Stepping = "auto" | "software" | "triggered";
 
 /** One operating-point row as typed: a DC channel and its level (ADR 0038). */
 export interface LevelRow {
@@ -97,7 +102,13 @@ const axis = (a: AxisForm) => ({
   stop: a.stop,
   num: a.num,
   ...(a.couplings && Object.keys(a.couplings).length ? { couplings: { ...a.couplings } } : {}),
+  ...(a.stepping && a.stepping !== "auto" ? { stepping: a.stepping } : {}),
 });
+
+/** A DC or capture sweep reads at every point, so the host steps it: a forced trigger cannot run there. */
+function checkNotTriggered(axes: readonly (AxisForm | null | undefined)[], kind: string): string[] {
+  return axes.flatMap((a) => (a?.stepping === "triggered" ? [`${axisName(a)}: a ${kind} sweep reads at every point, so its axes are stepped from the host; a triggered axis needs a stage sweep`] : []));
+}
 
 const RESERVED = new Set(["repeat", "shot"]);
 
@@ -128,6 +139,7 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
   if (!Number.isInteger(f.shots) || f.shots < 1) errors.push("shots must be a positive integer");
   const inner = axisName(f.inner);
   if (f.inner.couplings && Object.keys(f.inner.couplings).length) errors.push(`${inner}: a stage axis expresses its couplings in the pulse sequence, not as a virtual gate`);
+  if (f.inner.stepping && f.inner.stepping !== "auto") errors.push(`${inner}: a stage axis is swept in the sequence; stepping applies to the stepped axis`);
   const axes = f.outer ? [axis(f.outer), axis(f.inner)] : [axis(f.inner)];
   const axisNames = axes.map((a) => a.name);
   const symbol = `v_${inner}`;
@@ -166,6 +178,7 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
 /** Axes stepped on DC lines, the sensor read at every point (e.g. Coulomb diamonds: gate × bias). */
 export function dcSweep(f: DcSweepForm): SweepDefinition {
   const errors = checkAxes(f.outer, f.inner);
+  errors.push(...checkNotTriggered([f.outer, f.inner], "DC"));
   if (!f.sensor) errors.push("a DC sweep needs a sensor channel");
   const axes = f.outer ? [axis(f.outer), axis(f.inner)] : [axis(f.inner)];
   errors.push(...checkResults([f.result], axes.map((a) => a.name)));
@@ -203,6 +216,7 @@ export interface CaptureForm {
 /** One WaveformSense channel armed per point of an optional stepped axis (ADR 0047): the shape of L2-3. */
 export function captureSweep(f: CaptureForm): SweepDefinition {
   const errors = f.outer ? checkAxis(f.outer) : [];
+  errors.push(...checkNotTriggered([f.outer], "capture"));
   if (f.outer && RESERVED_CAPTURE.has(axisName(f.outer))) errors.push(`"${axisName(f.outer)}" is a reserved dimension name`);
   if (!f.channel) errors.push("a capture needs a WaveformSense channel");
   if (f.outer && f.outer.channel === f.channel) errors.push("a channel is a stepped axis or the captured one, not both");

@@ -166,7 +166,8 @@ class SequencerProgram(QdtModel):
 
 Reduction = Literal["keep", "mean", "sum"]
 ParameterSource = Literal["const", "axis_num", "axis_start", "axis_step", "axis_value"]
-Stepping = Literal["software", "triggered"]
+Stepping = Literal["auto", "software", "triggered"]
+Pacing = Literal["software", "triggered", "sequencer"]
 
 
 class SweepAxis(QdtModel):
@@ -192,15 +193,17 @@ class SweepAxis(QdtModel):
         ),
     )
     stepping: Stepping = Field(
-        default="software",
-        exclude_if=lambda v: v == "software",  # existing definitions keep their content hash
+        default="auto",
+        exclude_if=lambda v: v == "auto",  # existing definitions keep their content hash
         description=(
-            "How a stepped axis advances (ADR 0064). 'software': the executor sets each level and "
-            "settles (the default). 'triggered': the channel's instrument is loaded with the axis's "
-            "levels once and advances one point per trigger the stage's sequencer plays, so the "
-            "sequencer paces the whole scan; the axis (and its couplings) then needs a "
-            "'triggered_level_source' instrument, a stage with a sequence, and no sensed or per-point "
-            "captured channels. At most one axis is triggered and it is the innermost stepped axis."
+            "A preference for how a stepped axis advances (ADR 0064, 0066); the compiler decides and "
+            "records the result in ExecutionPlan.pacing. 'auto' (the default): triggered when the "
+            "stand wires the axis's instruments to the stage's sequencer and the sweep allows it, "
+            "otherwise stepped by the executor. 'software': the executor sets each level and settles. "
+            "'triggered': required, so a stand without the wiring is a compile error; the axis then "
+            "is the innermost stepped axis of a sweep with a sequenced stage and nothing sensed or "
+            "captured per point, and at most one axis is triggered. A stage axis is swept by the "
+            "sequencer and takes 'auto' only."
         ),
     )
 
@@ -478,13 +481,17 @@ class SweepDefinition(QdtModel):
                 "a capture inside the shot needs a stage without stage axes: the scope is armed per "
                 "stepped point and triggered per shot (ADR 0060); step the axis instead"
             )
+        for a in self.axes:
+            if a.name in stage_axes and a.stepping != "auto":
+                raise ValueError(
+                    f"stage axis {a.name!r} is swept by the sequencer; stepping "
+                    f"{a.stepping!r} applies to a stepped axis"
+                )
         triggered = [a for a in self.axes if a.stepping == "triggered"]
         if triggered:  # ADR 0064: the sequencer paces the scan, so it must own the whole inner loop
             if len(triggered) > 1:
                 raise ValueError("at most one axis is triggered (one trigger line, one list)")
             t = triggered[0]
-            if t.name in stage_axes:
-                raise ValueError(f"stage axis {t.name!r} is swept by the sequencer, not triggered")
             if stepped[-1].name != t.name:
                 raise ValueError(
                     f"triggered axis {t.name!r} must be the innermost stepped axis: the executor steps "
@@ -572,16 +579,6 @@ class SweepDefinition(QdtModel):
         inner = set(self.stage.axes) if self.stage else set()
         return tuple(a for a in self.axes if a.name not in inner)
 
-    def triggered_axis(self) -> SweepAxis | None:
-        """The stepped axis the stage's sequencer advances by trigger (ADR 0064), if any."""
-        return next((a for a in self.axes if a.stepping == "triggered"), None)
-
-    def program_axes(self) -> tuple[SweepAxis, ...]:
-        """The axes the sequencer's program loops over, outer to inner: the triggered axis (if any),
-        then the stage axes. Symbols bound to any of them are swept inside the program."""
-        t = self.triggered_axis()
-        return (*((t,) if t else ()), *self.stage_axes())
-
     def coupled_channels(self) -> tuple[str, ...]:
         """Channels moved by an axis's couplings (ADR 0049), in axis order, each once."""
         out: list[str] = []
@@ -631,10 +628,33 @@ class ResolvedChannel(QdtModel):
     role: Capability = Field(description="Protocol the executor uses this channel through.")
 
 
+class AxisPacing(QdtModel):
+    """How one axis of a plan advances, decided by the compiler from the stand (ADR 0066)."""
+
+    axis: str = Field(min_length=1, description="Axis name (SweepAxis.name).")
+    pacing: Pacing = Field(
+        description=(
+            "'software': the executor sets each level and waits its settle. 'triggered': the axis's "
+            "instruments are loaded with its levels once and advanced by the stage sequencer's "
+            "marker, the sequencer pacing the scan (ADR 0064). 'sequencer': swept inside the "
+            "sequencer's program, a stage axis."
+        )
+    )
+    lines: tuple[str, ...] = Field(
+        default=(),
+        exclude_if=lambda v: not v,
+        description=(
+            "With 'triggered': the sequencer's marker channels (logical names) wired to the axis's "
+            "instruments; empty when the sequencer sets the level itself."
+        ),
+    )
+
+
 class ExecutionPlan(QdtModel):
     """A SweepDefinition compiled against a stand: resolved, serializable, the record of what runs.
 
-    Structural, not unrolled: the executor walks it (ADR 0019).
+    Structural, not unrolled: the executor walks it (ADR 0019). It records how each axis advances
+    (`pacing`, ADR 0066): the definition says what is swept, the plan how.
     """
 
     schema_version: int = Field(
@@ -662,9 +682,62 @@ class ExecutionPlan(QdtModel):
     attrs: dict[str, AttrValue] = Field(
         default_factory=dict, description="Free-form scalar metadata, e.g. emitter version."
     )
+    pacing: tuple[AxisPacing, ...] = Field(
+        default=(),
+        exclude_if=lambda v: not v,  # plans stored before ADR 0066 keep their content hash
+        description=(
+            "How each axis advances, one entry per axis in the definition's order (ADR 0066). Empty in "
+            "a plan compiled before it: then every stage axis is swept by the sequencer and every other "
+            "axis is stepped by the executor."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _paced(self) -> "ExecutionPlan":
+        if not self.pacing:
+            return self
+        names = [a.name for a in self.definition.axes]
+        if [p.axis for p in self.pacing] != names:
+            raise ValueError(f"pacing must name every axis once, in order: {names}")
+        stage = set(self.definition.stage.axes) if self.definition.stage else set()
+        if {p.axis for p in self.pacing if p.pacing == "sequencer"} != stage:
+            raise ValueError("exactly the stage axes are swept by the sequencer")
+        triggered = [p.axis for p in self.pacing if p.pacing == "triggered"]
+        stepped = [a.name for a in self.definition.stepped_axes()]
+        if len(triggered) > 1 or (triggered and triggered[0] != stepped[-1]):
+            raise ValueError("at most one axis is triggered, and it is the innermost stepped axis")
+        if any(p.lines and p.pacing != "triggered" for p in self.pacing):
+            raise ValueError("only a triggered axis has marker lines")
+        return self
 
     def channel(self, logical: str) -> ResolvedChannel:
         for c in self.channels:
             if c.logical == logical:
                 return c
         raise KeyError(f"unknown logical channel {logical!r}")
+
+    def pacing_of(self, axis: str) -> AxisPacing:
+        """How `axis` advances; for a plan compiled before ADR 0066, what the executor did then."""
+        for p in self.pacing:
+            if p.axis == axis:
+                return p
+        self.definition.axis(axis)  # KeyError for an unknown axis
+        stage = set(self.definition.stage.axes) if self.definition.stage else set()
+        return AxisPacing(axis=axis, pacing="sequencer" if axis in stage else "software")
+
+    def triggered_axis(self) -> SweepAxis | None:
+        """The stepped axis the stage's sequencer advances by trigger (ADR 0064, 0066), if any."""
+        for a in self.definition.axes:
+            if self.pacing_of(a.name).pacing == "triggered":
+                return a
+        return None
+
+    def program_axes(self) -> tuple[SweepAxis, ...]:
+        """The axes the sequencer's program loops over, outer to inner: the triggered axis (if any),
+        then the stage axes. Symbols bound to any of them are swept inside the program."""
+        t = self.triggered_axis()
+        return (*((t,) if t else ()), *self.definition.stage_axes())
+
+    def software_axes(self) -> tuple[SweepAxis, ...]:
+        """The axes the executor steps itself, outer to inner."""
+        return tuple(a for a in self.definition.axes if self.pacing_of(a.name).pacing == "software")

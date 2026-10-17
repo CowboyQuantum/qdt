@@ -186,7 +186,8 @@ class InputBinding(QdtModel):
         ),
     )
     scale: float = Field(
-        default=1.0, description="The target takes `scale · output + offset` (ADR 0062); 1 by default."
+        default=1.0,
+        description="The target takes `scale · output + offset` (ADR 0062); 1 by default.",
     )
     offset: float = Field(
         default=0.0,

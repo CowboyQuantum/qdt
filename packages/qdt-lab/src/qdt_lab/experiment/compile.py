@@ -1,5 +1,9 @@
 """`SweepDefinition` + `StandConfig` → `ExecutionPlan` (ADR 0019; captures by ADR 0047 and 0060).
 
+The definition says what is swept; the plan says how each axis advances (ADR 0066): `resolve_pacing`
+decides, from the stand, whether a stepped axis is set by the executor or triggered by the stage's
+sequencer, and the plan and the Dataset's attrs (`<axis>.pacing`) record it.
+
 Dataset layout, outer to inner: `repeat` (when repeats != 1), the axes, `shot` (kept shots), then for
 captured waveforms `record` (when records > 1) and each capture's time axis. A sensed level is laid over
 the stepped axes; a stage result over every axis; a capture over the stepped axes plus its own time; a
@@ -11,10 +15,12 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from qdt_schemas.activity import (
+    AxisPacing,
     ExecutionPlan,
     ParameterBinding,
     ResolvedChannel,
     SequencerProgram,
+    SweepAxis,
     SweepDefinition,
 )
 from qdt_schemas.data import (
@@ -31,6 +37,72 @@ from .emit import Emitter, TriggeredStep
 REPEAT_DIM = "repeat"
 SHOT_DIM = "shot"
 RECORD_DIM = "record"
+
+
+def resolve_pacing(definition: SweepDefinition, stand: StandConfig) -> tuple[AxisPacing, ...]:
+    """How each axis of `definition` advances on `stand`, in axis order (ADR 0066).
+
+    A stage axis is swept by the sequencer. The innermost stepped axis is triggered when its
+    preference allows it ('auto' or 'triggered') and the sweep and the stand can honour it: a
+    sequenced stage plays the markers, nothing is sensed or captured per point, and the axis's channel
+    and every coupled companion sit on instruments that step a list on a trigger and are wired to the
+    stage's sequencer (`settings['trigger_from']`, or the sequencer itself). Every other stepped axis
+    is set by the executor. Raises ValueError for a forced 'triggered' the stand cannot honour, and
+    for a `trigger_from` that names no channel of the sequencer (a stand file error, never a fallback).
+    """
+    stage_axes = set(definition.stage.axes) if definition.stage else set()
+    out = {
+        a.name: AxisPacing(axis=a.name, pacing="sequencer" if a.name in stage_axes else "software")
+        for a in definition.axes
+    }
+    stepped = definition.stepped_axes()
+    if stepped and stepped[-1].stepping != "software":
+        last = stepped[-1]
+        lines, why = _trigger_lines(definition, stand, last)
+        if lines is not None:
+            out[last.name] = AxisPacing(axis=last.name, pacing="triggered", lines=lines)
+        elif last.stepping == "triggered":
+            raise ValueError(f"axis {last.name!r} is set to 'triggered', but {why}")
+    # a forced trigger on any other axis is refused by the definition itself
+    return tuple(out[a.name] for a in definition.axes)
+
+
+def _trigger_lines(
+    definition: SweepDefinition, stand: StandConfig, axis: SweepAxis
+) -> tuple[tuple[str, ...] | None, str]:
+    """The marker lines that advance `axis`, or None and why it cannot be triggered here."""
+    stage = definition.stage
+    if stage is None or stage.sequence is None:
+        return None, "the sweep has no sequenced stage to play its trigger"
+    if definition.sensed or definition.captured:
+        return (
+            None,
+            "the sweep senses or captures per point, which needs the executor at every point",
+        )
+    lines: list[str] = []
+    for ch in (axis.channel, *axis.couplings):
+        instrument = stand.instrument(stand.channel(ch).instrument)
+        if "triggered_level_source" not in instrument.capabilities:
+            return None, f"instrument {instrument.id!r} ({ch!r}) cannot step a list on a trigger"
+        if instrument.id == stage.instrument:
+            continue  # the sequencer sets the level itself (the simulated device)
+        line = instrument.settings.get("trigger_from")
+        if line is None:
+            return None, (
+                f"instrument {instrument.id!r} ({ch!r}) has no settings['trigger_from'], the "
+                "sequencer channel wired to its trigger input"
+            )
+        line = str(line)
+        if line not in {c.logical for c in stand.channels} or (
+            stand.channel(line).instrument != stage.instrument
+        ):
+            raise ValueError(
+                f"instrument {instrument.id!r} says settings['trigger_from'] = {line!r}, which is "
+                f"not a channel of the sequencer {stage.instrument!r}"
+            )
+        if line not in lines:
+            lines.append(line)
+    return tuple(lines), ""
 
 
 def compile_sweep(
@@ -64,8 +136,9 @@ def compile_sweep(
                 f"instrument {instrument.id!r} ({logical!r}) lacks capability {role!r}"
             )
 
+    pacing = resolve_pacing(definition, stand)
+    triggered = next((definition.axis(p.axis) for p in pacing if p.pacing == "triggered"), None)
     stepped = definition.stepped_axes()
-    triggered = definition.triggered_axis()
     for a in stepped:
         # a triggered axis (ADR 0064) and its companions are loaded as lists, not set per point
         role: Capability = "triggered_level_source" if a is triggered else "level_source"
@@ -136,24 +209,31 @@ def compile_sweep(
                 return line
 
             trigger_step = None
-            if triggered is not None:
-                what = f"triggered axis {triggered.name!r}"
-                lines: list[str] = []
-                settle = 0.0
-                for ch in (triggered.channel, *triggered.couplings):
-                    stepped_instrument = stand.channel(ch).instrument
-                    line = marker_line(stepped_instrument, what)
-                    if line is None and stepped_instrument != stage.instrument:
-                        raise ValueError(
-                            f"{what}: instrument {stepped_instrument!r} has no settings['trigger_from'], "
-                            "the sequencer channel whose marker advances its list (ADR 0064)"
-                        )
-                    if line is not None and line not in lines:
-                        lines.append(line)
-                    settle = max(settle, stand.channel(ch).settle_s)
-                trigger_step = TriggeredStep(
-                    axis=triggered.name, lines=tuple(lines), settle_ns=round(settle * 1e9)
+            if triggered is not None:  # resolved above (ADR 0066); its lines are sequencer channels
+                lines = next(p.lines for p in pacing if p.axis == triggered.name)
+                for line in lines:
+                    resolve(line, "sequencer")
+                settle = max(
+                    stand.channel(ch).settle_s for ch in (triggered.channel, *triggered.couplings)
                 )
+                trigger_step = TriggeredStep(
+                    axis=triggered.name, lines=lines, settle_ns=round(settle * 1e9)
+                )
+            if triggered is None and not stage.axes and stepped:
+                # with the axis triggered the program would own it; stepped from the host it has no
+                # axis to lay a once-per-point result over (ADR 0066 makes this depend on the stand)
+                captured = {c.result for c in stage.captures()}
+                once = [
+                    r
+                    for r in stage.sequence.results()
+                    if r not in captured and not (stage.reduction(r) == "keep" and stage.shots > 1)
+                ]
+                if once:
+                    raise ValueError(
+                        f"result {once[0]!r} is recorded once per point of {stepped[-1].name!r}, which "
+                        "this stand steps from the host (ADR 0066), so the program has no axis to lay "
+                        "it over: keep shots > 1, give the stage an axis, or wire the axis for a trigger"
+                    )
             capture_lines = {}
             for c in stage.captures():
                 line = marker_line(stand.channel(c.channel).instrument, f"capture {c.result!r}")
@@ -192,7 +272,7 @@ def compile_sweep(
     )
 
     plan_id = plan_id or uuid.uuid4().hex
-    dataset = _declare_dataset(definition, stand, program, plan_id, created_at)
+    dataset = _declare_dataset(definition, stand, program, plan_id, created_at, pacing)
     return ExecutionPlan(
         plan_id=plan_id,
         definition=definition,
@@ -201,6 +281,7 @@ def compile_sweep(
         channels=channels,
         stage_program=program,
         stage_parameters=bindings,
+        pacing=pacing,
     )
 
 
@@ -210,6 +291,7 @@ def _declare_dataset(
     program: SequencerProgram | None,
     plan_id: str,
     created_at: datetime | None,
+    pacing: tuple[AxisPacing, ...] = (),
 ) -> Dataset:
     dims: list[Dimension] = []
     coords: list[LinearCoordinate] = []
@@ -232,6 +314,8 @@ def _declare_dataset(
     stepped_names = [a.name for a in definition.stepped_axes()]
     variables: list[DataVariable] = []
     attrs: dict = {"definition": definition.name, "repeats": definition.repeats or "unbounded"}
+    for p in pacing:  # how each axis was taken: the record says it (ADR 0066)
+        attrs[f"{p.axis}.pacing"] = p.pacing
     for s in definition.sensed:
         variables.append(
             DataVariable(
