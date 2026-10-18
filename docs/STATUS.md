@@ -5,11 +5,10 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/stage-result-per-point` (PR against `main`, stacked on #67; the human merges). Open: #67
-(the OPX streams rows), #68 (the scope reads every segment in one transfer; its bench test first) and this one.
-PRs #25–#66 merged 2026-10-14/16.
-**Last session:** 2026-10-16/17, software only (the dock was unplugged throughout). The human asked for three
-slices in this order:
+**Branch:** `step-6/status-after-merges` (a docs PR: this file after #67–#69 merged; the human merges). PRs
+#25–#69 merged 2026-10-14/18.
+**Last session:** 2026-10-16/18, software only (the dock was unplugged throughout). The human asked for three
+slices in this order; all three are merged:
 1. **The OPX streams a run's results row by row** (#67): ADR 0015's chunking on the OPX. A result over two or more
    program axes arrives one slab of its first axis per frame, fetched as soon as every measure stream holds it
    (`count_so_far`, `fetch` by slice); a run that ends short raises; a 1-D result and the conformance program
@@ -17,18 +16,18 @@ slices in this order:
    `bench/test_opx_streaming.py` (the OPX alone) proves it on hardware; not yet run.
 2. **The scope reads every segment in one transfer** (#68): `:WAVeform:SEGMented:ALL` and one `:WAVeform:DATA?`
    when the scope accepts the command (the error queue, read after `*CLS`) and the block holds records × the
-   preamble's points; otherwise segment by segment, decided on the first segmented readout and kept. **Merge it
-   only after `bench/test_scope_segments.py` passes** (the scope alone): it reads one acquisition both ways and
-   compares.
-3. **A stage records once per stepped point without an axis of its own** (ADR 0068, this branch): the program
+   preamble's points; otherwise segment by segment, decided on the first segmented readout and kept. **Merged
+   before its bench run** (the human's call): `bench/test_scope_segments.py` (the scope alone) reads one
+   acquisition both ways and compares; if the HD3 refuses the command, the driver reads per segment as before.
+3. **A stage records once per stepped point without an axis of its own** (ADR 0068, #69): the program
    gets a one-point axis `once` (`n_once` = 1) and the slab a one-point dimension, which the executor strips;
    only a value with no axis anywhere is refused. A definition now compiles on any stand, triggered or stepped
    from the host; a DC sweep read in the shot runs host-stepped, and the widget offers "software" for it again.
 
 ## Bench tasks — next bench session (with the dock plugged in)
 1. **`bench/test_opx_streaming.py`** (the OPX alone, nothing cabled): #67's hardware check.
-2. **`bench/test_scope_segments.py`** (the scope alone): #68's gate. If the HD3 refuses
-   `:WAVeform:SEGMented:ALL`, the driver keeps reading per segment and #68 only adds a test of what it lacks.
+2. **`bench/test_scope_segments.py`** (the scope alone): #68's check, now on `main`. If the HD3 refuses
+   `:WAVeform:SEGMented:ALL`, the driver keeps reading per segment and the test records what the scope lacks.
 3. **L2-3 as one shot** (`bench/test_l2_paced.py`): re-wire ao1 → combiner pulse in, QDAC ch01 → combiner DC in,
    board out → scope ch1; run first with the scope self-triggering (no `trigger_from` on scope0), then with the
    marker. Commit the report.
@@ -60,19 +59,18 @@ slices in this order:
   and an e2e host-stepped map read in the shot).
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- On this branch (with #67): 450 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in
-  `packages/`, 19 hardware-only in `bench/`; Flight Deck 137 unit tests and 14 e2e. #68 adds four scope tests
-  and one bench test.
+- On `main`: 453 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 20
+  hardware-only in `bench/`; Flight Deck 137 unit tests and 14 e2e.
 
 ## In flight
-- Nothing uncommitted. Three PRs: #67, then this one (stacked on it); #68 after its bench test.
+- Nothing open but this docs PR.
 - **A stale `git am` in this checkout** (`.git/rebase-apply`, 2026-10-15: three "Claude (chat)" patches stopped
   at the third, about ADR 0050 and qdt-telemetry). It does not block commits. `git am --quit` removes it without
   touching any branch; `git am --abort` would move the current branch back, so not that.
 
 ## Known broken / not yet real
-- **Unverified on hardware:** the OPX's row streaming (#67) and the scope's one transfer (#68); the two bench
-  tests above prove them.
+- **Merged unverified on hardware:** the OPX's row streaming (#67) and the scope's one transfer (#68); the two
+  bench tests above prove them.
 - **A 1-D OPX result still arrives at the end of the run** (ADR 0015 gives a 1-D result one frame), so a long
   triggered 1-D scan fills at once.
 - **Stepped from the host, a stage with no axis of its own is one OPX job per point** (ADR 0068); triggered
@@ -85,7 +83,6 @@ slices in this order:
 - **Timing now depends on the stand:** host stepping added a job submission per point that may have hidden
   a too-short `settle_s`; triggered, exactly the declared settle is waited. Check stand files' settles.
 - **L2-3 as one shot is unrun** (the combiner is not wired).
-- **Until #68 merges, segments are read one by one**, 0.3–0.5 s each over the socket.
 - **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off; BENCH.md says to check.
 - **The marker-to-analog delay (85 ns) is recorded, not applied.**
 - **A triggered axis through the combiner's DC side is still 50 ms per point** (its 20 Hz low-pass).
@@ -103,8 +100,8 @@ slices in this order:
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge #67, then this PR (stacked on it); plug the dock in and say "run the bench tests", so #67 is
-proven on the OPX and #68 can merge after its scope test; name the next slice. Candidates: a stimulus and a
+**Human:** merge this docs PR; plug the dock in and say "run the bench tests", so #67 and #68 are proven on
+their instruments; name the next slice. Candidates: a stimulus and a
 capture in the widget (L2-3 as one shot); the sequencer's voltage inputs as sensors; streaming a 1-D OPX
 result; the bench tasks above; a second OPX pulse line; an OPX-ADC capture; how a sense range is declared; a
 rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches. Step 7 when sign-off
