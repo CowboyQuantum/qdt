@@ -1026,9 +1026,13 @@ def test_auto_pacing_steps_in_software_where_a_trigger_cannot_run():
             .frames()
         )
         assert [v for ch, v in dac.calls if ch == "ch00"] == [0.0, 0.5, 1.0]
-    # one shot per point compiles only where the program owns the axis, and the error says so
-    with pytest.raises(ValueError, match="steps from the host .* no axis to lay it over"):
+    # one shot per point compiles both ways since ADR 0068: host-stepped over the one-point axis
+    assert (
         compile_sweep(paced_definition(stepping="auto"), paced_stand(trigger_from=False), EMITTERS)
+        .pacing_of("V")
+        .pacing
+        == "software"
+    )
     assert (
         compile_sweep(paced_definition(stepping="auto"), paced_stand(), EMITTERS)
         .pacing_of("V")
@@ -1067,3 +1071,77 @@ def test_resolve_pacing_is_pure_and_matches_the_plan():
         resolve_pacing(definition, paced_stand())
         == compile_sweep(definition, paced_stand(), EMITTERS).pacing
     )
+
+
+# --- a stage with no axis of its own records once per stepped point (ADR 0068) -----------------------
+
+
+def test_a_stage_with_no_axis_records_one_value_per_host_stepped_point():
+    """The program records its one value per run over the one-point axis `once`; the executor strips it
+    and lays the value at the point it stepped to. Nothing on the stream carries `once`."""
+    from qdt_lab.experiment import ONCE
+    from qdt_lab.experiment.execute import stage_slab
+
+    plan = compile_sweep(paced_definition(stepping="software"), paced_stand(), EMITTERS)
+    assert plan.pacing_of("V").pacing == "software"
+    assert [r.dims for r in plan.stage_program.results] == [(f"n_{ONCE}",)]
+    assert f"n_{ONCE}" in {p.name for p in plan.stage_program.parameters}
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [("V", 3)]
+    assert plan.dataset.data_vars[0].dims == ("V",)
+    slab = stage_slab(plan)
+    assert [(d.name, d.size) for d in slab.dims] == [(ONCE, 1)] and slab.data_vars[0].dims == (
+        ONCE,
+    )
+    dac = SpyLevelSource()
+    frames = list(
+        Executor(plan, {"dac": dac, "seq": SimulatedSequencer()}, sleep=lambda s: None)
+        .run()
+        .frames()
+    )
+    assert [v for ch, v in dac.calls if ch == "ch00"] == [0.0, 0.5, 1.0]
+    assert [[(s.dim, s.start, s.stop) for s in f.chunk.region] for f in frames] == [
+        [("V", i, i + 1)] for i in range(3)
+    ]
+    assert all(ONCE not in (s.dim for s in f.chunk.region) for f in frames)
+    out = assemble(plan.dataset, frames)
+    assert out["I"].shape == (3,) and not np.isnan(out["I"].values).any()
+
+
+def test_shots_averaged_or_kept_need_no_one_point_axis_unless_a_result_has_none():
+    from qdt_lab.experiment import ONCE
+
+    averaged = paced_definition(shots=3, stepping="software").model_copy(
+        update={
+            "stage": paced_definition(shots=3, stepping="software").stage.model_copy(
+                update={"reduce": {"I": "mean"}}
+            )
+        }
+    )
+    plan = compile_sweep(averaged, paced_stand(), EMITTERS)
+    assert [r.dims for r in plan.stage_program.results] == [(f"n_{ONCE}",)]
+    assert plan.dataset.data_vars[0].dims == (
+        "V",
+    )  # averaged on the sequencer, one value per point
+    kept = compile_sweep(paced_definition(shots=3, stepping="software"), paced_stand(), EMITTERS)
+    assert [r.dims for r in kept.stage_program.results] == [("shots",)]  # the shots are its axis
+    assert f"n_{ONCE}" not in {p.name for p in kept.stage_program.parameters}
+
+
+def test_one_number_with_no_axis_anywhere_is_refused_and_a_repeat_gives_it_one():
+    single = SweepDefinition(
+        name="one number",
+        stage=SequencerStage(
+            instrument="seq",
+            sequence=PulseSequence(
+                name="px", body=(Measure(channel="sensor", duration=1000, result="I"),)
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="'I' would be one number with no axis"):
+        compile_sweep(single, paced_stand(), EMITTERS)
+    plan = compile_sweep(single.model_copy(update={"repeats": 4}), paced_stand(), EMITTERS)
+    assert plan.dataset.data_vars[0].dims == ("repeat",)
+    frames = list(Executor(plan, {"seq": SimulatedSequencer()}).run().frames())
+    assert [[(s.dim, s.start, s.stop) for s in f.chunk.region] for f in frames] == [
+        [("repeat", k, k + 1)] for k in range(4)
+    ]

@@ -413,3 +413,34 @@ def test_a_one_axis_run_is_one_frame_per_result_when_it_is_done(monkeypatch):
     frames = list(_RunSource(opx, compiled, params, slab).frames())
     assert [f.chunk.variables for f in frames] == [("I_on",), ("I_off",), ("dI",)]
     assert streams["I_on"].fetches == []  # fetched whole, after the run
+
+
+def test_a_stage_with_no_axis_runs_over_the_one_point_axis_on_the_opx():
+    """ADR 0068: the QUA program loops once over `n_once`; the result is one value per run."""
+    from qdt_lab.experiment import ONCE
+
+    stage = SequencerStage(
+        instrument="opx",
+        sequence=PulseSequence(
+            name="read once",
+            body=(
+                Step(channel="P2_pulse", level=0.05, duration=200),
+                Measure(channel="sensor", duration=1000, result="I"),
+            ),
+        ),
+        shots=4,
+        reduce={"I": "mean"},
+    )
+    program, bindings = QuaEmitter().emit(stage, {}, {c.logical: c for c in CHANNELS})
+    assert [r.dims for r in program.results] == [(f"n_{ONCE}",)]
+    assert {b.parameter: b.value for b in bindings if b.source == "const"}[f"n_{ONCE}"] == 1
+    opx = Opx1000(_FakeQMM(), CHANNELS)
+    compiled = opx.compile(program)
+    script = qm.generate_qua_script(
+        compiled.plan["qua"], opx._qm.config
+    )  # validates program + config
+    assert "measure('readout_1000'" in script
+    params = {p.name: 0 for p in program.parameters} | {f"n_{ONCE}": 1, "shots": 4}
+    raw = np.array([1.0, 2.0, 3.0, 6.0]) * 1000 / opx1000.INTEGRATION_TO_VOLTS
+    out = _RunSource(opx, compiled, params, None).results({"I": raw})
+    np.testing.assert_allclose(out["I"], [3.0])

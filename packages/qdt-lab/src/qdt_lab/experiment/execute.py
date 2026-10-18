@@ -50,6 +50,7 @@ from ..protocols import (
 )
 from ..stream.frame import Frame
 from .compile import RECORD_DIM, REPEAT_DIM, SHOT_DIM
+from .emit import ONCE
 
 CAPTURE_ARM_GRACE_S = 0.5
 """Seconds between starting to drain a shot capture's records (which is when a real scope arms its
@@ -253,17 +254,22 @@ class Executor:
                         if drains:
                             self._sleep(CAPTURE_ARM_GRACE_S)
                         for f in sequencer.run(self._compiled, params, self._slab).frames():
+                            # ADR 0068: the one-point axis of a stage with none of its own is stripped,
+                            # its value laid at the stepped point
+                            kept = [i for i, s in enumerate(f.chunk.region) if s.dim != ONCE]
                             yield Frame(
                                 DatasetChunk(
                                     dataset_id=plan.dataset.dataset_id,
                                     seq=seq,
-                                    region=(*prefix, *f.chunk.region),
+                                    region=(*prefix, *(f.chunk.region[i] for i in kept)),
                                     variables=f.chunk.variables,
                                     explicit_coords=f.chunk.explicit_coords,
                                     produced_at=f.chunk.produced_at,
                                 ),
                                 {
-                                    name: a.reshape((1,) * len(prefix) + a.shape)
+                                    name: np.asarray(a).reshape(
+                                        (1,) * len(prefix) + tuple(np.shape(a)[i] for i in kept)
+                                    )
                                     for name, a in f.arrays.items()
                                 },
                             )
@@ -410,7 +416,13 @@ class _Drain:
 def stage_slab(plan: ExecutionPlan) -> Dataset:
     """The inner Dataset the sequencer fills per stepped point: stage axes (+ shot), stage results."""
     inner = {a.name for a in plan.program_axes()} | {SHOT_DIM}
-    dims = tuple(d for d in plan.dataset.dims if d.name in inner)
+    # ADR 0068: a stage with no axis of its own records over a one-point axis the executor strips
+    once = any(f"n_{ONCE}" in r.dims for r in plan.stage_program.results)
+    lead = (ONCE,) if once else ()
+    dims = (
+        *((Dimension(name=ONCE, size=1),) if once else ()),
+        *(d for d in plan.dataset.dims if d.name in inner),
+    )
     if not dims:
         raise ValueError("a stage needs at least one inner axis or kept shots")
     results = {r.name for r in plan.stage_program.results}
@@ -424,7 +436,7 @@ def stage_slab(plan: ExecutionPlan) -> Dataset:
         data_vars=tuple(
             DataVariable(
                 name=v.name,
-                dims=tuple(d for d in v.dims if d in inner),
+                dims=(*lead, *(d for d in v.dims if d in inner)),
                 unit=v.unit,
                 dtype=v.dtype,
             )

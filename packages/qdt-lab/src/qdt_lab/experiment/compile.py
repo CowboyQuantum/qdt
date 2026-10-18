@@ -32,7 +32,7 @@ from qdt_schemas.data import (
 )
 from qdt_schemas.stand import QUANTITY_UNIT, Capability, StandConfig
 
-from .emit import Emitter, TriggeredStep
+from .emit import Emitter, TriggeredStep, once_results
 
 REPEAT_DIM = "repeat"
 SHOT_DIM = "shot"
@@ -219,21 +219,14 @@ def compile_sweep(
                 trigger_step = TriggeredStep(
                     axis=triggered.name, lines=lines, settle_ns=round(settle * 1e9)
                 )
-            if triggered is None and not stage.axes and stepped:
-                # with the axis triggered the program would own it; stepped from the host it has no
-                # axis to lay a once-per-point result over (ADR 0066 makes this depend on the stand)
-                captured = {c.result for c in stage.captures()}
-                once = [
-                    r
-                    for r in stage.sequence.results()
-                    if r not in captured and not (stage.reduction(r) == "keep" and stage.shots > 1)
-                ]
-                if once:
-                    raise ValueError(
-                        f"result {once[0]!r} is recorded once per point of {stepped[-1].name!r}, which "
-                        "this stand steps from the host (ADR 0066), so the program has no axis to lay "
-                        "it over: keep shots > 1, give the stage an axis, or wire the axis for a trigger"
-                    )
+            # ADR 0068: a stage with no axis of its own records once per run, laid at the stepped point;
+            # with no axis anywhere and no repeats that value would be a Dataset with no dimension
+            single = once_results(stage, (*((triggered.name,) if triggered else ()), *stage.axes))
+            if single and not definition.axes and definition.repeats == 1:
+                raise ValueError(
+                    f"result {single[0]!r} would be one number with no axis: give the sweep an axis, "
+                    "keep shots > 1, or repeat it"
+                )
             capture_lines = {}
             for c in stage.captures():
                 line = marker_line(stand.channel(c.channel).instrument, f"capture {c.result!r}")

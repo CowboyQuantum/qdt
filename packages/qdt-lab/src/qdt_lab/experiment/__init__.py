@@ -7,12 +7,22 @@ returns a stream `Source`.
 """
 
 from .compile import compile_sweep, resolve_pacing
-from .emit import DEFAULT_SCALES, Emitter, QuaEmitter, SimulatedEmitter, TriggeredStep, scale_for
+from .emit import (
+    DEFAULT_SCALES,
+    ONCE,
+    Emitter,
+    QuaEmitter,
+    SimulatedEmitter,
+    TriggeredStep,
+    once_results,
+    scale_for,
+)
 from .execute import Executor, build_backends
 from .record import RunRecorder
 
 __all__ = [
     "DEFAULT_SCALES",
+    "ONCE",
     "Emitter",
     "Executor",
     "QuaEmitter",
@@ -21,6 +31,7 @@ __all__ = [
     "TriggeredStep",
     "build_backends",
     "compile_sweep",
+    "once_results",
     "resolve_pacing",
     "scale_for",
 ]
