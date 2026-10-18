@@ -356,8 +356,8 @@ it("reads in the shot (ADR 0067): a DC map whose sensor is integrated in the sho
   expect(await sweep.locator("[data-readout-hint]").textContent()).toMatch(/sensor is integrated by dot in a one-measure shot/);
   expect(await sweep.locator("input[name=shot_measure_ns]").isVisible()).toBe(true);
   expect(await sweep.locator("[data-stepping-hint]").textContent()).toMatch(/applies to P2, the innermost DC axis/);
-  // read in the shot, a host-stepped DC point has no axis for its measure (ADR 0066): software is not offered
-  expect(await sweep.locator("select[name=stepping] option[value=software]").evaluate((o) => (o as HTMLOptionElement).disabled)).toBe(true);
+  // read in the shot, the inner axis may still be stepped from the host: one measure per point (ADR 0068)
+  expect(await sweep.locator("select[name=stepping] option[value=software]").evaluate((o) => (o as HTMLOptionElement).disabled)).toBe(false);
   await sweep.locator("input[name=shots]").fill("2");
   expect(await page.textContent("#next-run")).toBe("next: e2e map in the shot · dc in the shot · P1 6 × P2 8");
   if (process.env.FLIGHTDECK_SHOTS) await page.screenshot({ path: `${process.env.FLIGHTDECK_SHOTS}/sweep-readout.png` });
@@ -367,6 +367,13 @@ it("reads in the shot (ADR 0067): a DC map whose sensor is integrated in the sho
   await page.click("#run");
   await page.waitForFunction(() => /e2e map in the shot · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
   await page.waitForFunction(() => /e2e map in the shot · I_sensor · heatmap/.test(document.querySelector("#status")?.textContent ?? ""), null, { timeout: 20_000 });
+  // the same map stepped from the host: one measure per point over the one-point axis (ADR 0068)
+  await sweep.locator("input[name=name]").fill("e2e map host-stepped");
+  await sweep.locator("select[name=stepping]").selectOption("software");
+  await page.click("#run");
+  await page.waitForFunction(() => /e2e map host-stepped · completed → record/.test(document.querySelector("#run-state")?.textContent ?? ""), null, { timeout: 60_000 });
+  expect(await sweep.locator(".plan").textContent()).toMatch(/e2e map host-stepped · P1 6 × P2 8 · 48 pts .*\nP1: stepped from the host\nP2: stepped from the host/);
+  await sweep.locator("select[name=stepping]").selectOption("auto");
 
   // a capture: in the shot the record starts at its marker (start pinned at 0), a wait follows it
   await sweep.locator("select[name=kind]").selectOption("capture");

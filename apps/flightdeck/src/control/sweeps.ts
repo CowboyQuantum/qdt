@@ -212,9 +212,6 @@ export function dcSweep(f: DcSweepForm): SweepDefinition {
       if (!isWholeAtLeast(f.shot.measureNs, 1)) errors.push("the integration is a whole number of ns ≥ 1");
       if (!isWholeAtLeast(f.shot.shots, 1)) errors.push("shots must be a positive integer");
     }
-    // the compiler's rule (ADR 0066): a stage with no axis of its own records once per point only where the
-    // program owns the axis, so a forced host stepping cannot read in the shot
-    if (f.inner.stepping === "software") errors.push(`${axisName(f.inner)}: read in the shot, the inner axis must be left to the stand or triggered; stepped from the host the measure has no axis to land on`);
   }
   if (errors.length) throw new Error(errors.join("; "));
   const common = { name: f.name || "sweep", axes, ...(f.levels?.length ? { levels: [...f.levels] } : {}), repeats: 1 };

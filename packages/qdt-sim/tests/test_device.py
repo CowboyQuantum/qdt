@@ -232,3 +232,28 @@ def test_a_triggered_axis_on_the_device_gives_the_same_map_as_software_stepping(
     assert d.get("P1") == 0.1
     with pytest.raises(ValueError, match="no list loaded"):
         d.advance("P1")
+
+
+def test_a_host_stepped_axis_read_in_a_one_measure_shot_is_the_model_at_each_point():
+    """ADR 0068: no stage axis, one shot, the DC axis stepped from the host: one measure per point, the
+    value the model gives there (what a DC sweep read in the shot records on an unwired stand)."""
+    from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition
+    from qdt_schemas.pulse import Measure, PulseSequence
+
+    definition = SweepDefinition(
+        name="read in the shot, host-stepped",
+        axes=(
+            SweepAxis(name="P1", channel="P1", start=-0.02, stop=0.04, num=7, stepping="software"),
+        ),
+        stage=SequencerStage(
+            instrument=DEVICE_ID,
+            sequence=PulseSequence(
+                name="read", body=(Measure(channel="sensor", duration=1000, result="I"),)
+            ),
+        ),
+    )
+    plan, out = run(definition, quiet())
+    assert plan.pacing_of("P1").pacing == "software"
+    v = np.zeros((7, 3))
+    v[:, 0] = np.linspace(-0.02, 0.04, 7)
+    np.testing.assert_allclose(out["I"].values, quiet().model.current(v), rtol=1e-12)

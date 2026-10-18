@@ -332,11 +332,6 @@ class SweepWidget {
     // the stepping preference applies to the innermost stepped axis of a sweep with a shot
     const channel = this.value(kind === "dc" ? "inner_channel" : "outer_channel");
     const stepping = kind === "stage" || inShot ? channel : "";
-    const select = f.namedItem("stepping") as HTMLSelectElement;
-    const software = select.querySelector<HTMLOptionElement>('option[value="software"]')!;
-    // read in the shot, a host-stepped DC point has no axis for its measure to land on (ADR 0066)
-    software.disabled = kind === "dc" && inShot;
-    if (software.disabled && select.value === "software") select.value = "auto";
     show(this.steppingField, !!stepping);
     show(this.steppingHint, !!stepping);
     this.steppingHint.textContent = stepping ? `applies to ${stepping}, the innermost DC axis; auto lets the stand decide, and compile shows what it chose` : "";

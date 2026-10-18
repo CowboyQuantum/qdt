@@ -32,6 +32,25 @@ DEFAULT_SCALES: dict[str, float] = {
 }
 """Integer scale per unit (ADR 0015): a value in `unit` travels as round(value / scale)."""
 
+ONCE = "once"
+"""The one-point program axis of a stage with no axis of its own whose result would otherwise have none
+(ADR 0068): the frozen Dataset contract gives every variable and chunk a dimension, so the program records
+its one value per run over `n_once` = 1, and the executor strips the axis when it lays the value at the
+stepped point."""
+
+
+def once_results(stage: SequencerStage, program_axes: tuple[str, ...]) -> list[str]:
+    """The results of `stage` that would have no axis with these program axes: measures and differences
+    that are not kept per shot (a capture has its own time axis)."""
+    if program_axes or stage.sequence is None:
+        return []
+    return [
+        op.result
+        for op in stage.sequence.expand()
+        if op.op in ("measure", "difference")
+        and not (stage.reduction(op.result) == "keep" and stage.shots > 1)
+    ]
+
 
 def scale_for(unit: str) -> float:
     try:
@@ -79,7 +98,7 @@ class SimulatedEmitter:
     """Backend 'simulated': the body is the sequence as JSON; parameters follow a fixed naming scheme.
 
     Parameters: `n_<axis>` per program axis (axis_num) — the triggered axis first, then the stage
-    axes; per symbol bound to a program axis `<sym>_start` and `<sym>_step` (axis_start / axis_step);
+    axes, or `n_once` = 1 when there is none and a result would have no axis (ADR 0068); per symbol bound to a program axis `<sym>_start` and `<sym>_step` (axis_start / axis_step);
     per symbol bound to a software-stepped axis `<sym>` (axis_value); per constant symbol `<sym>`
     (const); `shots` (const). Results: one per `measure` and per `difference` (ADR 0037), float64, in
     the sense channel's quantity unit, dims = program axes (+ `shots` when kept and shots > 1). Affine
@@ -110,6 +129,11 @@ class SimulatedEmitter:
         for name in program_axes:
             params.append(SequencerParameter(name=f"n_{name}", unit="", scale=1.0))
             bindings.append(ParameterBinding(parameter=f"n_{name}", source="axis_num", axis=name))
+        # ADR 0068: a stage with no axis of its own records its one value per run over a one-point axis
+        result_axes = (ONCE,) if once_results(stage, program_axes) else program_axes
+        if result_axes != program_axes:
+            params.append(SequencerParameter(name=f"n_{ONCE}", unit="", scale=1.0))
+            bindings.append(ParameterBinding(parameter=f"n_{ONCE}", source="const", value=1))
         for b in stage.bindings:
             unit = units[b.symbol]
             scale = scale_for(unit)
@@ -150,13 +174,9 @@ class SimulatedEmitter:
                 continue
             elif op.channel not in channels:
                 raise ValueError(f"measure on unknown channel {op.channel!r}")
-            dims = tuple(f"n_{a}" for a in program_axes)
+            dims = tuple(f"n_{a}" for a in result_axes)
             if stage.reduction(op.result) == "keep" and stage.shots > 1:
                 dims = (*dims, "shots")
-            if not dims:
-                raise ValueError(
-                    f"result {op.result!r} has no axis: a stage with no axes needs shots > 1 kept"
-                )
             results.append(
                 SequencerResult(
                     name=op.result,

@@ -81,12 +81,17 @@ describe("a DC sweep read in the shot", () => {
     expect(dcSweep({ name: "map", inner: { ...P2, stepping: "triggered" }, sensor: "sensor", result: "I", readout: "shot", shot }).axes![0]!.stepping).toBe("triggered");
   });
 
-  it("refuses what cannot run: no sequencer, a bad integration, a trigger on the outer axis, a host-stepped inner axis", () => {
+  it("refuses what cannot run: no sequencer, a bad integration, a trigger on the outer axis", () => {
     const base = { name: "map", inner: P2, sensor: "sensor", result: "I", readout: "shot" as const };
     expect(() => dcSweep(base)).toThrow(/needs the sequencer whose input it is/);
     expect(() => dcSweep({ ...base, shot: { ...shot, measureNs: 0 } })).toThrow(/integration/);
     expect(() => dcSweep({ ...base, outer: { ...P1, stepping: "triggered" }, shot })).toThrow(/P1: only the innermost stepped axis can be triggered/);
-    expect(() => dcSweep({ ...base, inner: { ...P2, stepping: "software" }, shot })).toThrow(/stepped from the host the measure has no axis to land on/);
+  });
+
+  it("stepped from the host, it still reads in the shot: one measure per point (ADR 0068)", () => {
+    const d = dcSweep({ name: "map", inner: { ...P2, stepping: "software" }, sensor: "sensor", result: "I", readout: "shot", shot });
+    expect(d.axes![0]!.stepping).toBe("software");
+    expect(d.stage!.axes).toEqual([]);
   });
 
   it("read per point, it is the sensed sweep of before, and a forced trigger is refused", () => {
