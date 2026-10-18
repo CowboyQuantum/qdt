@@ -5,29 +5,37 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/readout-choices` (PR against `main`; it carries #65's two commits; the human merges). PRs
-#25–#63 merged 2026-10-14/16.
-**Last session:** 2026-10-16, software only. The human asked to start from the local branch and take in the two
-open PRs where they made sense and did not clash. **#65 is taken** (a fast-forward: the stage builder refuses a
-capture row while it pulses an axis, the server's rule since ADR 0060). **#64 is left out**: written before ADR
-0066 merged, its widget decided from the stand when an axis may be triggered (ADR 0066 rejects that), it numbered
-its ADR 0066, and it rewrote the lines #63 changed. Then, asked to "take the readout choices from 64", **ADR 0067**:
-a DC sweep reads its sensor per point or in the shot (a one-measure shot on the sensor's sequencer, shots
-averaged), a capture records per point or in the shot (a capture from the scope's sequencer's marker, start
-pinned at 0, a wait after each record). #64's builders are reused; the widget checks only what the readout
-needs (`sensorSequencer`, `captureSequencer`); the stepping preference applies to the innermost stepped axis of
-any sweep with a shot, and the compiler still decides the pacing (ADR 0066). On the simulated stand a DC map and a
-staircase built in the UI run with their axis triggered (e2e).
+**Branch:** `step-6/stage-result-per-point` (PR against `main`, stacked on #67; the human merges). Open: #67
+(the OPX streams rows), #68 (the scope reads every segment in one transfer; its bench test first) and this one.
+PRs #25–#66 merged 2026-10-14/16.
+**Last session:** 2026-10-16/17, software only (the dock was unplugged throughout). The human asked for three
+slices in this order:
+1. **The OPX streams a run's results row by row** (#67): ADR 0015's chunking on the OPX. A result over two or more
+   program axes arrives one slab of its first axis per frame, fetched as soon as every measure stream holds it
+   (`count_so_far`, `fetch` by slice); a run that ends short raises; a 1-D result and the conformance program
+   stay one fetch at the end. A triggered stability diagram's live view now fills row by row.
+   `bench/test_opx_streaming.py` (the OPX alone) proves it on hardware; not yet run.
+2. **The scope reads every segment in one transfer** (#68): `:WAVeform:SEGMented:ALL` and one `:WAVeform:DATA?`
+   when the scope accepts the command (the error queue, read after `*CLS`) and the block holds records × the
+   preamble's points; otherwise segment by segment, decided on the first segmented readout and kept. **Merge it
+   only after `bench/test_scope_segments.py` passes** (the scope alone): it reads one acquisition both ways and
+   compares.
+3. **A stage records once per stepped point without an axis of its own** (ADR 0068, this branch): the program
+   gets a one-point axis `once` (`n_once` = 1) and the slab a one-point dimension, which the executor strips;
+   only a value with no axis anywhere is refused. A definition now compiles on any stand, triggered or stepped
+   from the host; a DC sweep read in the shot runs host-stepped, and the widget offers "software" for it again.
 
-## Bench tasks — next bench session
-1. **L2-3 as one shot** (`bench/test_l2_paced.py`): re-wire ao1 → combiner pulse in, QDAC ch01 →
-   combiner DC in, board out → scope ch1; run first with the scope self-triggering (no `trigger_from` on
-   scope0), then with the marker. Commit the report.
-2. **A stability diagram through the UI on the bench**, to see ADR 0066 there: the plan box should say
-   "P1: triggered on dac_trigger"; note that the OPX returns a triggered run's data only at the end (below).
-   Then **L2-4 from the UI** (ADR 0067): the capture kind, outer P1, readout in the shot, QDAC ch01 on a scope
-   input; the plan box should say "P1: triggered on dac_trigger".
-3. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
+## Bench tasks — next bench session (with the dock plugged in)
+1. **`bench/test_opx_streaming.py`** (the OPX alone, nothing cabled): #67's hardware check.
+2. **`bench/test_scope_segments.py`** (the scope alone): #68's gate. If the HD3 refuses
+   `:WAVeform:SEGMented:ALL`, the driver keeps reading per segment and #68 only adds a test of what it lacks.
+3. **L2-3 as one shot** (`bench/test_l2_paced.py`): re-wire ao1 → combiner pulse in, QDAC ch01 → combiner DC in,
+   board out → scope ch1; run first with the scope self-triggering (no `trigger_from` on scope0), then with the
+   marker. Commit the report.
+4. **A stability diagram through the UI**: the plan box should say "P1: triggered on dac_trigger", and with #67
+   the rows fill as the OPX runs. Then **L2-4 from the UI** (ADR 0067): the capture kind, outer P1, readout in
+   the shot, QDAC ch01 on a scope input.
+5. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
    `*RST`, seen twice.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
@@ -37,49 +45,47 @@ staircase built in the UI run with their axis triggered (e2e).
 3. A dated report in `bench/reports/`.
 
 ## Done
-- **Steps 0–6 and 6b DONE.** ADR 0001–0067. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021; a sixth
+- **Steps 0–6 and 6b DONE.** ADR 0001–0068. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021; a sixth
   beside them by 0064, its past-the-end semantics by 0065), stand/activity/pulse (0022; amended additively by
   0037, 0038, 0047, 0049, 0060, 0064; `stepping` made a preference and `ExecutionPlan.pacing` added by 0066),
   identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; 0048–0050, 0062), control (0036; 0046, 0050,
-  0057). Registry DDL v3 (0026, 0029, 0050).
-- **This session:** #65 taken (`stageSweep` refuses a capture row); ADR 0067: `readout` and `shot` on the DC and
-  capture builders' forms, `sensorSequencer` and `captureSequencer`, the Sweep widget's readout select (the "in the
-  shot" option disabled with its reason), the stepping select moved to the innermost stepped axis of any sweep with
-  a shot ("software" not offered for a DC sweep read in the shot), the capture's start pinned at 0 in the shot,
-  the next-run line marks "in the shot", the Pulse widget's note; `test/readout.test.ts`; an e2e flow for a DC map
-  and a staircase read in the shot. No schema or server change.
+  0057). Registry DDL v3 (0026, 0029, 0050). ADR 0068 changes no schema: `once` lives in the program and the
+  slab only.
+- **This session:** #67: `_RunSource` streams rows (`_wait_for_values`, `results(rows=)`), three offline OPX
+  tests, `bench/test_opx_streaming.py`. #68: `segments()` and `segments_in_one_transfer` in `InfiniiVisionX`,
+  the emulator's `:WAVeform:SEGMented:ALL`, `*CLS` and `:SYSTem:ERRor?`, four scope offline tests,
+  `bench/test_scope_segments.py`. ADR 0068: `ONCE` and `once_results` in the emitter, the one-point axis,
+  `stage_slab`'s one-point dimension, the executor strips it, compile refuses a value with no axis anywhere;
+  tests in qdt-lab, qdt-sim (the model at each host-stepped point), the OPX offline suite and Flight Deck (unit,
+  and an e2e host-stepped map read in the shot).
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- 442 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 18
-  hardware-only in `bench/`; Flight Deck 136 unit tests and 14 e2e.
+- On this branch (with #67): 450 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in
+  `packages/`, 19 hardware-only in `bench/`; Flight Deck 137 unit tests and 14 e2e. #68 adds four scope tests
+  and one bench test.
 
 ## In flight
-- Nothing uncommitted on the branch. PR for `step-6/readout-choices` awaits the human; **#64 is a superseded
-  draft to close**; #65 can be merged first or closed as carried by this PR.
-- **A local stash** on the bench laptop (`git stash list`: "wip: scope segments in one transfer") holds an
-  uncommitted driver and emulator change for one transfer of all scope segments, with no tests yet; resume it
-  for that slice or drop it.
+- Nothing uncommitted. Three PRs: #67, then this one (stacked on it); #68 after its bench test.
+- **A stale `git am` in this checkout** (`.git/rebase-apply`, 2026-10-15: three "Claude (chat)" patches stopped
+  at the third, about ADR 0050 and qdt-telemetry). It does not block commits. `git am --quit` removes it without
+  touching any branch; `git am --abort` would move the current branch back, so not that.
 
 ## Known broken / not yet real
-- **A DC sweep read in the shot needs its inner axis triggered** (ADR 0067): its stage has no axis of its own,
-  so on a stand that cannot trigger the axis the compiler refuses with ADR 0066's message, and the widget does
-  not offer "software" for it. Lifting the rule below makes it portable.
+- **Unverified on hardware:** the OPX's row streaming (#67) and the scope's one transfer (#68); the two bench
+  tests above prove them.
+- **A 1-D OPX result still arrives at the end of the run** (ADR 0015 gives a 1-D result one frame), so a long
+  triggered 1-D scan fills at once.
+- **Stepped from the host, a stage with no axis of its own is one OPX job per point** (ADR 0068); triggered
+  stays the fast way.
 - **The widget offers only current channels as sensors**, so the OPX's voltage input is not a sensor in the UI
   and a DC sweep read in the shot cannot use it on the bench yet.
 - **The widget builds no stage with a stimulus and no pulsed axis**: beyond the one-op shots of ADR 0067, the
   Pulse widget's capture row is refused in a stage sweep (with a message), so L2-3 as one shot (a step and a
   capture) is posted by hand.
-- **On the OPX a triggered run's data arrive when the program ends** (the driver fetches once), so with
-  "auto" a bench stability diagram's live view fills at the end instead of row by row. "software" in the
-  Sweep widget is the override; streaming per row in the driver is the fix.
-- **A stage with no axis of its own and one shot** records a once-per-point result only where the axis is
-  triggered; host-stepped, the older rule (a stage result needs an axis or kept shots) applies and the
-  compiler says so. Lifting that rule is a separate slice.
 - **Timing now depends on the stand:** host stepping added a job submission per point that may have hidden
   a too-short `settle_s`; triggered, exactly the declared settle is waited. Check stand files' settles.
 - **L2-3 as one shot is unrun** (the combiner is not wired).
-- **Segment readout is 0.3–0.5 s each** over the socket; one transfer for all segments is a scope slice (its
-  unfinished change is in the local stash above).
+- **Until #68 merges, segments are read one by one**, 0.3–0.5 s each over the socket.
 - **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off; BENCH.md says to check.
 - **The marker-to-analog delay (85 ns) is recorded, not applied.**
 - **A triggered axis through the combiner's DC side is still 50 ms per point** (its 20 Hz low-pass).
@@ -97,12 +103,12 @@ staircase built in the UI run with their axis triggered (e2e).
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge this PR (it carries #65) and close #64; name the next slice. Candidates: the OPX streaming a
-triggered run per row (it matters now that "auto" triggers on the bench); one transfer for all scope segments (the
-stash); a stage result once per point with no stage axis (it would make a DC sweep read in the shot portable); a
-stimulus and a capture in the widget (L2-3 as one shot); the sequencer's voltage inputs as sensors; the bench tasks
-above; a second OPX pulse line; an OPX-ADC capture; how a sense range is declared; a rest level at a sweep's end; a
-`tuneups`/`stand_state` table; resume and parallel branches. Step 7 when sign-off arrives.
+**Human:** merge #67, then this PR (stacked on it); plug the dock in and say "run the bench tests", so #67 is
+proven on the OPX and #68 can merge after its scope test; name the next slice. Candidates: a stimulus and a
+capture in the widget (L2-3 as one shot); the sequencer's voltage inputs as sensors; streaming a 1-D OPX
+result; the bench tasks above; a second OPX pulse line; an OPX-ADC capture; how a sense range is declared; a
+rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches. Step 7 when sign-off
+arrives.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -138,7 +144,9 @@ above; a second OPX pulse line; an OPX-ADC capture; how a sense range is declare
   recommendation that the stand decides and the plan records it (ADR 0066); in a parallel session, "let's make a
   stepped control on the widget but postpone bench activites" (#64, superseded by ADR 0066 before review); "can
   you start fresh from the current local branch but incorporate the changes from the two open PRs if they make
-  sense and don't clash?" (#65 taken, #64 left out); **"take the readout choices from 64"** (ADR 0067).
+  sense and don't clash?" (#65 taken, #64 left out); **"take the readout choices from 64"** (ADR 0067); **"let's
+  tackle everything on this list in this order"**: the OPX streaming rows (#67), one transfer for all scope
+  segments (#68), a stage result once per point with no stage axis (ADR 0068).
 
 ## Decisions pending
 - **What follows** (the candidates above).
