@@ -3,7 +3,7 @@
 > Fixed headings. Agents read this file for the current step; the narrative is in `DEVELOPMENT_PLAN.md`.
 
 ## Goal
-Cryo context (cooldown history, per-measurement fridge state), CI register, and the internal extension package ride the same envelope. Lab PC deployment and IT engagement. Substrate pilot demonstration.
+Cryo context (cooldown history, per-measurement fridge state), CI register, and the internal extension package ride the same envelope. Substrate pilot demonstration. (Lab PC deployment and IT moved to Step 6c, ADR 0073.)
 
 ## Schema slice
 `cryo.py`: `CooldownRecord`, `FridgeEvent`. (`TelemetryChannel`, `TelemetrySample` deferred until a consumer needs them — ADR 0051.)
@@ -11,7 +11,7 @@ Cryo context (cooldown history, per-measurement fridge state), CI register, and 
 ## Deliverables
 - `qdt-telemetry` ingest adapter against the lab's existing fridge logs/monitoring store (ADR 0051): produces `CooldownRecord`s and attaches cryo context to `MeasurementRecord`s; raw logs optionally retained as payload files. No daemon, no time series, no dashboards.
 - internal extension package: adapters, seeds, compose bundle, runbook (separate repo)
-- IT checklist (plan §9) sent; lab PC deployment; graduation per plan §5
+- graduation per plan §5 when the pilot outgrows the lab PC
 
 ## L0 tests (CI)
 - golden-file ingest tests (fixture log corpus → expected `CooldownRecord`s and cryo context); adapter contract tests
@@ -27,7 +27,7 @@ Cryo context (cooldown history, per-measurement fridge state), CI register, and 
 - ≥1 external-system record via the same path
 
 ## Open decisions
-- #6, #7 lab PC OS and log access mode
+- #7 log access mode (#6 lab PC OS moved to Step 6c, ADR 0073)
 
 ## Status
 NOT STARTED

@@ -133,10 +133,12 @@ Prototype on lab PC via Docker Compose (`qdt-diraq/deploy/`); localhost-bound du
 | 4b | Control path (ADR 0032) | A user crafts a sweep + pulse sequence, runs it on the simulator, finds the record, runs a curated analysis — all from Flight Deck via `qdt-server` | `steps/04b-control-path.md` |
 | 5 | Instrument drivers — last mile | Real OPX/QDAC/scope/SMU behind the protocols; L1 loopback; L2 instrument-on-instrument; first bench reports | `steps/05-instrument-drivers-last-mile.md` |
 | 6 | Closed-loop tuning | DAG runs unattended against sim; first fridge contact as confirmation | `steps/06-closed-loop-tuning.md` |
-| 7 | Other sources | Telemetry, internal extension, lab PC, IT, substrate pilot demo | `steps/07-other-sources.md` |
+| 6b | Flight Deck workspace | Three columns of widget panes, plots in the centre, one Run (ADR 0054–0059) | `steps/06b-flightdeck-workspace.md` |
+| 6c | Lab deployment (ADR 0073) | Registry on `qdt-db` readable from any lab computer; an enumerated task set orchestrated by the server and verified on the bench through the scope; parameters and scan analysis exercised through Flight Deck | `steps/06c-lab-deployment.md` |
+| 7 | Other sources | Cryo context, CI register, internal extension, pilot demo | `steps/07-other-sources.md` |
 | 8 | Frameworks | Governance as data; HTML demoted to renderers | `steps/08-frameworks.md` |
 
-**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 7 is off the critical path; no step is gated by an approval outside the repo (ADR 0072). Steps 6 and 7 can interleave.
+**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 6c (lab deployment, ADR 0073) is inserted before Step 7 the way 4b was before 5; Step 7 is off the critical path; no step is gated by an approval outside the repo (ADR 0072). Steps 6c and 7 can interleave.
 
 ## 8. Flight Deck finish-line sketch
 
@@ -154,7 +156,7 @@ Written as `docs/FINISH_LINE.md` in Step 0, before any UI code (Step 1 entry gat
 
 Prior Flight Deck / gatepick work is reference material for what the UI felt like; nothing is imported.
 
-## 9. IT engagement checklist — unchanged from v0.2; sent at Step 7
+## 9. IT engagement checklist — a deliverable of Step 6c (ADR 0072, 0073)
 
 Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licensing); firewall inbound 5432/8100 (+9000/9001) scoped to lab subnet; VLAN reachability; DHCP reservation / DNS name `qdt-db`; access mode for the lab's existing fridge monitoring/logs (ADR 0051); backup landing location; declared prototype→VM trajectory; Windows Update policy.
 
@@ -178,7 +180,7 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | 3 | DAG contract scoping ×3 | Step 8 only |
 | 4 | Offline/prober operation | RESOLVED (ADR 0024): local cache first, idempotent sync to Postgres, client-minted UUIDs |
 | 5 | Withdrawn | **Closed by ADR 0072** (2026-10-19): no step is gated by an approval outside the repo. |
-| 6 | Lab PC OS | Resolve via IT ask at Step 7 |
+| 6 | Lab PC OS | Resolve in Step 6c (ADR 0073; issue #114) |
 | 7 | Bluefors log access mode | Resolve via IT ask at Step 7 |
 | 8 | Stream transport for `Dataset` | RESOLVED (ADR 0008): WebSocket + Arrow IPC; see `docs/analysis/0001-stream-budget.md` |
 | 9 | Flight Deck stack | RESOLVED (ADR 0013): TypeScript; raw WebGL2 2D renderer, no library; see `docs/analysis/0002-renderer-benchmark.md` |
