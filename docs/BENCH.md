@@ -184,6 +184,29 @@ QDAC ch01 ──► scope ch2 (DC, 1 MΩ; no board)
   before every query. The SMU answered again later that afternoon (a stale session had held its socket); its
   conformance rows pass (the day's report, 16:42 UTC) and it is back in the stand file.
 
+### L2-5: a DC level read by the sequencer's own input (ADR 0067 on the bench)
+```
+QDAC ch ──► OPX LF-FEM ai1 (50 Ω)        OPX do2 ──► QDAC-II ext1 (input)
+```
+- **Sweep:** a DC map read in the shot: an inner axis on the cabled DAC channel (−0.8 … +0.8 V, 9
+  points), an outer axis on the other one (−0.5 … +0.5 V, 3 points; not cabled to the input), a stage on
+  the OPX whose shot is one `measure(sensor, 10 µs)`, 10 shots averaged. The compiler paces the inner
+  axis (ADR 0066): triggered through `dac_trigger` when `dac0` has `trigger_from`, else stepped from the
+  host, one program run per point (ADR 0068); the second row forces the host-stepped form.
+- **Oracle:** the plane fit over the map has `slope_col` 1/2 (the QDAC-II's 50 Ω output impedance into
+  the FEM's 50 Ω input: the same halving L2-2's QDAC row saw at the scope's 50 Ω input), `slope_row` 0,
+  and an offset that is the DAC channel's zero plus the input's (Probe 02: −1.7 mV at 0 V in, recorded,
+  not applied). Budget: the two impedances at 1 % each plus Probe 02's 0.5 % agreement between its two
+  constants, 3 % of 1/2; the offset within 10 mV.
+- **Run 2026-10-19 (session 24, `bench/test_l2_sensor.py`): passes both ways.** The cable on ai1 carried
+  QDAC ch01 (`P1`; `QDT_L2_SENSOR_CHANNEL=P1`): the first attempt, assuming ch02, read a flat map in P2
+  and the halved P1 along the other axis, which is how the cable was found. Triggered on `dac_trigger`:
+  `slope_col` 0.4988 ± 0.0001 V/V, `slope_row` −0.0003, offset +4.1 mV, r² 1.000, the 27-point map in
+  under 3 s. Stepped from the host (ADR 0068, one OPX job per point): 0.4983 ± 0.0001, +0.0002, +4.6 mV,
+  r² 1.000. Sensed per point, the compiler refuses: `instrument 'opx' ('sensor') lacks capability
+  'level_sense'`. The first run of the day proved the input's `measure` path on hardware with a real
+  signal: until then every L1/L2 sink had been the scope.
+
 ### To fill in before Step 5 builds the L2 suite (human)
 - **Bias tee model:** low-frequency cutoff, DC-port resistance, insertion loss, and maximum DC
   current/voltage. Record the model, not a serial number.

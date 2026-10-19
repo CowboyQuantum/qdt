@@ -1,21 +1,25 @@
 """L2-5: a DC level read by the sequencer's own input (`docs/BENCH.md` § L2-5; ADR 0067 on the bench).
 
-Wiring: QDAC ch02 (`P2`) → LF-FEM ai1 (`sensor`), one BNC. The QDAC-II drives through its 50 Ω output
+Wiring: one QDAC channel → LF-FEM ai1 (`sensor`), one BNC; `QDT_L2_SENSOR_CHANNEL` names it by its logical
+name (default `P2`, QDAC ch02; the other of `P1`/`P2` is the outer axis). The QDAC-II drives through its 50 Ω output
 impedance into the FEM's 50 Ω input, so the level at the input is half the setpoint, the same halving
 the L2-2 QDAC row saw at the scope's 50 Ω input. The input reads volts through Probe 02's constants
 (`INTEGRATION_TO_VOLTS`, ADR 0044); its zero (−1.7 mV, Probe 02) is recorded, not applied.
 
 A running `qdt-server --stand` owns the QDAC and the OPX (`QDT_SERVER_URL`, as `test_l2_capture.py`).
 The rows post a DC map read in the shot (ADR 0067): a one-measure shot on the OPX at each point, the shots
-averaged, over an outer axis on `P1` (not cabled to the input) and an inner axis on `P2`. The compiler
+averaged, over an outer axis on the other DAC channel (not cabled to the input) and an inner axis on the
+cabled one. The compiler
 paces the inner axis (ADR 0066): triggered through `dac_trigger` when the stand wires the DAC's trigger
 input, else stepped from the host, one program run per point (ADR 0068); the second row forces the
 host-stepped form so both are proven on the input.
 
-Oracle: the plane fit over the (V1, V2) map has `slope_col` 1/2 (the divider), `slope_row` 0 (the outer
-axis is not cabled to the input) and an offset at the input's zero. The budget is the two 50 Ω
-impedances at 1 % each plus Probe 02's 0.5 % agreement between its two constants: 3 % of 1/2. No site
-tolerance is written here (rule 7).
+Oracle: the plane fit over the (outer, inner) map has `slope_col` 1/2 (the divider), `slope_row` 0 (the
+outer axis is not cabled to the input) and an offset that is the two zeros added: the DAC channel's and
+the input's (Probe 02: −1.7 mV at 0 V in). The slope budget is the two 50 Ω impedances at 1 % each plus
+Probe 02's 0.5 % agreement between its two constants: 3 % of 1/2. The offset budget is 10 mV: the input's
+zero and a DAC zero of a few mV, as the L2-4 staircase read at the scope (−4 mV). No site tolerance is
+written here (rule 7).
 """
 
 import os
@@ -24,8 +28,11 @@ import pytest
 from test_l2_capture import analyse, api, estimate, run_capture  # noqa: F401
 from test_l2_paced import stand, stand_has  # noqa: F401
 
-OUTER = ("V1", "P1", -0.5, 0.5, 3)
-INNER = ("V2", "P2", -0.8, 0.8, 9)
+CABLED = os.environ.get("QDT_L2_SENSOR_CHANNEL", "P2")
+"""The DAC channel on the FEM's input, by its logical name."""
+OTHER = {"P1": "P2", "P2": "P1"}[CABLED]
+OUTER = ("V_other", OTHER, -0.5, 0.5, 3)
+INNER = ("V_in", CABLED, -0.8, 0.8, 9)
 """±0.8 V set is ±0.4 V at the 50 Ω input, inside the FEM's input range."""
 MEASURE_NS = 10_000
 SHOTS = 10
@@ -33,7 +40,8 @@ DIVIDER = 0.5
 SLOPE_TOLERANCE = 0.03 * DIVIDER
 INPUT_ZERO_V = -1.7e-3
 """The LF-FEM input's reading at 0 V in (Probe 02), which the driver does not apply."""
-OFFSET_TOLERANCE_V = 5e-3
+OFFSET_TOLERANCE_V = 10e-3
+"""The input's zero plus the DAC channel's, a few mV (L2-4 read −4 mV at the scope)."""
 
 
 def definition(name: str, stepping: str | None = None) -> dict:
@@ -75,13 +83,14 @@ def check_plane(api, record: dict) -> None:  # noqa: F811
     assert result["status"] == "ok", result["message"]
     col, row, offset = (estimate(result, n) for n in ("slope_col", "slope_row", "offset"))
     assert abs(col["value"] - DIVIDER) <= SLOPE_TOLERANCE, (
-        f"V2 slope {col['value']:.4f} ± {col['stderr']:.4f} V/V vs {DIVIDER} (50 Ω into 50 Ω)"
+        f"{CABLED} slope {col['value']:.4f} ± {col['stderr']:.4f} V/V vs {DIVIDER} (50 Ω into 50 Ω)"
     )
     assert abs(row["value"]) <= SLOPE_TOLERANCE, (
-        f"V1 slope {row['value']:.4f} ± {row['stderr']:.4f} V/V vs 0 (not cabled to the input)"
+        f"{OTHER} slope {row['value']:.4f} ± {row['stderr']:.4f} V/V vs 0 (not cabled to the input)"
     )
-    assert abs(offset["value"] - INPUT_ZERO_V) <= OFFSET_TOLERANCE_V, (
-        f"offset {offset['value'] * 1e3:+.2f} mV vs the input's zero {INPUT_ZERO_V * 1e3:+.1f} mV"
+    assert abs(offset["value"]) <= OFFSET_TOLERANCE_V, (
+        f"offset {offset['value'] * 1e3:+.2f} mV: the input's zero ({INPUT_ZERO_V * 1e3:+.1f} mV) plus the "
+        "DAC's, within 10 mV"
     )
     assert estimate(result, "r2")["value"] > 0.999
 
@@ -94,7 +103,9 @@ def sensor_input(stand):  # noqa: F811
     ):
         pytest.skip("the stand needs the OPX's input as the voltage channel 'sensor'")
     if os.environ.get("QDT_L2_SENSOR") != "1":
-        pytest.skip("set QDT_L2_SENSOR=1 with QDAC ch02 cabled to LF-FEM ai1")
+        pytest.skip(
+            "set QDT_L2_SENSOR=1 with a QDAC channel cabled to LF-FEM ai1 (QDT_L2_SENSOR_CHANNEL)"
+        )
 
 
 def test_l2_5_a_dc_level_read_in_the_shot_by_the_sequencers_input_is_halved(
@@ -106,7 +117,7 @@ def test_l2_5_a_dc_level_read_in_the_shot_by_the_sequencers_input_is_halved(
     trigger input is wired to the OPX (ADR 0064), else stepped from the host."""
     d = definition("l2-5 input read in the shot")
     wired = stand_has(stand, "dac0", "trigger_from", "trigger_in")
-    assert pacing_of(api, d, "V2") == ("triggered" if wired else "software")
+    assert pacing_of(api, d, "V_in") == ("triggered" if wired else "software")
     check_plane(api, run_capture(api, d))
 
 
@@ -118,7 +129,7 @@ def test_l2_5_stepped_from_the_host_the_input_is_read_once_per_point(
     """ADR 0068 on the input: with the inner axis forced to software, every point is one program run
     whose one value lands at the stepped point."""
     d = definition("l2-5 input read once per point", stepping="software")
-    assert pacing_of(api, d, "V2") == "software"
+    assert pacing_of(api, d, "V_in") == "software"
     check_plane(api, run_capture(api, d))
 
 
