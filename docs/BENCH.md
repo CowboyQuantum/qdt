@@ -37,7 +37,7 @@ same range (the agent's bench notes have the procedure).
 - The current readout in the default (HIGH) sense range carries a common-mode error of the order of
   0.1–0.3 mA per volt of output (manual § accuracy), so a 1 MΩ load is invisible there. To use the
   current as a load check, switch `SENS<n>:RANG LOW` (nA) with the channel at 0 V.
-- **The LOW current-sense range measures nothing on this unit (2026-10-15):** `SENS<n>:RANG LOW` reads
+- **The LOW current-sense range measures nothing on this unit (2026-10-15; again 2026-10-19: ±0.6 nA on ch01 and ch02 whatever flows, 1 µA into the scope's 1 MΩ included, while HIGH reads its usual tens of µA of common-mode error):** `SENS<n>:RANG LOW` reads
   back LOW and `read? (@n)` returns ≈ 2.0 nA at 0 V, 2.1 nA with 1 µA flowing (1 V into the scope's
   1 MΩ) and 2.1 nA with 1 mA flowing (0.1 V set into 50 Ω). The HIGH range works: 1 mA reads 2–3 % low
   after its ≈ +73 µA zero is taken out. With the output filter finding (Probe 04) and ch02 dying, every
@@ -47,8 +47,10 @@ same range (the agent's bench notes have the procedure).
 - **A channel went dead and stayed dead (ch02, 2026-10-15, after Probe 04 had switched its output filter
   DC → MED → HIGH → DC → HIGH):** 0 V at the scope for every setpoint, in both sense ranges, with `VOLT?`
   and `LAST?` reporting the setpoint, no error, and a HIGH-range current readout of −143 µA at 1 V set;
-  `*RST` did not bring it back (unlike the outputs-at-0-V case above). ch01 kept working. Use another
-  channel and power-cycle the unit when the bench allows; report to QDevil with the filter finding.
+  `*RST` did not bring it back (unlike the outputs-at-0-V case above). ch01 kept working. **The power cycle
+  revived it** (re-tested 2026-10-19: ±1 V on the scope within 2 %, filter reading HIGH), so a channel can go
+  dead after filter switching until a power cycle; it goes in the QDevil report as context, with the LOW range
+  and the filter as the questions.
 
 First bench run: `uv run pytest packages/qdt-lab -m hardware` with the variables exported. It runs the same
 conformance suite the emulators pass in CI. The OPX calibration constants

@@ -24,6 +24,9 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
   query read the previous query's reply (the "setpoint" was `P1_i`'s current readout; `release` set P1 to P2's
   setpoint). `_VisaTransport` now discards pending input before every query (`test_scpi_transport.py`); the SMU
   is out of today's local stand file. The server's own handling of an unreachable instrument is a follow-up.
+- **QDAC re-test for the QDevil report:** ch02, dead since 2026-10-15, works after the power cycle (±1 V on the
+  scope within 2 %); the LOW sense range still measures nothing (±0.6 nA with 1 µA flowing). The report narrows
+  to the LOW range and the filter; ch02 and the 0 V quirk are context.
 - **L2-3 as one shot passes both ways** (wiring 2, the combiner board): the scope triggering itself on the
   analog edge, τ 1.82 µs; triggered by the OPX's marker (`trigger_from` on scope0), τ 1.81 µs; Probe 03's record
   gives 1.86 µs by the same fit. The shot form of ADR 0063 is proven on a real droop, in its interim and its
@@ -36,8 +39,10 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
    that no stale session holds its single socket before putting it back in the stand file.
 2. **The OPX's address:** decide whether to restore its static 10.20 address (its admin page) or keep the
    self-assigned one; the agent's bench notes cover both.
-3. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
-   `*RST`, seen twice (not on 2026-10-19).
+3. **The QDevil report** (drafted 2026-10-19, outside the repo because it carries the serial): the LOW
+   current-sense range measuring nothing (re-tested 2026-10-19, still ±0.6 nA for any current) and the output
+   filter having no effect on the step, with ch02's death-until-power-cycle and the outputs at 0 V after a
+   power cycle until `*RST` as context. The human sends it.
 Every bench row the software claims is now proven on its instrument: L1, L2-1 to L2-4, L2-3 as one shot, the
 OPX's row streaming, the scope's segmented path, Probe 01–05.
 
@@ -159,7 +164,7 @@ Step 7 when sign-off arrives.
   unreachable); "typically I run a sudo command to expose the ip of the opx" (it was `sudo ifconfig
   en11 alias`, not the cause: the OPX had moved to a link-local address); "the gh runner seems stuck" (GitHub
   Actions degraded; #71 merged on local checks); "ok the opx should be good to go" (#67 proven, L2-4 from the UI); "the combiner board is wired up" (L2-3 as one
-  shot, both ways).
+  shot, both ways); "is the qdevil report still needed?" (yes, narrowed: ch02 revived, the LOW range still dead).
 
 ## Decisions pending
 - **What follows** (the candidates above).
