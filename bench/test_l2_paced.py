@@ -26,6 +26,9 @@ import pytest
 from scope_accuracy import ScopeChannel, dc_measurement_tolerance
 from test_l2_capture import RECORD_STEP, analyse, api, estimate, run_capture  # noqa: F401
 
+PLANNED_BY = ("ADR 0063", "ADR 0064")
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 FIXTURES = Path(__file__).parent / "fixtures" / "probe03"
 
 STEP_V = 0.25

@@ -43,6 +43,9 @@ from qdt_schemas.data import (
     SourceDescriptor,
 )
 
+PLANNED_BY = ("docs/steps/05-instrument-drivers-last-mile.md", "ADR 0040")
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 SETTLE_S = 0.05
 """Wait after a level change before capturing (QDAC-II output filter HIGH settles in well under this)."""
 
