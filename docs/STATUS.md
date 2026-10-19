@@ -24,6 +24,8 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
   query read the previous query's reply (the "setpoint" was `P1_i`'s current readout; `release` set P1 to P2's
   setpoint). `_VisaTransport` now discards pending input before every query (`test_scpi_transport.py`); the SMU
   is out of today's local stand file. The server's own handling of an unreachable instrument is a follow-up.
+- **The SMU is back** in the local stand file; `qdt-server --stand` builds all four instruments; the server's
+  Levels state reads every channel.
 - **QDAC re-test for the QDevil report:** ch02, dead since 2026-10-15, works after the power cycle (±1 V on the
   scope within 2 %); the LOW sense range still measures nothing (±0.6 nA with 1 µA flowing). The report narrows
   to the LOW range and the filter; ch02 and the 0 V quirk are context.
@@ -35,8 +37,8 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
   checks and falls back; the QDAC's output followed its setpoints (no 0 V quirk).
 
 ## Bench tasks — next bench session
-1. **The SMU:** it refused connections on 2026-10-19 ("connection reset by peer" at build); check it is on and
-   that no stale session holds its single socket before putting it back in the stand file.
+1. ~~**The SMU**~~ — back in the stand file the same afternoon: it answered once its stale session had gone
+   (five hardware conformance rows pass; the full four-instrument server builds with no error).
 2. **The OPX's address:** decide whether to restore its static 10.20 address (its admin page) or keep the
    self-assigned one; the agent's bench notes cover both.
 3. **The QDevil report** (drafted 2026-10-19, outside the repo because it carries the serial): the LOW
@@ -76,8 +78,8 @@ OPX's row streaming, the scope's segmented path, Probe 01–05.
   hardware-only in `bench/`; Flight Deck 137 unit tests and 14 e2e.
 
 ## In flight
-- This PR awaits the human. On this laptop `qdt-server --stand` (the bench stand without the SMU) and Flight
-  Deck's `pnpm dev` are still running from the session (ports 8700, 8765, 5173).
+- This PR awaits the human. On this laptop `qdt-server --stand` (the full bench stand) and Flight Deck's
+  `pnpm dev` are still running from the session (ports 8700, 8765, 5173).
 - **A stale `git am` in this checkout** (`.git/rebase-apply`, 2026-10-15: three "Claude (chat)" patches stopped
   at the third, about ADR 0050 and qdt-telemetry). It does not block commits. `git am --quit` removes it without
   touching any branch; `git am --abort` would move the current branch back, so not that.
