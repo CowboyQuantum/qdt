@@ -1,11 +1,13 @@
 """L2-6: two OPX lines in one shot, recorded together by the scope (`docs/BENCH.md` § L2-6; ADR 0070).
 
-Wiring: LF-FEM ao1 (`P2_pulse`) → scope ch1 and ao2 (`P1_pulse`) → scope ch3, both DC **50 Ω** (direct
-mode gives the programmed level into 50 Ω, Probe 02; into 1 MΩ it would double and clip at 0.1 V/div).
-No marker line: the scope triggers itself on ch1's rising edge, so t = 0 is that edge and ch3's edge
-sits one step later. The shot: `step(P2_pulse, 0.25 V, 1 µs); step(P1_pulse, 0.25 V, 16 ns);
-capture(scope1, 4 µs); capture(scope3, 4 µs); wait(50 ms)`, three shots: one segmented acquisition
-serves both channels per shot (ADR 0070), each record its channel's.
+Wiring: one LF-FEM output → scope ch1 and the other → scope ch3, both DC **50 Ω** (direct mode gives
+the programmed level into 50 Ω, Probe 02; into 1 MΩ it would double and clip at 0.1 V/div).
+`QDT_L2_LINE_ON_CH1` names the line on ch1 (default `P2_pulse`, ao1; the other of `P1_pulse`/`P2_pulse`
+is on ch3). No marker line: the scope triggers itself on ch1's rising edge, so t = 0 is that edge and
+ch3's edge sits one step later. The shot: `step(<line on ch1>, 0.25 V, 1 µs); step(<line on ch3>,
+0.25 V, 16 ns); capture(scope1, 4 µs); capture(scope3, 4 µs); wait(50 ms)`, three shots: one segmented
+acquisition serves both channels per shot (ADR 0070), each record its channel's. A ch3 already high at
+t = 0 means the line on ch1 stepped second: the cables (or the variable) are swapped, and the row says so.
 
 This row owns its stand: the OPX and the scope from the addresses (`QDT_OPX_ADDRESS`,
 `QDT_SCOPE_ADDRESS`), the scope without a trigger line, and `compile_sweep` + `Executor` in-process, as
@@ -30,6 +32,9 @@ from qdt_schemas.pulse import Capture, PulseSequence, Step, Wait
 from qdt_schemas.stand import ChannelMap, StandConfig
 
 LEVEL_V = 0.25
+ON_CH1 = os.environ.get("QDT_L2_LINE_ON_CH1", "P2_pulse")
+"""The OPX line cabled to scope ch1, by its logical name; it steps first and triggers the scope."""
+ON_CH3 = {"P1_pulse": "P2_pulse", "P2_pulse": "P1_pulse"}[ON_CH1]
 FIRST_NS = 1000
 """The first line holds this long before the second steps: the programmed skew."""
 WINDOW_NS, POINTS = 4000, 400
@@ -78,11 +83,15 @@ def two_line_stand() -> tuple[StandConfig, dict]:
 
 
 def crossing_ns(t_ns: np.ndarray, trace: np.ndarray, level: float) -> float:
-    """Time of the first upward crossing of `level`, interpolated between the samples around it."""
+    """Time of the first upward crossing of `level`, interpolated between the samples around it. A
+    trace already above the level at its first sample crossed it at the trigger: the scope triggers
+    on that edge and places t = 0 on it (its own trigger interpolation), so the crossing is 0."""
     above = np.flatnonzero(trace >= level)
-    if above.size == 0 or above[0] == 0:
+    if above.size == 0:
         raise AssertionError(f"no upward crossing of {level:.3f} V inside the window")
     k = above[0]
+    if k == 0:
+        return 0.0
     frac = (level - trace[k - 1]) / (trace[k] - trace[k - 1])
     return float(t_ns[k - 1] + frac * (t_ns[k] - t_ns[k - 1]))
 
@@ -103,8 +112,8 @@ def test_l2_6_two_lines_in_one_shot_are_recorded_together_and_step_a_microsecond
             sequence=PulseSequence(
                 name="two lines",
                 body=(
-                    Step(channel="P2_pulse", level=LEVEL_V, duration=FIRST_NS),
-                    Step(channel="P1_pulse", level=LEVEL_V, duration=16),
+                    Step(channel=ON_CH1, level=LEVEL_V, duration=FIRST_NS),
+                    Step(channel=ON_CH3, level=LEVEL_V, duration=16),
                     Capture(channel="scope1", duration=WINDOW_NS, num=POINTS, result="ch1"),
                     Capture(channel="scope3", duration=WINDOW_NS, num=POINTS, result="ch3"),
                     Wait(duration=SHOT_WAIT_NS),
@@ -126,6 +135,10 @@ def test_l2_6_two_lines_in_one_shot_are_recorded_together_and_step_a_microsecond
         and np.isfinite(ch1).all()
         and np.isfinite(ch3).all()
     )
+    assert np.all(ch3[:, 0] < LEVEL_V / 2), (
+        f"scope ch3 is already at {ch3[:, 0].round(3)} V at t = 0, so the line on ch1 ({ON_CH1}) stepped "
+        f"second: ao1 and ao2 are swapped on the scope inputs, or QDT_L2_LINE_ON_CH1 is (set it to {ON_CH3})"
+    )
     late = t_ns > FIRST_NS + 1000  # after both edges
     for name, trace in (("ch1", ch1), ("ch3", ch3)):
         plateau = trace[:, late].mean(axis=1)
@@ -139,8 +152,9 @@ def test_l2_6_two_lines_in_one_shot_are_recorded_together_and_step_a_microsecond
         ]
     )
     print(
-        f"skew ao2 − ao1 (programmed {FIRST_NS} ns): {skews.mean():.1f} ± {skews.std():.1f} ns over "
-        f"{SHOTS} shots; grid {GRID_NS:.1f} ns"
+        f"skew {ON_CH3} − {ON_CH1} (programmed {FIRST_NS} ns): {skews.mean():.1f} ± {skews.std():.1f} ns over "
+        f"{SHOTS} shots; grid {GRID_NS:.1f} ns; ch1 at t = 0: {ch1[:, 0].round(3)} V; "
+        f"empty preambles re-asked: {backends['scope0'].empty_preambles}"
     )
     assert np.all(np.abs(skews - FIRST_NS) <= SKEW_TOLERANCE_NS), (
         f"skew {skews} ns vs {FIRST_NS} ns (±{SKEW_TOLERANCE_NS:.0f} ns)"

@@ -63,11 +63,16 @@ class InfiniiVisionEmulator:
         segmented: bool = True,
         all_segments: bool | str = True,
         signals: dict[int, Signal] | None = None,
+        empty_preambles: int = 0,
     ) -> None:
         """`signals` gives a channel its own signal (channel number → `signal(t, k)`); every other
-        channel captures `signal`. One `:SINGle` captures all four channels, as the instrument does."""
+        channel captures `signal`. One `:SINGle` captures all four channels, as the instrument does.
+        `empty_preambles` answers that many `:WAVeform:PREamble?` queries after each `:SINGle` with
+        every field empty, as the HD304MSO did for a second channel right after an acquisition."""
         self.signal: Signal = signal or ring_down
         self.signals: dict[int, Signal] = dict(signals or {})
+        self.empty_preambles = empty_preambles
+        self._empty_left = 0
         self.points, self.yincrement = points, yincrement
         self.supports_segmented = segmented
         self.supports_all_segments = all_segments
@@ -163,6 +168,7 @@ class InfiniiVisionEmulator:
                 captures.append((xinc, left_edge, codes))
             self.records += 1
         self._index = 0
+        self._empty_left = self.empty_preambles
 
     def query(self, command: str) -> str:
         self._check_open()
@@ -182,6 +188,9 @@ class InfiniiVisionEmulator:
         if command == ":SYSTem:ERRor?":
             return self.errors.pop(0) if self.errors else '+0,"No error"'
         if command == ":WAVeform:PREamble?":
+            if self._empty_left > 0:
+                self._empty_left -= 1
+                return ",,,,,,,,,"
             xinc, xorig, codes = self._served()
             return f"1,0,{codes.size},1,{xinc:.12e},{xorig:.12e},0,{self.yincrement:.12e},0.0,0"
         raise ValueError(f"emulator does not understand query {command!r}")

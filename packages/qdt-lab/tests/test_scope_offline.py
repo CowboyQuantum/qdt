@@ -228,3 +228,22 @@ def test_a_second_channel_needs_one_acquisition_for_every_record_and_the_same_wi
     scope.arm("scope1", _two_lines(3, "a"), "a")
     with pytest.raises(ValueError, match="share one window"):
         scope.arm("scope3", _two_lines(3, "b", stop=2e-6), "b")
+
+
+def test_an_empty_preamble_right_after_the_acquisition_is_asked_again():
+    """The HD304MSO answered a second channel's preamble with every field empty right after a
+    segmented acquisition (bench, 2026-10-19); the driver selects the source again and asks again."""
+    from qdt_lab.drivers.keysight import infiniivision
+
+    scope = InfiniiVisionX(
+        InfiniiVisionEmulator(signal=_first_line, empty_preambles=2), TWO, max_records=8
+    )
+    a = scope.arm("scope1", _two_lines(3, "a"), "a")
+    frames = list(a.frames())
+    assert len(frames) == 3 and scope.empty_preambles == 2
+    assert scope._t.log.count(":WAVeform:PREamble?") >= 3
+    hopeless = InfiniiVisionX(
+        InfiniiVisionEmulator(empty_preambles=infiniivision.PREAMBLE_RETRIES + 1), TWO
+    )
+    with pytest.raises(ValueError, match="empty preamble"):
+        list(hopeless.arm("scope1", _two_lines(1, "a"), "a").frames())

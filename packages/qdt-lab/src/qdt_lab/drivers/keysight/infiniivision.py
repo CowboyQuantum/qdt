@@ -72,6 +72,11 @@ POLL_S = 0.02
 """Between `:RSTate?` polls while a single-shot waits for its trigger(s)."""
 ARM_TIMEOUT_S = 5.0
 """Bound on the wait for `:AER?` to report the single-shot armed after `:SINGle`."""
+PREAMBLE_RETRIES = 20
+PREAMBLE_RETRY_S = 0.05
+"""Right after a segmented acquisition stops, the HD304MSO has answered `:WAVeform:PREamble?` for a
+channel other than the one read first with every field empty (bench, 2026-10-19, once in four runs of
+two channels); the driver selects the source again and asks again, this many times this far apart."""
 AUTO_FORCE_S = 0.5
 """With the trigger sweep AUTO, a trigger is forced this long after the arm when none has come:
 `:SINGle` waits for a real trigger even in AUTO (unlike `:DIGitize`, bench 2026-10-16), and AUTO means
@@ -116,6 +121,9 @@ class InfiniiVisionX:
         self.external_trigger_level_v = external_trigger_level_v
         self.acquire_timeout_s = acquire_timeout_s
         self._lock = threading.RLock()  # the drains of one acquisition read on their own threads
+        self.empty_preambles = (
+            0  # how often a channel's preamble came back empty and was asked again
+        )
         self._group: _Acquisition | None = None  # the channels armed together, until one reads
         self.segments_in_one_transfer: bool | None = None
         """Whether segments are read in one transfer: None until the first segmented readout tries."""
@@ -354,7 +362,18 @@ class _ScopeRecordSource:
             time.sleep(POLL_S)
 
     def _preamble(self) -> _Preamble:
-        pre = [p.strip() for p in self._t.query(":WAVeform:PREamble?").split(",")]
+        for attempt in range(PREAMBLE_RETRIES):
+            pre = [p.strip() for p in self._t.query(":WAVeform:PREamble?").split(",")]
+            if any(pre):
+                break
+            # every field empty: the channel's data is not served yet; ask again (bench, 2026-10-19)
+            self._scope.empty_preambles += 1
+            time.sleep(PREAMBLE_RETRY_S)
+            self._select()
+        else:
+            raise ValueError(
+                f"channel {self._n} answered an empty preamble {PREAMBLE_RETRIES} times: no data"
+            )
         if len(pre) != 10:
             raise ValueError(f"preamble has {len(pre)} fields, expected 10: {pre!r}")
         fmt = int(float(pre[0]))

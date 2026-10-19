@@ -213,6 +213,30 @@ QDAC ch ──► OPX LF-FEM ai1 (50 Ω)        OPX do2 ──► QDAC-II ext1 (
   records in under 2 s. The raw ADC path of the sequence program (a readout pulse of the window's length
   on the input element) is thereby proven on hardware beside the integration path.
 
+### L2-6: two OPX lines in one shot, recorded together (ADR 0070)
+```
+OPX ao1 (`P2_pulse`) ──► scope ch1 (DC, 50 Ω)      OPX ao2 (`P1_pulse`) ──► scope ch3 (DC, 50 Ω)
+```
+- **Sweep:** no axis; a stage on the OPX whose shot is `step(<line on ch1>, 0.25 V, 1 µs); step(<line on
+  ch3>, 0.25 V, 16 ns); capture(scope1, 4 µs, 400); capture(scope3, 4 µs, 400); wait(50 ms)`, three
+  shots. The two captures follow each other, so they open together: one segmented acquisition serves
+  both channels per shot. No marker line: the scope triggers itself on ch1's rising edge (0.1 V, NORMal),
+  so t = 0 is that edge and ch3's edge sits one step later. The row owns its stand (the OPX and the scope
+  from the addresses, no `trigger_from`) and runs in-process (`bench/test_l2_two_lines.py`; stop the
+  server first). `QDT_L2_LINE_ON_CH1` names the line on ch1 (default `P2_pulse`); a ch3 already high at
+  t = 0 means the line on ch1 stepped second, and the row says the cables (or the variable) are swapped.
+- **Oracle:** both plateaus at 0.25 V within the scope's accuracy at 0.1 V/div plus the 50 Ω input's
+  1.5 % (as L1's OPX row); ch3's half-amplitude crossing 1000 ns after ch1's within two grid steps plus
+  one OPX clock (24 ns), on every shot. The residual is the skew between the ports.
+- **Run 2026-10-19 (session 25): passes, three runs of three shots.** Skew 997.8 ± 0.0 ns for a
+  programmed 1000 ns (the line on ch3 leads by 2.2 ns, half a scope sample at 4.4 ns), identical on every
+  shot; plateaus 0.243 V and 0.246 V. The cables were the other way round from what was said at the
+  bench (ao2 on ch1, ao1 on ch3), found by the first run (ch3 high at t = 0) and by a pulse train on
+  ao2 showing on ch1; `QDT_L2_LINE_ON_CH1=P1_pulse` ran it as cabled. Two things the scope did: the
+  HD304MSO once answered a second channel's `:WAVeform:PREamble?` with every field empty right after
+  the acquisition (the driver asks again, `PREAMBLE_RETRIES`; it did not recur in nine later runs), and
+  it serves 932 points per segment for a 4 µs window with three segments (4.375 ns/sample).
+
 ### To fill in before Step 5 builds the L2 suite (human)
 - **Bias tee model:** low-frequency cutoff, DC-port resistance, insertion loss, and maximum DC
   current/voltage. Record the model, not a serial number.
