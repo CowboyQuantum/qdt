@@ -32,6 +32,9 @@ import numpy as np
 import pytest
 from test_l1_loopback import ScopeChannel, dc_measurement_tolerance
 
+PLANNED_BY = ("docs/steps/05-instrument-drivers-last-mile.md", "ADR 0040", "ADR 0047")
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 FIXTURES = Path(__file__).parent / "fixtures" / "probe03"
 
 # Probe 03, 2026-10-14, the same board into the same scope at 1 MΩ

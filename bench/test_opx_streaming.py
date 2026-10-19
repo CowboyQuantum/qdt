@@ -17,6 +17,9 @@ from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition, Sym
 from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol, Wait
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 
+PLANNED_BY = ("ADR 0015", "ADR 0066")
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 ROWS, POINTS = 6, 5
 WAIT_NS = 40_000_000
 """Per shot: a row is POINTS shots, so about 0.2 s, and the run about 1.2 s plus its overheads."""

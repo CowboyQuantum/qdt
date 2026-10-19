@@ -13,6 +13,9 @@ import numpy as np
 
 from qdt_schemas.data import Dataset, DataVariable, Dimension, LinearCoordinate, SourceDescriptor
 
+PLANNED_BY = ("ADR 0065",)
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 RECORDS, POINTS = 10, 200
 
 

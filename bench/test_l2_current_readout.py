@@ -33,6 +33,9 @@ from test_l1_loopback import read_dc
 
 from qdt_schemas.stand import ChannelMap
 
+PLANNED_BY = ("docs/steps/05-instrument-drivers-last-mile.md", "ADR 0040")
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 SCOPE_R = 1e6
 SCOPE_R_TOLERANCE = 0.01
 """HD3 datasheet: input impedance 1 MΩ ±1 %."""

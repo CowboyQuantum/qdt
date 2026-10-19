@@ -31,6 +31,9 @@ from qdt_schemas.activity import SequencerStage, SweepDefinition
 from qdt_schemas.pulse import Capture, PulseSequence, Step, Wait
 from qdt_schemas.stand import ChannelMap, StandConfig
 
+PLANNED_BY = ("ADR 0070",)
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 LEVEL_V = 0.25
 ON_CH1 = os.environ.get("QDT_L2_LINE_ON_CH1", "P2_pulse")
 """The OPX line cabled to scope ch1, by its logical name; it steps first and triggers the scope."""

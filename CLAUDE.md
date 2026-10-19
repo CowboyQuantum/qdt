@@ -44,7 +44,8 @@ Run `/session-check` before claiming anything is done.
 - **Simulation-first (ADR 0007).** Steps 1–4 run entirely against `Simulated*` backends and `qdt-sim`'s `SimulatedDevice`. Real drivers are Step 5. Keep simulated backends honest: the conformance suite is the spec they must share with real hardware.
 - **Dependency fences:** vendor SDKs are optional extras on `qdt-lab` (`[opx]`, `[qdac]`, `[keysight]`, `[smu]`), never core deps. Upper-bound only pydantic, numpy, sqlalchemy, xarray. `uv.lock` is truth; `uv lock --check` in CI. Workspace packages version in lockstep.
 - **Simulation philosophy:** numpy/scipy/xarray; custom propagators; no QuTiP.
-- **Hardware tests** live in `bench/`, marked `@pytest.mark.hardware`, excluded from CI. Run `uv run pytest bench/ -m hardware` from the bench and commit the report.
+- **Work traces to the plan (ADR 0071).** Write code only for a deliverable or test row in the current step file, an accepted ADR, or an issue the human labelled `roadmap`/`blocker`. Anything else you notice (a bug, a gap, a bench idea, a pending decision) becomes a GitHub issue, not a fix: what you saw, how to reproduce it, where, which milestone; labels `found-by-agent` + `blocker`|`roadmap`|`backlog` (+ `bench`/`fridge`/`decision`). Only a `blocker` (stops the current step's exit) is fixed in-session, with a regression test and `Fixes #N`. Issues are public: rule 7 applies.
+- **Hardware tests** live in `bench/`, marked `@pytest.mark.hardware`, excluded from CI. Run `uv run pytest bench/ -m hardware` from the bench and commit the report. Each declares `PLANNED_BY` (an accepted ADR or a step file that names it; `scripts/check_bench_rows.py`): write the row into the plan before the test.
 - **Tutorials are tests.** `docs/tutorials/*.py` run in CI against simulated backends.
 - **Docs are generated where possible** (mkdocs + mkdocstrings; schema docs from field descriptions; TS types from JSON Schema). Do not hand-write what can be generated.
 - **Never** `DROP TABLE`, delete a migration, edit a merged ADR, or append to STATUS.md.
@@ -70,6 +71,7 @@ uv run python -m qdt_server               # control path: API on :8700 (/docs), 
 | The numbers behind a decision | `docs/analysis/` (analysis notes an ADR cites; no decisions live here) |
 | One-off measurements that gate a freeze | `docs/probes/` (specs) and `bench/probes/` (scripts) |
 | What is next | `docs/STATUS.md` |
+| The backlog, bugs, bench ideas, pending decisions | GitHub issues and milestones (`gh issue list --milestone Deployment`; ADR 0071) |
 | The current step's spec | `docs/steps/<NN-name>.md` (index: `docs/steps/README.md`) |
 | The roadmap narrative and test ladder | `docs/DEVELOPMENT_PLAN.md` (§7.1 ladder, §7.2 index) |
 | Flight Deck end-state constraints | `docs/FINISH_LINE.md` |

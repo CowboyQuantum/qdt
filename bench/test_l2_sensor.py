@@ -28,6 +28,9 @@ import pytest
 from test_l2_capture import analyse, api, estimate, run_capture  # noqa: F401
 from test_l2_paced import stand, stand_has  # noqa: F401
 
+PLANNED_BY = ("ADR 0067", "ADR 0069")
+"""The plan that asked for these rows (ADR 0071; `scripts/check_bench_rows.py`)."""
+
 CABLED = os.environ.get("QDT_L2_SENSOR_CHANNEL", "P2")
 """The DAC channel on the FEM's input, by its logical name."""
 OTHER = {"P1": "P2", "P2": "P1"}[CABLED]
