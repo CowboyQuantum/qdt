@@ -7,7 +7,8 @@ sequencer, and the plan and the Dataset's attrs (`<axis>.pacing`) record it.
 Dataset layout, outer to inner: `repeat` (when repeats != 1), the axes, `shot` (kept shots), then for
 captured waveforms `record` (when records > 1) and each capture's time axis. A sensed level is laid over
 the stepped axes; a stage result over every axis; a capture over the stepped axes plus its own time; a
-shot capture (ADR 0060) over the stepped axes, `shot` when shots are kept, and its own time from 0.
+shot capture (ADR 0060) over the stepped axes, `shot` when shots are kept, and its own time from 0; a
+capture on the sequencer's own input (ADR 0069) has the same layout and is a result of the program.
 """
 
 import uuid
@@ -167,15 +168,13 @@ def compile_sweep(
             resolve(a.channel, "sequencer")
         if stage.sequence is not None:
             # a shot capture's scope (ADR 0060) is armed by the executor and triggered by the shot: its
-            # channel is a WaveformSense of another instrument, never a sequencer channel
+            # channel is a WaveformSense of another instrument; a capture on the sequencer's own input
+            # (ADR 0069) is the program's, and its channel a sequencer channel like a measure's
+            scope_channels: set[str] = set()
             for c in stage.captures():
-                if stand.channel(c.channel).instrument == stage.instrument:
-                    raise ValueError(
-                        f"capture {c.result!r} is on the sequencer's own input {c.channel!r}; a capture "
-                        "on the sequencer is not emitted yet (ADR 0060): put the scope on its own instrument"
-                    )
-                resolve(c.channel, "waveform_sense")
-            scope_channels = {c.channel for c in stage.captures()}
+                if stand.channel(c.channel).instrument != stage.instrument:
+                    resolve(c.channel, "waveform_sense")
+                    scope_channels.add(c.channel)
             for ch in stage.sequence.channels():
                 if ch in scope_channels:
                     continue
@@ -326,7 +325,10 @@ def _declare_dataset(
         )
         if keep_shots:
             dims.append(Dimension(name=SHOT_DIM, size=stage.shots))
+        recorded = {c.result for c in stage.captures()}
         for r in program.results:
+            if r.name in recorded:
+                continue  # ADR 0069: a capture on the sequencer's own input is declared below, with its time
             reduction = stage.reduction(r.name)
             vdims = (*outer, *(a.name for a in definition.axes))
             if stage.shots > 1 and reduction == "keep":

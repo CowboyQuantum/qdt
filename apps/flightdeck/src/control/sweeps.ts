@@ -72,8 +72,9 @@ export interface StageSweepForm {
   measureNs: number;
   /** Data variable name for the measured current. */
   result: string;
-  /** The edited pulse sequence (`sequence.ts`); absent → the one-step template from the fields above. */
-  sequence?: { rows: readonly OpRow[]; bindings: readonly BindingRow[]; channels: readonly ChannelMap[] };
+  /** The edited pulse sequence (`sequence.ts`); absent → the one-step template from the fields above. `sensors`
+   * names the channels a measure may read besides current channels: a sequencer's own inputs (`standChannels`). */
+  sequence?: { rows: readonly OpRow[]; bindings: readonly BindingRow[]; channels: readonly ChannelMap[]; sensors?: readonly string[] };
 }
 
 export interface DcSweepForm {
@@ -166,7 +167,7 @@ export function stageSweep(f: StageSweepForm): SweepDefinition {
     { logical: f.inner.channel, instrument: f.instrument, channel: f.inner.channel, quantity: "voltage" },
     { logical: f.sensor, instrument: f.instrument, channel: f.sensor, quantity: "current" },
   ];
-  const built = buildSequence(`read ${f.sensor} at a ${f.inner.channel} level`, rows, channels);
+  const built = buildSequence(`read ${f.sensor} at a ${f.inner.channel} level`, rows, channels, f.sequence?.sensors);
   errors.push(...built.errors);
   const bound = buildBindings(f.sequence?.bindings ?? [{ symbol, target: inner }], axisNames);
   errors.push(...bound.errors);
@@ -312,28 +313,39 @@ export interface StandChannels {
   dc: ChannelMap[];
   /** Voltage channels a sequencer pulses (the stand's `_pulse` convention). */
   pulse: ChannelMap[];
-  /** Current channels: sensors. */
+  /** Sensors: current channels, and a sequencer's own inputs (a voltage channel of a sequencer that sets no
+   * level, neither a pulse line nor a marker line), which only their sequencer reads, in the shot (ADR 0067). */
   sensors: ChannelMap[];
   /** Channels a WaveformSense instrument can capture a record on (ADR 0047). */
   waveforms: ChannelMap[];
 }
 
 /** Classify a stand's channels for the form's selects. A channel on an instrument that only captures
- * (a scope) is a waveform, not a DC line; a pulse line stays a pulse line. */
+ * (a scope) is a waveform, not a DC line; a pulse line stays a pulse line; a marker line, named in some
+ * instrument's `settings.trigger_from` (ADR 0063), is nothing the form offers; a sequencer's remaining
+ * voltage channels are its inputs: sensors, and waveforms when it captures. */
 export function standChannels(stand: StandConfig): StandChannels {
   const having = (cap: string) => new Set(stand.instruments.filter((i) => i.capabilities.includes(cap as never)).map((i) => i.id));
   const sequencers = having("sequencer");
   const capturing = having("waveform_sense");
   const setting = having("level_source");
+  const markers = new Set(stand.instruments.map((i) => i.settings?.trigger_from).filter((l): l is string => typeof l === "string" && l !== ""));
   const out: StandChannels = { dc: [], pulse: [], sensors: [], waveforms: [] };
   for (const c of stand.channels) {
+    if (markers.has(c.logical)) continue;
     const pulse = c.logical.endsWith("_pulse") && sequencers.has(c.instrument);
+    const input = c.quantity === "voltage" && sequencers.has(c.instrument) && !setting.has(c.instrument) && !pulse;
     if (capturing.has(c.instrument) && !pulse) out.waveforms.push(c);
-    if (c.quantity === "current") out.sensors.push(c);
+    if (c.quantity === "current" || input) out.sensors.push(c);
     else if (pulse) out.pulse.push(c);
     else if (setting.has(c.instrument) || !capturing.has(c.instrument)) out.dc.push(c);
   }
   return out;
+}
+
+/** The data variable a sweep's sensor fills: `I_sensor` for a current, `V_sensor` for a sequencer's voltage input. Pure. */
+export function sensorResult(channels: readonly ChannelMap[], sensor: string): string {
+  return channels.find((c) => c.logical === sensor)?.quantity === "voltage" ? "V_sensor" : "I_sensor";
 }
 
 type Instrument = StandConfig["instruments"][number];
@@ -349,14 +361,25 @@ export function sensorSequencer(stand: StandConfig, sensor: string): { sequencer
   return { sequencer: c.instrument };
 }
 
-/** The sequencer that plays a capture's shot (ADR 0063, 0067): the one whose marker channel the scope names in
- * `settings.trigger_from`, else the stand's only sequencer; else why the record can only be taken per point.
- * A scope on a sequencer's own input cannot be captured in the shot yet (ADR 0060). Pure. */
-export function captureSequencer(stand: StandConfig, channel: string): { sequencer: string } | { reason: string } {
+/** Whether the host can sense `sensor` at every point (its instrument's `LevelSense`, ADR 0016), else why it is
+ * read in the shot only: a sequencer's own input has no meter behind it (ADR 0067). Pure. */
+export function sensorPerPoint(stand: StandConfig, sensor: string): { ok: true } | { reason: string } {
+  const c = stand.channels.find((x) => x.logical === sensor);
+  if (!c) return { reason: `no channel ${sensor || "(none)"} on the stand` };
+  const instrument = stand.instruments.find((i) => i.id === c.instrument);
+  if (!instrument || !(instrument.capabilities as readonly string[]).includes("level_sense")) return { reason: `${sensor} is an input of ${c.instrument}, which senses no level per point: it is read in the shot` };
+  return { ok: true };
+}
+
+/** The sequencer that plays a capture's shot (ADR 0063, 0067): the channel's own sequencer when the channel is
+ * a sequencer's input, which records it itself (`own`, ADR 0069); else the one whose marker channel the scope
+ * names in `settings.trigger_from`, else the stand's only sequencer; else why the record can only be taken per
+ * point. Pure. */
+export function captureSequencer(stand: StandConfig, channel: string): { sequencer: string; own?: true } | { reason: string } {
   const c = stand.channels.find((x) => x.logical === channel);
   if (!c) return { reason: `no channel ${channel || "(none)"} on the stand` };
   const scope = stand.instruments.find((i) => i.id === c.instrument);
-  if (isSequencer(scope)) return { reason: `${channel} is an input of the sequencer ${c.instrument}; a capture in the shot needs a scope of its own (ADR 0060)` };
+  if (isSequencer(scope)) return { sequencer: c.instrument, own: true };
   const line = scope?.settings?.trigger_from;
   if (line !== undefined && line !== "") {
     const marker = stand.channels.find((x) => x.logical === String(line));

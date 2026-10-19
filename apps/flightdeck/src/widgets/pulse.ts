@@ -21,6 +21,7 @@ import {
   type OpKind,
   type OpRow,
 } from "../control/sequence";
+import { sensorResult, standChannels } from "../control/sweeps";
 import { h } from "../workspace/dom";
 import type { Widget, WidgetContext } from "../workspace/widget";
 
@@ -43,6 +44,8 @@ class PulseWidget {
   private axes: string[] = [];
   private inner = "";
   private sensor = "";
+  /** The stand's sensors (`standChannels`): current channels and the sequencers' own inputs, which a measure reads. */
+  private sensors: string[] = [];
   private kind = "stage";
   private readonly ops: HTMLDivElement;
   private readonly symbols: HTMLDivElement;
@@ -61,7 +64,7 @@ class PulseWidget {
     this.note = h("div", { className: "hint" });
     const add = h("select", { className: "add-op", attrs: { "aria-label": "Primitive to add" } }, ...OP_KINDS.map((k) => h("option", { value: k, text: k })));
     const addButton = h("button", { type: "button", text: "add op" });
-    addButton.addEventListener("click", () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels, measuredResults(this.rows))]));
+    addButton.addEventListener("click", () => this.editRows([...this.rows, newRow(add.value as OpKind, this.channels, measuredResults(this.rows), this.sensors)]));
     const reset = h("button", { type: "button", text: "reset to template" });
     reset.addEventListener("click", () => {
       this.rowsEdited = false;
@@ -96,6 +99,7 @@ class PulseWidget {
       .stand()
       .then((s) => {
         this.channels = [...s.channels];
+        this.sensors = standChannels(s).sensors.map((c) => c.logical);
         this.followTemplate();
       })
       .catch((e: unknown) => ctx.bus.emit("say", { text: `server: ${String(e)}`, error: true }));
@@ -107,11 +111,15 @@ class PulseWidget {
     this.head.replaceChildren();
   }
 
+  private isSensor(c: ChannelMap): boolean {
+    return c.quantity === "current" || this.sensors.includes(c.logical);
+  }
+
   /** Until the user edits the sequence, it is the one-step template for the current inner axis and sensor. */
   private followTemplate(): void {
     if (!this.rowsEdited) {
       const inner = this.axes.at(-1) ?? "";
-      this.rows = templateRows({ channel: this.inner, symbol: `v_${inner}`, sensor: this.sensor, stepNs: 500, measureNs: 2000, result: "I_sensor" });
+      this.rows = templateRows({ channel: this.inner, symbol: `v_${inner}`, sensor: this.sensor, stepNs: 500, measureNs: 2000, result: sensorResult(this.channels, this.sensor) });
       this.bindings = [];
     }
     this.renderOps();
@@ -131,17 +139,18 @@ class PulseWidget {
         opSelect.value = row.op;
         opSelect.addEventListener("change", () => {
           // a new primitive starts prefilled; it keeps the channel when that channel suits it
-          const next = newRow(opSelect.value as OpKind, this.channels, measuredResults(this.rows.slice(0, i)));
+          const next = newRow(opSelect.value as OpKind, this.channels, measuredResults(this.rows.slice(0, i)), this.sensors);
           const kept = row.fields.channel && byName.get(row.fields.channel);
-          if (kept && "channel" in next.fields && (kept.quantity === "current") === (next.op === "measure")) next.fields.channel = kept.logical;
+          if (kept && "channel" in next.fields && this.isSensor(kept) === (next.op === "measure")) next.fields.channel = kept.logical;
           this.editRows(this.rows.map((r, j) => (j === i ? next : r)));
         });
         const cells = (OP_FIELDS[row.op] as readonly FieldName[]).map((field) => {
           const value = row.fields[field] ?? "";
           let input: HTMLInputElement | HTMLSelectElement;
           if (field === "channel") {
-            const wanted = row.op === "measure" ? "current" : "voltage";
-            const options = this.channels.filter((c) => c.quantity === wanted);
+            // a measure reads a sensor; a capture any voltage channel (a scope's, or the sequencer's own input); the
+            // rest drive a voltage line that is not an input
+            const options = row.op === "measure" ? this.channels.filter((c) => this.isSensor(c)) : this.channels.filter((c) => c.quantity === "voltage" && (row.op === "capture" || !this.sensors.includes(c.logical)));
             input = h("select", { name: field }, ...options.map((c) => h("option", { value: c.logical, text: c.logical })));
             if (value && !options.some((c) => c.logical === value)) input.append(h("option", { value, text: `${value}?` }));
             input.value = value;
@@ -173,7 +182,7 @@ class PulseWidget {
 
   /** Rebuild the sequence, refresh the symbol bindings, list what the server would refuse, and publish. */
   private validate(): string[] {
-    const built = buildSequence("sequence", this.rows, this.channels);
+    const built = buildSequence("sequence", this.rows, this.channels, this.sensors);
     const axes = this.axes;
     const before = this.bindings.map((b) => b.symbol).join(",");
     this.bindings = syncBindings(built.symbols.keys(), this.bindings, axes);

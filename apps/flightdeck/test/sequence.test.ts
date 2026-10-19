@@ -336,3 +336,26 @@ describe("capture rows (ADR 0060)", () => {
     expect(build).toThrow(/needs a stage without a pulsed axis/);
   });
 });
+
+describe("a sequencer's own input (ADR 0067)", () => {
+  const opx = [
+    { logical: "P2_pulse", instrument: "opx", channel: "ao1", quantity: "voltage" },
+    { logical: "sensor", instrument: "opx", channel: "ai1", quantity: "voltage" },
+    { logical: "P1_i", instrument: "dac0", channel: "ch01_i", quantity: "current" },
+  ] as ChannelMap[];
+
+  it("is measured when the stand names it a sensor, and refused as a voltage channel otherwise", () => {
+    const rows: OpRow[] = [{ op: "measure", fields: { channel: "sensor", duration: "1000", result: "V_sensor" } }];
+    expect(buildSequence("x", rows, opx).errors.join(" | ")).toMatch(/measures a current channel or a sequencer's input, not "sensor"/);
+    const b = buildSequence("x", rows, opx, ["sensor"]);
+    expect(b.errors).toEqual([]);
+    expect(b.sequence?.body[0]).toMatchObject({ op: "measure", channel: "sensor", result: "V_sensor" });
+  });
+
+  it("a new measure row reads the first sensor and names a voltage one V_sensor; a new step never drives an input", () => {
+    expect(newRow("measure", opx, [], ["sensor"]).fields).toEqual({ channel: "sensor", duration: "1000", result: "V_sensor" });
+    expect(newRow("measure", opx).fields).toEqual({ channel: "P1_i", duration: "1000", result: "I_sensor" });
+    expect(newRow("step", opx, [], ["sensor"]).fields.channel).toBe("P2_pulse");
+    expect(newRow("step", opx.filter((c) => c.logical !== "P2_pulse"), [], ["sensor"]).fields.channel).toBe("");
+  });
+});

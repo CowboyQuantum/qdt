@@ -12,7 +12,9 @@ levels at that instant.
 As a `Sequencer` it compiles only backend `"simulated"` programs: the body emitted by
 `qdt_lab.experiment.SimulatedEmitter` (sequence JSON, symbol → parameter map, reductions). A body
 with a `triggered` axis (ADR 0064) is the device triggering itself: at each point of that axis every
-list loaded on it (`load`) sits on that point, as a marker line to a DAC would put it.
+list loaded on it (`load`) sits on that point, as a marker line to a DAC would put it. A `capture` on
+the device's own sensor channel (ADR 0069) is the device recording itself: `num` samples of the sensor
+current at the shot's levels over the window, one record per shot.
 
 Built from a stand with `SimulatedDevice.from_config` (the ADR 0021 `BackendFactory`): gate channels
 must be declared `voltage`, the sensor `current`, and a sensor channel's `integration_s` is the device
@@ -200,14 +202,23 @@ class SimulatedDevice:
             )
         body = json.loads(program.body)
         sequence = PulseSequence.model_validate(body["sequence"])
-        # a shot capture's scope channel (ADR 0060) belongs to the scope, not to this device
-        scopes = {op.channel for op in sequence.expand() if op.op == "capture"}
+        # a shot capture's channel is a scope's (ADR 0060) unless it is this device's own sensor, which
+        # the device records itself (ADR 0069)
+        scopes = {
+            op.channel
+            for op in sequence.expand()
+            if op.op == "capture" and op.channel not in self.channels
+        }
         unknown = set(sequence.channels()) - set(self.channels) - scopes
         if unknown:
             raise ValueError(f"sequence uses channels the device does not have: {sorted(unknown)}")
         for op in sequence.expand():
-            if op.op == "measure" and self.channels[op.channel] != SENSOR:
-                raise ValueError(f"measure on {op.channel!r}, which is not the sensor")
+            if (
+                op.op in ("measure", "capture")
+                and op.channel in self.channels
+                and self.channels[op.channel] != SENSOR
+            ):
+                raise ValueError(f"{op.op} on {op.channel!r}, which is not the sensor")
         return CompiledDeviceProgram(
             program,
             sequence,
@@ -243,13 +254,21 @@ class SimulatedDevice:
         return sum(self._dc[ch] + (pulse or {}).get(ch, 0.0) for ch in chans)
 
     def read(
-        self, v: np.ndarray, shots: int, integration_s: float, v_sd: float | None = None
+        self,
+        v: np.ndarray,
+        shots: int,
+        integration_s: float,
+        v_sd: float | None = None,
+        overhead_s: float | None = None,
     ) -> np.ndarray:
         """`shots` sensor-current samples (A) at gate voltages `v` and bias `v_sd` (None: the model's
-        default), each advancing the clock."""
+        default), each advancing the clock by its integration and `overhead_s` (default: the shot
+        overhead; 0 for the samples of one record)."""
         out = np.empty(shots)
         for s in range(shots):
-            self.clock_s += integration_s + self.shot_overhead_s
+            self.clock_s += integration_s + (
+                self.shot_overhead_s if overhead_s is None else overhead_s
+            )
             t = self.clock_s
             v_eff = v + self.noise.gate.sample(t)
             n = (
@@ -279,10 +298,17 @@ class _DeviceRun:
         self._device, self._compiled, self._params = device, compiled, parameters
         self.dataset = dataset
         program = compiled.program
+        # a capture on the device's own sensor (ADR 0069) is a result with its own time axis
+        self._records = {
+            op.result: op
+            for op in compiled.sequence.expand()
+            if op.op == "capture" and op.channel in device.channels
+        }
+        time_axes = {f"n_{r}" for r in self._records}
         # the stage axes are the parameters every result is laid over; a program with no result
-        # (a stimulus whose readout is a shot capture, ADR 0060) still runs its shots
+        # (a stimulus whose readout is a shot capture on a scope, ADR 0060) still runs its shots
         self._axes = (
-            tuple(d for d in program.results[0].dims if d != "shots")
+            tuple(d for d in program.results[0].dims if d != "shots" and d not in time_axes)
             if program.results
             else tuple(p.name for p in program.parameters if p.name.startswith("n_"))
         )
@@ -320,7 +346,7 @@ class _DeviceRun:
                 return x.of(values[x.symbol.name])
             return x
 
-        samples: dict[str, list[float]] = {}
+        samples: dict[str, list] = {}  # result -> per-shot values, or per-shot records
         for _ in range(self._shots):
             pulse: dict[str, float] = {}
             shot: dict[str, float] = {}
@@ -341,16 +367,29 @@ class _DeviceRun:
                     shot[op.result] = float(i[0])
                     samples.setdefault(op.result, []).append(shot[op.result])
                     continue
+                elif op.op == "capture" and op.channel in device.channels:
+                    # ADR 0069: the device records its own sensor over the window: `num` samples of
+                    # the current at the shot's levels, each one sample interval of clock
+                    record = device.read(
+                        device.gate_vector(pulse),
+                        op.num,
+                        duration_ns * 1e-9 / op.num,
+                        device.bias_level(pulse),
+                        overhead_s=0.0,
+                    )
+                    samples.setdefault(op.result, []).append(record)
+                    continue
                 device.clock_s += duration_ns * 1e-9
         return {k: np.asarray(v) for k, v in samples.items()}
 
     def _reduce(self, name: str, shots: np.ndarray) -> np.ndarray:
+        """Reduce the shots axis (axis 1 of (pixels, shots[, samples])) as the stage says."""
         how = self._compiled.reduce.get(name, "keep")
         if how == "mean":
-            return shots.mean(axis=-1)
+            return shots.mean(axis=1)
         if how == "sum":
-            return shots.sum(axis=-1)
-        return shots if self._shots > 1 else shots[..., 0]
+            return shots.sum(axis=1)
+        return shots if self._shots > 1 else np.take(shots, 0, axis=1)
 
     def frames(self) -> Iterator[Frame]:
         program, params = self._compiled.program, self._params
@@ -380,13 +419,17 @@ class _DeviceRun:
                 if delay > 0:
                     time.sleep(delay)
             for r in results:
-                shots = np.stack(raw[r])  # (pixels in this frame, shots)
+                shots = np.stack(raw[r])  # (pixels in this frame, shots[, samples of a record])
                 values = self._reduce(r, shots)
                 keep = self._compiled.reduce.get(r, "keep") == "keep" and self._shots > 1
+                tail = (
+                    *((self._shots,) if keep else ()),
+                    *((self._records[r].num,) if r in self._records else ()),
+                )
                 if len(self._shape) > 1:
-                    values = values.reshape((1, *rest, *((self._shots,) if keep else ())))
+                    values = values.reshape((1, *rest, *tail))
                 else:
-                    values = values.reshape((*self._shape, *((self._shots,) if keep else ())))
+                    values = values.reshape((*self._shape, *tail))
                 dims = variables[r].dims
                 shape = program.result_shape(r, params)
                 if len(self._shape) > 1:
