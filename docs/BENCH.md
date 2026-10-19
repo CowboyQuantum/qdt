@@ -181,7 +181,8 @@ QDAC ch01 ──► scope ch2 (DC, 1 MΩ; no board)
   and scope agree). The first attempt left the DAC at −0.5 V: the SMU in the stand file was unreachable, every
   Levels poll rebuilt and closed the backends, a serial query failed, and the replies on the QDAC's serial
   port shifted by one, so `release` read P2's setpoint as P1's. The VISA transport now discards pending input
-  before every query; the stand file lost the SMU for the day.
+  before every query. The SMU answered again later that afternoon (a stale session had held its socket); its
+  conformance rows pass (the day's report, 16:42 UTC) and it is back in the stand file.
 
 ### To fill in before Step 5 builds the L2 suite (human)
 - **Bias tee model:** low-frequency cutoff, DC-port resistance, insertion loss, and maximum DC
