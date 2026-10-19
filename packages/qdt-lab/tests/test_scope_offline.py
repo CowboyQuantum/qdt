@@ -81,7 +81,15 @@ def test_several_records_are_one_segmented_acquisition_read_in_one_transfer():
     em = scope._t
     assert len(frames) == 4 and em.singles == 1 and em.acquire_mode == "SEGM"
     assert em.segment_count == 4
-    assert _data_queries(em) == 1 and scope.segments_in_one_transfer is True
+    # the first readout checks the block's first and last pieces against segments 1 and 4 read by index
+    assert _data_queries(em) == 3 and scope.segments_in_one_transfer is True
+    assert [c for c in em.log if c.startswith(":ACQuire:SEGMented:INDex")] == [
+        ":ACQuire:SEGMented:INDex 1",
+        ":ACQuire:SEGMented:INDex 4",
+    ]
+    em.log.clear()
+    frames = list(scope.arm("ch00", _records(4), "v").frames())  # decided: one transfer, no check
+    assert len(frames) == 4 and _data_queries(em) == 1
     assert not any(c.startswith(":ACQuire:SEGMented:INDex") for c in em.log)
     assert em.log[-1] == ":WAVeform:SEGMented:ALL OFF"  # the scope is left reading one segment
     assert not any(c.startswith(":DIGitize") for c in em.log)
@@ -131,3 +139,20 @@ def test_a_block_of_the_wrong_length_is_not_split_and_the_segments_are_read_one_
     frames = list(scope.arm("ch00", _records(4), "v").frames())
     assert len(frames) == 4 and scope.segments_in_one_transfer is False
     assert sum(c.startswith(":ACQuire:SEGMented:INDex") for c in em.log) == 4
+
+
+def test_a_scope_that_repeats_the_selected_segment_is_caught_and_read_segment_by_segment():
+    """The HD304MSO (firmware 10.16, bench 2026-10-19) accepts `:WAVeform:SEGMented:ALL`, raises no
+    error, returns a block of the right length, and fills it with the selected segment once per
+    segment. Only comparing pieces with segments read by index catches it."""
+    scope = emulated(all_segments="repeat")
+    source = scope.arm("ch00", _records(5), "v")
+    records = np.stack([f.arrays["v"][0] for f in source.frames()])
+    assert scope.segments_in_one_transfer is False
+    by_index = np.stack([source.record(k + 1) for k in range(5)])
+    np.testing.assert_array_equal(records, by_index)  # the right records, read one by one
+    assert len({r.tobytes() for r in records}) == 5
+    em = scope._t
+    em.log.clear()
+    list(scope.arm("ch00", _records(5), "v").frames())
+    assert not any(c.startswith(":WAVeform:SEGMented:ALL") for c in em.log)  # not asked again
