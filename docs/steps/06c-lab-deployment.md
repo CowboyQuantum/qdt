@@ -3,7 +3,7 @@
 > Fixed headings. Agents read this file for the current step; the narrative is in `DEVELOPMENT_PLAN.md`.
 > Inserted before Step 7 by ADR 0073. Milestone `Deployment` (issues #75–#80 and those added to it).
 > Design: ADR 0074 (registry and control path on the lab network), ADR 0075 (stand state and the run
-> queue on the server), ADR 0076 (measurement hub, stretch). Host runbook: Analysis 0003.
+> queue on the server), ADR 0077 (instruments are discovered), ADR 0076 (measurement hub, stretch). Host runbook: Analysis 0003.
 > The repo and its issues are public (rule 7): `qdt-db`, `<stand-host>`, `<lab-subnet>` and the like are
 > placeholders; real names, addresses and credentials never appear here.
 
@@ -18,7 +18,8 @@ The human's four goals (2026-10-19):
    criterion — routing to a fridge is L3.
 
 ## Schema slice
-`operations.py`: `ChannelLimit`, `StandState`, `QueuedRun` (ADR 0075). Every field with `description=`.
+`operations.py`: `ChannelLimit`, `StandState`, `QueuedRun` (ADR 0075); `InstrumentPort`, `InventoryEntry`,
+`StandVersion` (ADR 0077). Every field with `description=`.
 Frozen at exit with an ADR.
 
 ## Deliverables
@@ -42,8 +43,12 @@ Frozen at exit with an ADR.
    confirmation (ADR 0075).
 8. The run queue in the stand server: persisted, ordered, reorder/remove while queued, abort while running;
    Flight Deck's queue, Levels and Virtual gates widgets read and write it there (ADR 0075; #78, #79).
-9. Stand files name instruments by host name, never by address (#80, per the decision below).
-10. An unreachable instrument no longer breaks every backend build (#75, per the human's proposal).
+9. Instruments are discovered (ADR 0077; #75, #80): per-transport discoverers (VISA, mDNS, an opt-in probe of
+   a configured range, the OPX's configured hosts), identity matching to driver factories, port declarations
+   on every driver, and the no-write rule for discovery.
+10. The instrument pool in the stand server (ADR 0077; #75): one connection and health state per instrument;
+    an offline instrument takes down only its ports; polls never rebuild a backend. Bindings saved as stand
+    versions (UI ↔ file ↔ registry); an Instruments widget with Discover → review → Save stand.
 11. Stand files' `settle_s` audited against their sources before the T-rows run (#76).
 12. Bench reports file themselves under this step (#77).
 
@@ -69,6 +74,10 @@ Frozen at exit with an ADR.
 - Queue: order holds through reorder, remove and abort; a queued entry survives a server restart; one
   run at a time.
 - Flight Deck e2e: the queue widget reflects server order; commands are absent against a read-only server.
+- Discovery on emulators: candidates identified and matched; ports declared; no output written during
+  discovery; a factory that raises leaves the pool's other instruments usable and polls do not rebuild;
+  a compile using an offline port is refused; a binding saved in the widget equals the exported file and
+  the registry's latest stand version.
 
 ## L1 tests (bench loopback)
 `bench/test_l1_remote_read.py` (`PLANNED_BY = ("docs/steps/06c-lab-deployment.md",)`), run from a computer
@@ -79,6 +88,12 @@ that is not the measurement PC, with the registry on `qdt-db`:
 - **R-3 after a reboot:** `qdt-db` rebooted and left alone; R-1 passes (Analysis 0003 §8 step 4).
 - **R-4 commands need a token:** a command to the stand server from this computer without a token is
   refused and changes nothing on the scope.
+
+`bench/test_l1_discovery.py` (`PLANNED_BY = ("docs/steps/06c-lab-deployment.md",)`), on the bench:
+- **D-1 discover:** discovery lists every bench instrument with its ports; the scope's reading of the QDAC
+  channel is unchanged by discovery (nothing written).
+- **D-2 one instrument off:** with the SMU powered off, discovery marks it offline, its ports unavailable, and
+  T-1 passes on the QDAC; powered on again, the pool reconnects without a server restart.
 
 ## L2 tests (instrument-on-instrument)
 `bench/test_l2_orchestration.py` (`PLANNED_BY = ("docs/steps/06c-lab-deployment.md",)`). Every row is
@@ -105,7 +120,7 @@ each record from History. The dated report lists every step that needed a workar
 
 ## Exit criteria
 - Every L0 row above green in CI.
-- R-1 … R-4 and T-1 … T-7 pass on the bench with the registry on `qdt-db`, recorded in a dated report
+- R-1 … R-4, D-1, D-2 and T-1 … T-7 pass on the bench with the registry on `qdt-db`, recorded in a dated report
   (`bench/reports/<date>-step6c.md`).
 - W-1 run, its dated report committed, its findings filed as issues on `Deployment`.
 - The `operations.py` slice frozen by an ADR.
@@ -120,10 +135,10 @@ Each closes by an ADR or by the human's decision recorded on its issue.
 - Database roles and where credentials live: ADR 0074 proposes three roles and per-machine environment.
 - Where the run queue lives (#78): ADR 0075 proposes the stand server.
 - Where limits, couplings and the held point live (#79): ADR 0075 proposes versioned `StandState`.
-- Stable network names for instruments (#80): proposed DHCP reservations plus DNS names (or host entries
-  on the measurement PC), stand files naming hosts only; the bench may keep link-local. Human and IT decide.
-- An unreachable instrument breaking every backend build (#75): the human's proposal, decided before
-  deliverable 10.
+- Accept or amend **ADR 0077** (instruments are discovered) before deliverables 9–10; it closes #75 and,
+  by binding to identity rather than address, #80 (DHCP reservations stay good practice, not a requirement).
+- The instrument range the LAN probe may touch, and whether IT allows probing at all (mDNS alone otherwise):
+  part of deliverable 6's IT ask.
 - The lab PC's OS (plan §12 #6, #114): a Windows host with Postgres either as a native service or in WSL2
   (Analysis 0003 §4's caveats: mirrored networking, systemd, start at boot); decided with deliverable 1.
 - A local Postgres test run without Docker (#112): deliverable 14.

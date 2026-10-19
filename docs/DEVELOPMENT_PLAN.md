@@ -84,7 +84,7 @@ Adapters (arbok), site DDL migrations, bootstrap seeds, `deploy/` compose bundle
 | 4b | Control | `Run`, `MethodSpec` (ADR 0032) | `control.py` |
 | 5 | — | (drivers; no new family) | |
 | 6 | Modeling | `SimScenario`, `SimResult`, `CalibrationNode` | `modeling.py` |
-| 6c | Operations | `ChannelLimit`, `StandState`, `QueuedRun` (ADR 0075) | `operations.py` |
+| 6c | Operations | `ChannelLimit`, `StandState`, `QueuedRun` (ADR 0075); `InstrumentPort`, `InventoryEntry`, `StandVersion` (ADR 0077) | `operations.py` |
 | 7 | Cryo | `CooldownRecord`, `FridgeEvent` (`TelemetryChannel`, `TelemetrySample` deferred — ADR 0051) | `cryo.py` |
 | 8 | Governance | `ContractDefinition` | `contracts.py` |
 
