@@ -145,9 +145,11 @@ QDAC ch ──► scope ch (DC, 1 MΩ)        SMU F/S ──► scope ch (DC, 1 
   honest shape is one shot, `step(rf, …); capture(scope1, …)` (ADR 0060); since ADR 0063 the OPX runs
   it: `bench/test_l2_paced.py` posts the one-shot form (`step(P2_pulse, 0.25 V, 16 ns); capture(scope1,
   29 µs); wait(50 ms)`), the scope triggering itself on the analog edge (AC, NORMal sweep) when its stand
-  entry has no `trigger_from`, on the OPX's marker when it has. The per-point form above stays as the
-  reference it is compared against. Not yet run: the 2026-10-16 session had ao1 direct into the scope for
-  Probe 05, not through the combiner.
+  entry has no `trigger_from`, on the OPX's marker when it has. The per-point form above stays as the reference it is compared against. **Run
+  2026-10-19 (session 23), both ways, passes:** the scope triggering itself on the analog edge gives τ 1.82 µs
+  (amplitude 0.055 V, plateau 0.142 V, r² 0.998); triggered by the OPX's marker on `do1`, τ 1.81 µs (amplitude
+  0.060 V, r² 0.995); Probe 03's record gives 1.86 µs by the same fit. The record's amplitude is the pulse-side
+  handover (0.81 − 0.59 of 0.25 V) and its plateau the DC gain (0.59 × 0.25 V), as Probe 03 measured.
 - **Oracle:** V(t) = A·e^(−t/τ) after the edge. τ is the bias tee's low-frequency time constant,
   1/(2π f_low) from its datasheet.
 - **Fit:** a single exponential (`qdt_analysis.exponential.fit_exponential`, ADR 0046) → `tau`, `amplitude`,

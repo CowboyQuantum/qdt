@@ -24,19 +24,22 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
   query read the previous query's reply (the "setpoint" was `P1_i`'s current readout; `release` set P1 to P2's
   setpoint). `_VisaTransport` now discards pending input before every query (`test_scpi_transport.py`); the SMU
   is out of today's local stand file. The server's own handling of an unreachable instrument is a follow-up.
+- **L2-3 as one shot passes both ways** (wiring 2, the combiner board): the scope triggering itself on the
+  analog edge, τ 1.82 µs; triggered by the OPX's marker (`trigger_from` on scope0), τ 1.81 µs; Probe 03's record
+  gives 1.86 µs by the same fit. The shot form of ADR 0063 is proven on a real droop, in its interim and its
+  marker variants.
 - Earlier the same day (#71): the HD3's segmented transfer returns the selected segment repeated; the driver
   checks and falls back; the QDAC's output followed its setpoints (no 0 V quirk).
 
 ## Bench tasks — next bench session
-1. **L2-3 as one shot** (`bench/test_l2_paced.py`), on wiring 2: QDAC ch01 → combiner DC in, OPX ao1 → combiner
-   pulse in, board out → scope ch1, do1 still on the scope's AUX TRIG IN, ground switches up. Run first with the
-   scope self-triggering (no `trigger_from` on scope0 in the stand file), then with the marker.
-2. **The SMU:** it refused connections on 2026-10-19 ("connection reset by peer" at build); check it is on and
+1. **The SMU:** it refused connections on 2026-10-19 ("connection reset by peer" at build); check it is on and
    that no stale session holds its single socket before putting it back in the stand file.
-3. **The OPX's address:** decide whether to restore its static 10.20 address (its admin page) or keep the
+2. **The OPX's address:** decide whether to restore its static 10.20 address (its admin page) or keep the
    self-assigned one; the agent's bench notes cover both.
-4. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
+3. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
    `*RST`, seen twice (not on 2026-10-19).
+Every bench row the software claims is now proven on its instrument: L1, L2-1 to L2-4, L2-3 as one shot, the
+OPX's row streaming, the scope's segmented path, Probe 01–05.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
 1. The four-node tune-up on a real device through `POST /tuneups`; compare outcomes to the sim's.
@@ -91,7 +94,6 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
   capture) is posted by hand.
 - **Timing now depends on the stand:** host stepping added a job submission per point that may have hidden
   a too-short `settle_s`; triggered, exactly the declared settle is waited. Check stand files' settles.
-- **L2-3 as one shot is unrun** (the combiner is not wired).
 - **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off; BENCH.md says to check.
 - **The marker-to-analog delay (85 ns) is recorded, not applied.**
 - **A triggered axis through the combiner's DC side is still 50 ms per point** (its 20 Hz low-pass).
@@ -109,7 +111,7 @@ report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge this PR; re-wire to wiring 2 and say "run L2-3"; name the next slice. Candidates: the server
+**Human:** merge this PR; name the next slice. Candidates: the server
 tolerating an unreachable instrument; a stimulus and a capture in the widget (L2-3 as one shot); the sequencer's
 voltage inputs as sensors; streaming a 1-D OPX result; a second OPX pulse line; an OPX-ADC capture; how a sense
 range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches.
@@ -156,7 +158,8 @@ Step 7 when sign-off arrives.
   me how to wire up the bench"; "wiring one is set up" (the scope's one transfer caught and fixed; the OPX
   unreachable); "typically I run a sudo command to expose the ip of the opx" (it was `sudo ifconfig
   en11 alias`, not the cause: the OPX had moved to a link-local address); "the gh runner seems stuck" (GitHub
-  Actions degraded; #71 merged on local checks); "ok the opx should be good to go" (#67 proven, L2-4 from the UI).
+  Actions degraded; #71 merged on local checks); "ok the opx should be good to go" (#67 proven, L2-4 from the UI); "the combiner board is wired up" (L2-3 as one
+  shot, both ways).
 
 ## Decisions pending
 - **What follows** (the candidates above).
