@@ -51,7 +51,9 @@ class InfiniiVisionEmulator:
     raw points; fewer are captured when `:WAVeform:POINts` asks for fewer. `segmented=False` emulates an
     instrument without the mode (`:ACQuire:MODE?` stays RTIM); `all_segments=False` one without the
     one-transfer readout, which queues -113 for the command, as an instrument does for an unknown header,
-    instead of raising like every other unknown command."""
+    instead of raising like every other unknown command; `all_segments="repeat"` the HD304MSO (firmware
+    10.16, bench 2026-10-19), which accepts the command and returns the selected segment once per
+    segment."""
 
     def __init__(
         self,
@@ -59,7 +61,7 @@ class InfiniiVisionEmulator:
         points: int = 2000,
         yincrement: float = 1e-4,
         segmented: bool = True,
-        all_segments: bool = True,
+        all_segments: bool | str = True,
     ) -> None:
         self.signal: Signal = signal or ring_down
         self.points, self.yincrement = points, yincrement
@@ -184,6 +186,10 @@ class InfiniiVisionEmulator:
         if missing:
             raise ValueError(f"waveform transfer not configured: {sorted(missing)}")
         if self.all_segments and self.acquire_mode == "SEGM":
+            if (
+                self.supports_all_segments == "repeat"
+            ):  # the HD3's answer: the selected one, N times
+                return np.concatenate([self._served()[2]] * len(self._captures))
             return np.concatenate([codes for _, _, codes in self._captures])
         return self._served()[2].copy()
 

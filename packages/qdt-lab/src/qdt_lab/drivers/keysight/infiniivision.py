@@ -23,8 +23,11 @@ read back); otherwise one `:SINGle` per record, which costs about half a second 
 (Probe 05). The segments are read **in one transfer** (`:WAVeform:SEGMented:ALL ON`, then one
 `:WAVeform:DATA?` holding every segment in turn) when the scope accepts the command and the block is
 exactly `records` segments of the preamble's length; otherwise segment by segment through
-`:ACQuire:SEGMented:INDex`, which cost 0.3–0.5 s each on the HD3 (Probe 05). Which way works is
-decided on the first segmented readout and kept (`segments_in_one_transfer`). Whether the HD3 takes the one
+`:ACQuire:SEGMented:INDex`, which cost 0.3–0.5 s each on the HD3 (Probe 05). The first segmented
+readout also compares the block's first and last pieces with segments 1 and `records` read by index,
+and decides which way to read for the rest of the session (`segments_in_one_transfer`): the HD304MSO
+(firmware 10.16) accepts `:WAVeform:SEGMented:ALL` and returns the selected segment repeated, in every
+point mode (bench, 2026-10-19), so on it the segments are read one by one. Whether the HD3 takes the one
 transfer is `bench/test_scope_segments.py`'s to show; until it has run on the bench, the per-segment
 reads are what Probe 05 measured.
 
@@ -327,11 +330,19 @@ class _ScopeRecordSource:
         pre = self._preamble()
         return self._resample(self._t.query_block(":WAVeform:DATA?", "<i2"), pre)
 
+    def _segment_codes(self, index: int) -> np.ndarray:
+        """Raw codes of segment `index` (1-based), read by index."""
+        self._t.write(f":ACQuire:SEGMented:INDex {index}")
+        return self._t.query_block(":WAVeform:DATA?", "<i2")
+
     def segments(self) -> list[np.ndarray] | None:
         """Every segment of the acquisition in one transfer, each in volts on the declared grid; None
-        when the scope refuses `:WAVeform:SEGMented:ALL` or the block is not `records` segments of
-        the preamble's length, so the caller reads segment by segment. The first try decides for the
-        rest of the session (`InfiniiVisionX.segments_in_one_transfer`)."""
+        when the scope refuses `:WAVeform:SEGMented:ALL`, the block is not `records` segments of the
+        preamble's length, or its first and last pieces are not segments 1 and `records` read by index,
+        so the caller reads segment by segment. The HD304MSO (firmware 10.16) accepts the command and
+        returns the selected segment `records` times, in every point mode (bench, 2026-10-19), which only
+        that comparison catches. The first try decides for the rest of the session
+        (`InfiniiVisionX.segments_in_one_transfer`)."""
         scope, t = self._scope, self._t
         if scope.segments_in_one_transfer is False:
             return None
@@ -345,12 +356,18 @@ class _ScopeRecordSource:
             codes = t.query_block(":WAVeform:DATA?", "<i2")
         finally:
             t.write(":WAVeform:SEGMented:ALL OFF")
-        ok = codes.size == self._n_records * pre.points
-        if scope.segments_in_one_transfer is None:
-            scope.segments_in_one_transfer = ok
-        if not ok:
+        if codes.size != self._n_records * pre.points:
+            if scope.segments_in_one_transfer is None:
+                scope.segments_in_one_transfer = False
             return None
-        return [self._resample(c, pre) for c in codes.reshape(self._n_records, pre.points)]
+        pieces = codes.reshape(self._n_records, pre.points)
+        if scope.segments_in_one_transfer is None:
+            scope.segments_in_one_transfer = np.array_equal(
+                pieces[0], self._segment_codes(1)
+            ) and np.array_equal(pieces[-1], self._segment_codes(self._n_records))
+            if not scope.segments_in_one_transfer:
+                return None
+        return [self._resample(c, pre) for c in pieces]
 
     def frames(self) -> Iterator[Frame]:
         n = self._times.size
