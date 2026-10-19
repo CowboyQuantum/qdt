@@ -371,14 +371,15 @@ export function sensorPerPoint(stand: StandConfig, sensor: string): { ok: true }
   return { ok: true };
 }
 
-/** The sequencer that plays a capture's shot (ADR 0063, 0067): the one whose marker channel the scope names in
- * `settings.trigger_from`, else the stand's only sequencer; else why the record can only be taken per point.
- * A scope on a sequencer's own input cannot be captured in the shot yet (ADR 0060). Pure. */
-export function captureSequencer(stand: StandConfig, channel: string): { sequencer: string } | { reason: string } {
+/** The sequencer that plays a capture's shot (ADR 0063, 0067): the channel's own sequencer when the channel is
+ * a sequencer's input, which records it itself (`own`, ADR 0069); else the one whose marker channel the scope
+ * names in `settings.trigger_from`, else the stand's only sequencer; else why the record can only be taken per
+ * point. Pure. */
+export function captureSequencer(stand: StandConfig, channel: string): { sequencer: string; own?: true } | { reason: string } {
   const c = stand.channels.find((x) => x.logical === channel);
   if (!c) return { reason: `no channel ${channel || "(none)"} on the stand` };
   const scope = stand.instruments.find((i) => i.id === c.instrument);
-  if (isSequencer(scope)) return { reason: `${channel} is an input of the sequencer ${c.instrument}; a capture in the shot needs a scope of its own (ADR 0060)` };
+  if (isSequencer(scope)) return { sequencer: c.instrument, own: true };
   const line = scope?.settings?.trigger_from;
   if (line !== undefined && line !== "") {
     const marker = stand.channels.find((x) => x.logical === String(line));

@@ -148,3 +148,55 @@ def test_the_sequencers_input_is_not_sensed_per_point(api, stand):  # noqa: F811
     )
     assert r.status_code == 400, r.text
     assert "lacks capability 'level_sense'" in r.text
+
+
+def test_l2_5_the_triggered_staircase_captured_on_the_sequencers_input(
+    api,  # noqa: F811
+    stand,  # noqa: F811
+    sensor_input,
+):
+    """ADR 0069 on the bench: L2-4's staircase with the OPX's own input as the scope. The DAC is
+    advanced by the OPX's marker, the input records 20 µs per point in the shot, and the (V, time) map
+    is a plane of slope 1/2 along V (the divider) and flat along time."""
+    if not stand_has(stand, "dac0", "trigger_from", "trigger_in"):
+        pytest.skip("the stand needs trigger_from (and trigger_in) on dac0")
+    record = run_capture(
+        api,
+        {
+            "name": "l2-5 staircase recorded on the input",
+            "axes": [
+                {
+                    "name": "V",
+                    "channel": CABLED,
+                    "start": INNER[2],
+                    "stop": INNER[3],
+                    "num": 5,
+                    "stepping": "triggered",
+                }
+            ],
+            "stage": {
+                "instrument": "opx",
+                "sequence": {
+                    "name": "record the input",
+                    "body": [
+                        {
+                            "op": "capture",
+                            "channel": "sensor",
+                            "duration": 20_000,
+                            "num": 200,
+                            "result": "trace",
+                        }
+                    ],
+                },
+                "shots": 1,
+            },
+        },
+    )
+    result = analyse(api, record, "qdt_analysis.plane.fit_plane")
+    assert result["status"] == "ok", result["message"]
+    row, offset = estimate(result, "slope_row"), estimate(result, "offset")
+    assert abs(row["value"] - DIVIDER) <= SLOPE_TOLERANCE, (
+        f"V slope {row['value']:.4f} ± {row['stderr']:.4f} V/V vs {DIVIDER} (50 Ω into 50 Ω)"
+    )
+    assert abs(offset["value"]) <= OFFSET_TOLERANCE_V, f"offset {offset['value'] * 1e3:+.2f} mV"
+    assert estimate(result, "r2")["value"] > 0.999, "a missed point leaves a row off the plane"

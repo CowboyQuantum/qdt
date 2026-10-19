@@ -63,7 +63,7 @@ describe("which sequencer reads in the shot", () => {
     expect(captureSequencer(SIM, "scope1")).toEqual({ sequencer: "dot" }); // no trigger line: the only sequencer
     expect(captureSequencer(BENCH, "scope1")).toEqual({ sequencer: "opx" }); // trigger_from is the OPX's do1
     expect(captureSequencer(BENCH, "scope9_1")).toEqual({ reason: "scope9's trigger_from smu_i is not a channel of a sequencer" });
-    expect(captureSequencer(BENCH, "opx_in")).toMatchObject({ reason: expect.stringMatching(/an input of the sequencer opx; a capture in the shot needs a scope of its own/) });
+    expect(captureSequencer(BENCH, "opx_in")).toEqual({ sequencer: "opx", own: true }); // the sequencer records its own input (ADR 0069)
     const two = { ...SIM, instruments: [...SIM.instruments, { id: "awg", backend: "simulated", capabilities: ["sequencer"] }] } as StandConfig;
     expect(captureSequencer(two, "scope1")).toEqual({ reason: "the stand has 2 sequencers and scope names none in trigger_from" });
   });

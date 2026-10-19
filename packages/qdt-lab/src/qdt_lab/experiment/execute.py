@@ -7,7 +7,8 @@ line per frame; stage frames and capture frames are re-keyed into the full index
 arms its `WaveformSense` on a (record, time) slab per stepped point and passes every record it yields
 (ADR 0047). A shot capture (ADR 0060) arms its scope for one record per shot before the stage runs,
 drains it on a thread while the shots play (a real scope acquires only while its `frames()` is being
-read), and re-keys each record to its shot after. A triggered axis (ADR 0064) is loaded as a list on
+read), and re-keys each record to its shot after; a capture on the sequencer's own input (ADR 0069)
+arms nothing, the program's frames carry it. A triggered axis (ADR 0064) is loaded as a list on
 its `TriggeredLevelSource` before each program run and advanced by the sequencer's marker; the
 executor releases the lists when the plan ends. The executor holds no data and never averages
 (ADR 0018).
@@ -248,6 +249,8 @@ class Executor:
                         drains = []
                         for c in definition.stage.captures():
                             ch = plan.channel(c.channel)
+                            if ch.instrument == definition.stage.instrument:
+                                continue  # ADR 0069: the sequencer records its own input as a result
                             slab = shot_capture_slab(plan, c)
                             source = self._backends[ch.instrument].arm(ch.channel, slab, c.result)
                             drains.append((c, _Drain(source)))
@@ -414,8 +417,15 @@ class _Drain:
 
 
 def stage_slab(plan: ExecutionPlan) -> Dataset:
-    """The inner Dataset the sequencer fills per stepped point: stage axes (+ shot), stage results."""
-    inner = {a.name for a in plan.program_axes()} | {SHOT_DIM}
+    """The inner Dataset the sequencer fills per stepped point: stage axes (+ shot), stage results, and
+    the time axis of every capture on the sequencer's own input (ADR 0069)."""
+    stage = plan.definition.stage
+    own = [c for c in stage.captures() if plan.channel(c.channel).instrument == stage.instrument]
+    inner = (
+        {a.name for a in plan.program_axes()}
+        | {SHOT_DIM}
+        | {plan.definition.capture_time_dim(c.result) for c in own}
+    )
     # ADR 0068: a stage with no axis of its own records over a one-point axis the executor strips
     once = any(f"n_{ONCE}" in r.dims for r in plan.stage_program.results)
     lead = (ONCE,) if once else ()

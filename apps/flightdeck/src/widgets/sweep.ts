@@ -319,7 +319,9 @@ class SweepWidget {
           ? `can instead be read in a shot of ${this.shotSequencer}, so a wired stand can trigger the ${kind === "dc" ? "inner" : "outer"} axis`
           : kind === "dc"
             ? `${this.value("sensor")} is integrated by ${this.shotSequencer} in a one-measure shot at each point, the shots averaged${"reason" in perPoint ? `; per point is unavailable: ${perPoint.reason}` : ""}`
-            : `${this.value("capture_channel")} is captured in a shot of ${this.shotSequencer} from its marker (t = 0), one record per shot`;
+            : "own" in where && where.own
+              ? `${this.value("capture_channel")} is ${this.shotSequencer}'s own input: it records it in the shot (t = 0 at the capture), one record per shot`
+              : `${this.value("capture_channel")} is captured in a shot of ${this.shotSequencer} from its marker (t = 0), one record per shot`;
     show(this.shotsField, kind === "stage" || (kind === "dc" && inShot));
     show(this.measureField, kind === "dc" && inShot);
     show(this.paceField, kind === "capture" && inShot);

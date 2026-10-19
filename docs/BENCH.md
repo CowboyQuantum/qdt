@@ -206,6 +206,12 @@ QDAC ch ──► OPX LF-FEM ai1 (50 Ω)        OPX do2 ──► QDAC-II ext1 (
   r² 1.000. Sensed per point, the compiler refuses: `instrument 'opx' ('sensor') lacks capability
   'level_sense'`. The first run of the day proved the input's `measure` path on hardware with a real
   signal: until then every L1/L2 sink had been the scope.
+- **Run 2026-10-19 (session 24), the staircase recorded on the input (ADR 0069): passes.** L2-4's shape with
+  the OPX's own input as the scope: `V` on the cabled channel triggered through `dac_trigger`, the shot one
+  `capture(sensor, 20 µs, 200)`, no scope armed; the plane fit over the (V, time) map gives `slope_row`
+  0.4984 ± 0.0000 V/V, `slope_col` −1.5 ± 3.8 V/s (flat in time), offset +3.5 mV, r² 0.99999; the five
+  records in under 2 s. The raw ADC path of the sequence program (a readout pulse of the window's length
+  on the input element) is thereby proven on hardware beside the integration path.
 
 ### To fill in before Step 5 builds the L2 suite (human)
 - **Bias tee model:** low-frequency cutoff, DC-port resistance, insertion loss, and maximum DC

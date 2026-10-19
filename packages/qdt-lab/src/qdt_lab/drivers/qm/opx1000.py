@@ -19,9 +19,11 @@ Sequencer programs (backend "qua"):
   sequence vocabulary means (ADR 0018); ops are serialised in time with `align()`; every channel returns
   to 0 at the end of a shot. `measure` integrates its input over the op's duration; `difference` and
   `mean`/`sum` reductions are applied to the per-shot values as they are fetched (ADR 0037's per-shot
-  semantics). `drive` is not supported on an LF-FEM (ValueError at compile). A `capture` plays the
-  scope's marker (if the body names a line for it; otherwise the scope triggers itself, ADR 0063)
-  and the shot waits out the window. A triggered axis (body `triggered`) is the outermost loop: a
+  semantics). `drive` is not supported on an LF-FEM (ValueError at compile). A `capture` on a scope
+  plays the scope's marker (if the body names a line for it; otherwise the scope triggers itself,
+  ADR 0063) and the shot waits out the window; a `capture` on one of our own inputs (ADR 0069) is a
+  readout pulse of the window's length on that input saving its raw ADC trace per shot, which the
+  host scales to volts and lays on the declared grid. A triggered axis (body `triggered`) is the outermost loop: a
   marker on each of its lines, a wait of the settle, then the inner loops.
 - the conformance program (`{"kind": "flat_index"}`): Probe 01's flat loop index.
 
@@ -165,6 +167,11 @@ class Opx1000:
         """The vendor id for `channel`, which may be a declared logical name (the compiler hands the
         driver sequences in the stand's logical names) or already a vendor id."""
         return self._logical.get(channel, channel)
+
+    def _is_mine(self, channel: str) -> bool:
+        """Whether `channel` (a vendor id after `_vendor_channels`) is a port of this OPX; a scope's
+        channel on another instrument is not."""
+        return channel in self._ports or _PORT.match(channel.lower()) is not None
 
     def _known(self, channel: str, kind: str) -> _Port:
         channel = self._vendor(channel)
@@ -383,14 +390,18 @@ class Opx1000:
             sequence = PulseSequence.model_validate(
                 _vendor_channels(body["sequence"], self._logical)
             )
-            scopes = {op.channel for op in sequence.expand() if op.op == "capture"}
+            ops = sequence.expand()
+            # a capture on one of our inputs is ours to record (ADR 0069); any other capture channel
+            # is a scope on another instrument, whose marker line is ours
+            own = {op.channel for op in ops if op.op == "capture" and self._is_mine(op.channel)}
+            scopes = {op.channel for op in ops if op.op == "capture"} - own
             for ch in sequence.channels():
-                if ch in scopes:  # the scope is another instrument's; its marker line is ours
+                if ch in scopes:
                     continue
                 self._known(
                     ch,
                     "ai"
-                    if any(op.op == "measure" and op.channel == ch for op in sequence.expand())
+                    if any(op.op in ("measure", "capture") and op.channel == ch for op in ops)
                     else "ao",
                 )
             body = dict(body)
@@ -406,11 +417,17 @@ class Opx1000:
                 ]
                 for line in body["triggered"]["lines"]:
                     self._known(line, "do")
-            lengths = {
-                _cycles_ns(op.duration, "measure") for op in sequence.expand() if op.op == "measure"
+            lengths = {_cycles_ns(op.duration, "measure") for op in ops if op.op == "measure"} | {
+                _window_ns(op.duration) for op in ops if op.op == "capture" and op.channel in own
             }
             qm = self._ensure(lengths)
-            prog, plan = sequence_program(program, sequence, body, self.amplitude_ref)
+            prog, plan = sequence_program(
+                program,
+                sequence,
+                body,
+                self.amplitude_ref,
+                own={ch: self._ports[ch].port for ch in own},
+            )
         else:
             raise ValueError('a \'qua\' program body is an emitted stage or {"kind": "flat_index"}')
         return CompiledQuaProgram(program, qm.compile(prog), self._epoch, plan | {"qua": prog})
@@ -464,6 +481,33 @@ def _cycles_ns(duration, what: str) -> int:
             f"{what}: {d} ns must be a multiple of {CLOCK_NS} ns and >= {MIN_PULSE_NS} ns"
         )
     return d
+
+
+def _window_ns(duration) -> int:
+    """A capture window in ns, rounded up to the OPX clock and at least one minimum pulse: the readout
+    pulse that records one of our own inputs (ADR 0069), or the wait that holds the shot for a scope's
+    window (ADR 0063)."""
+    return max(MIN_PULSE_NS, math.ceil(int(duration) / CLOCK_NS) * CLOCK_NS)
+
+
+def _adc_stream(qua):
+    """A stream of raw ADC traces, declared the way this qm-qua version spells it."""
+    return (
+        qua.declare_output_stream(adc_trace=True)
+        if _takes_adc_flag(qua)
+        else qua.declare_stream(adc_trace=True)
+    )
+
+
+def _measure_adc(qua, pulse: str, element: str, stream) -> None:
+    """A measurement whose raw ADC trace goes to `stream`, spelled as this qm-qua version wants it
+    (`adc_stream=` from 1.2.2; positional before)."""
+    import inspect
+
+    if "adc_stream" in inspect.signature(qua.measure).parameters:
+        qua.measure(pulse, element, adc_stream=stream)
+    else:
+        qua.measure(pulse, element, stream)
 
 
 # --- QUA program builders (pure: need qm-qua, not a server) --------------------------------------
@@ -525,12 +569,19 @@ def _vendor_channels(sequence: object, logical: Mapping[str, str]) -> object:
     return sequence
 
 
-def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: dict, a_ref: float):
+def sequence_program(
+    program: SequencerProgram,
+    sequence: PulseSequence,
+    body: dict,
+    a_ref: float,
+    own: Mapping[str, int] = (),
+):
     """An emitted stage as one QUA program with its parameters in an int input stream.
 
     Loops: stage axes (outer → inner), then shots. Per shot: the expanded sequence, every op aligned
     after the previous one; sticky levels tracked per channel so a step plays the change; all channels
-    back to 0 at the end of the shot. Each measure saves its raw integrated value per shot to a stream;
+    back to 0 at the end of the shot. Each measure saves its raw integrated value per shot to a stream,
+    each capture on one of our own inputs (`own`: channel → input port, ADR 0069) its raw ADC trace;
     the host converts, differences and reduces (see `_RunSource`)."""
     from qm import qua
 
@@ -541,14 +592,14 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
     lines: dict = body.get("lines", {})  # a shot capture's scope channel -> its marker line
     triggered: dict | None = body.get("triggered")  # ADR 0064: the axis the markers advance
     ops = sequence.expand()
-    scopes = {o.channel for o in ops if o.op == "capture"}
-    outputs = [
-        ch
-        for ch in sequence.channels()
-        if ch not in scopes and not any(o.op == "measure" and o.channel == ch for o in ops)
-    ]
+    own = dict(own)
+    records = [o for o in ops if o.op == "capture" and o.channel in own]
+    scopes = {o.channel for o in ops if o.op == "capture" and o.channel not in own}
+    inputs = {o.channel for o in ops if o.op == "measure"} | {o.channel for o in records}
+    outputs = [ch for ch in sequence.channels() if ch not in scopes and ch not in inputs]
+    time_axes = {f"n_{o.result}" for o in records}  # a record's own axis is no loop
     axes = [
-        p.name for p in program.parameters if p.name.startswith("n_")
+        p.name for p in program.parameters if p.name.startswith("n_") and p.name not in time_axes
     ]  # n_<axis>, outer → inner
     measures = [o for o in ops if o.op == "measure"]
     if any(o.op == "drive" for o in ops):
@@ -566,6 +617,7 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
         sym = {name: qua.declare(qua.fixed) for name in symbols if units[name] != "ns"}
         integ = {o.result: qua.declare(qua.fixed) for o in measures}
         streams = {o.result: qua.declare_output_stream() for o in measures}
+        adc = {o.result: _adc_stream(qua) for o in records}
 
         every = [
             _element(ch) for ch in sequence.channels() if ch not in scopes
@@ -620,14 +672,21 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
                         qua.assign(level[op.channel], target)
                 elif op.op == "wait":
                     qua.wait(duration_cycles(op.duration), *every)
+                elif op.op == "capture" and op.channel in own:
+                    # ADR 0069: our own input records the window as a raw ADC trace, one per shot
+                    _measure_adc(
+                        qua,
+                        f"readout_{_window_ns(op.duration)}",
+                        _element(op.channel),
+                        adc[op.result],
+                    )
                 elif op.op == "capture":
                     # ADR 0063: the marker triggers the scope here; the shot waits out the window
                     # (rounded up to the clock; the window itself is the scope's)
                     line = lines.get(op.channel)
                     if line is not None:
                         qua.play("marker", _trigger_element(line))
-                    cycles = max(MIN_PULSE_NS, math.ceil(int(op.duration) / CLOCK_NS) * CLOCK_NS)
-                    qua.wait(cycles // CLOCK_NS, *every)
+                    qua.wait(_window_ns(op.duration) // CLOCK_NS, *every)
                 elif op.op == "measure":
                     d = _cycles_ns(op.duration, "measure")
                     qua.measure(
@@ -680,9 +739,16 @@ def sequence_program(program: SequencerProgram, sequence: PulseSequence, body: d
         with qua.stream_processing():
             for r, st in streams.items():
                 st.save_all(r)
+            for o in records:
+                trace = adc[o.result]
+                (trace.input1() if own[o.channel] == 1 else trace.input2()).save_all(o.result)
     plan = {
         "kind": "sequence",
         "measures": {o.result: _cycles_ns(o.duration, "measure") for o in measures},
+        "captures": {
+            o.result: {"window": _window_ns(o.duration), "num": o.num, "duration": int(o.duration)}
+            for o in records
+        },
         "differences": [(o.result, o.a, o.b) for o in ops if o.op == "difference"],
         "reduce": dict(body.get("reduce", {})),
     }
@@ -711,16 +777,24 @@ class _RunSource:
         dataset: Dataset,
     ):
         self._opx, self._compiled, self._params, self.dataset = opx, compiled, parameters, dataset
+        self._time_axes = {f"n_{r}" for r in compiled.plan.get("captures", {})}
 
     def _axes(self, dims: tuple[str, ...]) -> list[int]:
-        """The sizes of a result's program axes (its dims without the kept `shots`)."""
-        return [self._params[d] for d in dims if d != "shots"]
+        """The sizes of a result's program axes (its dims without the kept `shots` and without a
+        record's own time axis)."""
+        return [self._params[d] for d in dims if d != "shots" and d not in self._time_axes]
+
+    def _streams(self) -> list[str]:
+        """The result streams a sequence program saves: the measures and the records."""
+        plan = self._compiled.plan
+        return [*plan["measures"], *plan.get("captures", {})]
 
     def results(
         self, fetched: Mapping[str, np.ndarray], rows: int | None = None
     ) -> dict[str, np.ndarray]:
         """Fetched per-shot values → declared result arrays (pure; used by tests with fake fetches). With
-        `rows`, the fetch holds only that many slabs of the first program axis, and so does the result."""
+        `rows`, the fetch holds only that many slabs of the first program axis, and so does the result.
+        A record (ADR 0069) is raw ADC samples per shot: scaled to volts and laid on the declared grid."""
         program, plan = self._compiled.program, self._compiled.plan
         if plan["kind"] == "flat_index":
             shape = program.result_shape("data", self._params)
@@ -732,11 +806,25 @@ class _RunSource:
         }
         for r, a, b in plan["differences"]:
             per_shot[r] = per_shot[a] - per_shot[b]
+        captures = plan.get("captures", {})
         out = {}
         for res in program.results:
             dims = self._axes(res.dims)
             if rows is not None and dims:
                 dims[0] = rows
+            if res.name in captures:
+                c = captures[res.name]
+                raw = _flat(fetched[res.name]).astype(np.float64).reshape(-1, c["window"])
+                raw *= RAW_ADC_TO_VOLTS
+                t = np.arange(c["window"]) / SAMPLE_RATE
+                grid = np.linspace(
+                    0.0, c["duration"] * 1e-9, c["num"]
+                )  # from the capture (ADR 0060)
+                values = np.stack([np.interp(grid, t, rec) for rec in raw]).reshape(
+                    *dims, shots, c["num"]
+                )
+                out[res.name] = (values if shots > 1 else values[..., 0, :]).astype(res.dtype)
+                continue
             values = per_shot[res.name].reshape(*dims, shots)
             how = plan["reduce"].get(res.name, "keep")
             if how == "mean":
@@ -757,13 +845,14 @@ class _RunSource:
         axes = self._axes(results[0].dims) if results else []  # every result is over the same axes
         if plan["kind"] == "flat_index" or len(axes) < 2:
             handles.wait_for_all_values()
-            names = ["data"] if plan["kind"] == "flat_index" else list(plan["measures"])
+            names = ["data"] if plan["kind"] == "flat_index" else self._streams()
             fetched = {r: handles.get(r).fetch_all() for r in names}
             yield from self._frames(self.results(fetched), start=0, rows=None, seq=0, last=True)
             return
         # ADR 0015: one slab of the first program axis per frame, as soon as every stream holds it
+        # (a record stream holds one item per shot, as a measure's does)
         rows, per_row = axes[0], math.prod(axes[1:]) * int(self._params.get("shots", 1))
-        streams = {r: handles.get(r) for r in plan["measures"]}
+        streams = {r: handles.get(r) for r in self._streams()}
         seq = 0
         for row in range(rows):
             want = (row + 1) * per_row
@@ -840,13 +929,9 @@ class _RecordSource:
         p = self._opx._ports[self._channel]
         with qua.program() as prog:
             k = qua.declare(int)
-            adc = (
-                qua.declare_output_stream(adc_trace=True)
-                if _takes_adc_flag(qua)
-                else qua.declare_stream(adc_trace=True)
-            )
+            adc = _adc_stream(qua)
             with qua.for_(k, 0, k < self._n_records, k + 1):
-                qua.measure(f"readout_{self._window}", el, adc)
+                _measure_adc(qua, f"readout_{self._window}", el, adc)
                 qua.wait(250)
             with qua.stream_processing():
                 (adc.input1() if p.port == 1 else adc.input2()).save_all("adc")

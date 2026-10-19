@@ -686,24 +686,71 @@ def test_a_shot_capture_at_every_stepped_point_with_one_shot_has_no_shot_dimensi
     assert out["trace"].shape == (3, 200) and not np.isnan(out["trace"].values).any()
 
 
-def test_a_shot_capture_on_the_sequencers_own_input_is_refused_for_now():
-    stand = pulsed_scope_stand().model_copy(
+def own_input_stand() -> StandConfig:
+    """The sequencer's own input as the shot capture's channel (ADR 0069): no scope on the stand, the
+    DAC wired to the sequencer's marker line as `paced_stand` has it."""
+    base = paced_stand()
+    return base.model_copy(
         update={
-            "instruments": (
-                InstrumentConfig(id="dac", backend="simulated", capabilities=("level_source",)),
-                InstrumentConfig(
-                    id="seq", backend="simulated", capabilities=("sequencer", "waveform_sense")
-                ),
-            ),
-            "channels": (
-                ChannelMap(logical="V", instrument="dac", channel="ch00", quantity="voltage"),
-                ChannelMap(logical="rf", instrument="seq", channel="ao1", quantity="voltage"),
-                ChannelMap(logical="scope1", instrument="seq", channel="ai1", quantity="voltage"),
+            "instruments": tuple(i for i in base.instruments if i.id != "scope"),
+            "channels": tuple(
+                ChannelMap(logical="scope1", instrument="seq", channel="ai2", quantity="voltage")
+                if c.logical == "scope1"
+                else c
+                for c in base.channels
             ),
         }
     )
-    with pytest.raises(ValueError, match="sequencer's own input"):
-        compile_sweep(step_response(), stand, {"simulated": SimulatedEmitter()})
+
+
+def test_a_shot_capture_on_the_sequencers_own_input_is_a_program_result_with_a_time_axis():
+    """ADR 0069: the sequencer records its own input. The capture is a result over the shots and its
+    own time axis (`n_trace` = num, a constant); the Dataset's variable is the (shot, time) one a
+    scope's capture gives; the channel's role is the sequencer's; nothing is armed."""
+    plan = compile_sweep(step_response(shots=3), own_input_stand(), EMITTERS)
+    program = plan.stage_program
+    assert [(r.name, r.dims, r.unit) for r in program.results] == [
+        ("trace", ("shots", "n_trace"), "V")
+    ]
+    assert {b.parameter: b.value for b in plan.stage_parameters if b.source == "const"} == {
+        "shots": 3,
+        "n_trace": 200,
+    }
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [("shot", 3), ("time", 200)]
+    assert [(v.name, v.dims, v.unit) for v in plan.dataset.data_vars] == [
+        ("trace", ("shot", "time"), "V")
+    ]
+    assert {(c.logical, c.role) for c in plan.channels} == {
+        ("rf", "sequencer"),
+        ("scope1", "sequencer"),
+    }
+    frames = list(Executor(plan, {"seq": SimulatedSequencer()}).run().frames())
+    assert [f.chunk.variables for f in frames] == [("trace",)] * 3
+    assert [(s.dim, s.start, s.stop) for s in frames[1].chunk.region] == [
+        ("shot", 1, 2),
+        ("time", 0, 200),
+    ]
+    out = assemble(plan.dataset, frames)
+    np.testing.assert_array_equal(out["trace"].values, np.arange(600.0).reshape(3, 200))
+
+
+def test_a_shot_capture_on_the_sequencers_input_over_a_triggered_axis_lands_at_each_point():
+    """The fast form: the DAC advanced by the sequencer's marker, the input recorded at each point,
+    the record's first program axis the triggered one, laid at the stepped points as any result."""
+    plan = compile_sweep(paced_definition(capture=True), own_input_stand(), EMITTERS)
+    assert plan.pacing_of("V").pacing == "triggered"
+    assert [r.dims for r in plan.stage_program.results] == [("n_V", "n_trace")]
+    assert [(v.name, v.dims) for v in plan.dataset.data_vars] == [("trace", ("V", "time"))]
+    dac = SimulatedLevelSource()
+    seq = TriggeringSequencer(dac, num=3)
+    frames = list(Executor(plan, {"dac": dac, "seq": seq}).run().frames())
+    assert seq.markers == 3
+    assert len(frames) == 3  # one slab of the triggered axis per frame
+    assert [(s.dim, s.start, s.stop) for s in frames[2].chunk.region] == [
+        ("V", 2, 3),
+        ("time", 0, 50),
+    ]
+    assert assemble(plan.dataset, frames)["trace"].shape == (3, 50)
 
 
 # --- the sequencer paces the scan: a triggered stepped axis (ADR 0064) ------------------------------
@@ -1171,5 +1218,7 @@ def test_a_sequencers_input_is_read_in_the_shot_and_never_sensed_per_point():
         axes=axes,
         sensed=(SensedLevel(name="V_sensor", channel="sensor"),),
     )
-    with pytest.raises(ValueError, match=r"instrument 'seq' \('sensor'\) lacks capability 'level_sense'"):
+    with pytest.raises(
+        ValueError, match=r"instrument 'seq' \('sensor'\) lacks capability 'level_sense'"
+    ):
         compile_sweep(per_point, stand(), EMITTERS)

@@ -444,3 +444,103 @@ def test_a_stage_with_no_axis_runs_over_the_one_point_axis_on_the_opx():
     raw = np.array([1.0, 2.0, 3.0, 6.0]) * 1000 / opx1000.INTEGRATION_TO_VOLTS
     out = _RunSource(opx, compiled, params, None).results({"I": raw})
     np.testing.assert_allclose(out["I"], [3.0])
+
+
+# --- a capture on the OPX's own input (ADR 0069) --------------------------------------------------------
+
+
+class _RecordStream(_Stream):
+    """An ADC-trace stream: one record (a row of `values`) per saved item."""
+
+    def count_so_far(self):
+        self.available = min(len(self.values), self.available + self.feed)
+        return self.available
+
+    def fetch(self, item):
+        self.fetches.append((item.start, item.stop))
+        return self.values[item]
+
+
+def own_capture_program() -> SequencerProgram:
+    """A step on the pulse line and a record of our own input, over a triggered axis, two shots."""
+    from qdt_lab.experiment import TriggeredStep
+    from qdt_schemas.pulse import Capture
+
+    seq = PulseSequence(
+        name="step and record",
+        body=(
+            Step(channel="P2_pulse", level=0.1, duration=200),
+            Capture(channel="sensor", duration=1000, num=50, result="trace"),
+        ),
+    )
+    stage = SequencerStage(instrument="opx", sequence=seq, shots=2)
+    axes = {
+        "V": SweepAxis(name="V", channel="P1", start=0.0, stop=1.0, num=4, stepping="triggered")
+    }
+    program, _ = QuaEmitter().emit(
+        stage,
+        axes,
+        {c.logical: c for c in LINED},
+        triggered=TriggeredStep(axis="V", lines=("dac_trigger",), settle_ns=0),
+    )
+    return program
+
+
+def test_a_capture_on_the_opxs_own_input_is_a_raw_adc_record_per_shot(monkeypatch):
+    """ADR 0069: the window is a readout pulse on the input element saving the raw ADC trace per
+    shot; no scope marker plays; the host scales the samples to volts and lays them on the declared
+    grid, one frame over (V, shot, time) when the run is done."""
+    from datetime import UTC, datetime
+
+    from qdt_schemas.data import Dataset, DataVariable, Dimension, SourceDescriptor
+
+    opx = Opx1000(_FakeQMM(), LINED)
+    program = own_capture_program()
+    assert [r.dims for r in program.results] == [("n_V", "shots", "n_trace")]
+    compiled = opx.compile(program)
+    assert compiled.plan["captures"] == {"trace": {"window": 1000, "num": 50, "duration": 1000}}
+    config = opx._qm.config
+    assert config["elements"]["el_ai1"]["outputs"]["out1"] == ("con1", 1, 1)
+    assert "readout_1000" in config["pulses"]
+    script = qm.generate_qua_script(compiled.plan["qua"], config)  # validates program + config
+    assert "measure('readout_1000', 'el_ai1'" in script
+    assert script.count("play('marker', 'trig_do2')") == 1  # the axis is triggered
+    assert "play('marker', 'trig_do1')" not in script  # nothing triggers a scope
+    params = {p.name: 0 for p in program.parameters} | {"n_V": 4, "shots": 2, "n_trace": 50}
+    raw = np.tile(np.arange(1000.0), 8).reshape(8, 1000)
+    raw[5] *= 2  # point 2, shot 1
+    out = _RunSource(opx, compiled, params, None).results({"trace": raw})
+    assert out["trace"].shape == (4, 2, 50)
+    t = np.arange(1000) / opx1000.SAMPLE_RATE
+    grid = np.linspace(0.0, 1e-6, 50)
+    volts = np.arange(1000.0) * opx1000.RAW_ADC_TO_VOLTS
+    np.testing.assert_allclose(out["trace"][2, 1], np.interp(grid, t, 2 * volts))
+    np.testing.assert_allclose(out["trace"][0, 0], np.interp(grid, t, volts))
+    streams = {"trace": _RecordStream(raw, feed=8)}
+    monkeypatch.setattr(
+        opx,
+        "_submit",
+        lambda compiled, values: type("J", (), {"result_handles": _Handles(streams)})(),
+    )
+    slab = Dataset(
+        dataset_id="d",
+        name="d",
+        dims=(
+            Dimension(name="V", size=4),
+            Dimension(name="shot", size=2),
+            Dimension(name="time", size=50),
+        ),
+        data_vars=(
+            DataVariable(name="trace", dims=("V", "shot", "time"), unit="V", dtype="float64"),
+        ),
+        source=SourceDescriptor(kind="live", label="d"),
+        created_at=datetime(2026, 10, 19, tzinfo=UTC),
+    )
+    frames = list(_RunSource(opx, compiled, params, slab).frames())
+    assert len(frames) == 1 and frames[0].chunk.final
+    assert [(s.dim, s.start, s.stop) for s in frames[0].chunk.region] == [
+        ("V", 0, 4),
+        ("shot", 0, 2),
+        ("time", 0, 50),
+    ]
+    np.testing.assert_allclose(frames[0].arrays["trace"], out["trace"])

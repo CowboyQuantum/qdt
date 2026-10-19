@@ -101,7 +101,9 @@ class SimulatedEmitter:
     axes, or `n_once` = 1 when there is none and a result would have no axis (ADR 0068); per symbol bound to a program axis `<sym>_start` and `<sym>_step` (axis_start / axis_step);
     per symbol bound to a software-stepped axis `<sym>` (axis_value); per constant symbol `<sym>`
     (const); `shots` (const). Results: one per `measure` and per `difference` (ADR 0037), float64, in
-    the sense channel's quantity unit, dims = program axes (+ `shots` when kept and shots > 1). Affine
+    the sense channel's quantity unit, dims = program axes (+ `shots` when kept and shots > 1); one per
+    `capture` on the sequencer's own input (ADR 0069), dims = program axes (+ `shots` when shots > 1)
+    + `n_<result>`, its time axis, a constant parameter equal to the capture's `num`. Affine
     values travel inside the sequence; the device applies them. The body carries `triggered` (the
     axis, its marker lines, the settle in ns; ADR 0064) and `lines` (capture channel → marker line;
     ADR 0063) when the stage has them.
@@ -166,6 +168,28 @@ class SimulatedEmitter:
 
         results = []
         for op in seq.expand():
+            if op.op == "capture":
+                # ADR 0069: a capture on the sequencer's own input is the program's result, over the
+                # program axes, every shot (a record is never reduced) and its own time axis
+                # `n_<result>` (= num, a constant); a scope's capture is the executor's (ADR 0060)
+                own = op.channel in channels and channels[op.channel].instrument == stage.instrument
+                if not own:
+                    continue
+                axis = f"n_{op.result}"
+                params.append(SequencerParameter(name=axis, unit="", scale=1.0))
+                bindings.append(ParameterBinding(parameter=axis, source="const", value=op.num))
+                dims = tuple(f"n_{a}" for a in program_axes)
+                if stage.shots > 1:
+                    dims = (*dims, "shots")
+                results.append(
+                    SequencerResult(
+                        name=op.result,
+                        dims=(*dims, axis),
+                        dtype="float64",
+                        unit=QUANTITY_UNIT[channels[op.channel].quantity],
+                    )
+                )
+                continue
             if op.op == "difference":
                 qa, qb = (channels[seq.result_channel(x)].quantity for x in (op.a, op.b))
                 if qa != qb:

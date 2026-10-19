@@ -257,3 +257,65 @@ def test_a_host_stepped_axis_read_in_a_one_measure_shot_is_the_model_at_each_poi
     v = np.zeros((7, 3))
     v[:, 0] = np.linspace(-0.02, 0.04, 7)
     np.testing.assert_allclose(out["I"].values, quiet().model.current(v), rtol=1e-12)
+
+
+def test_a_capture_on_the_devices_own_sensor_records_the_model_over_the_window():
+    """ADR 0069: the device is its own scope. A capture on the sensor channel inside the shot is the
+    sensor current at the shot's levels, `num` samples over the window, one record per shot; over a
+    triggered DC axis the records lie at the stepped points, and the plan needs no scope at all."""
+    from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition
+    from qdt_schemas.pulse import Capture, PulseSequence, Step
+
+    definition = SweepDefinition(
+        name="record the sensor",
+        axes=(SweepAxis(name="P1", channel="P1", start=-0.02, stop=0.04, num=4),),
+        stage=SequencerStage(
+            instrument=DEVICE_ID,
+            sequence=PulseSequence(
+                name="step and record",
+                body=(
+                    Step(channel="P2_pulse", level=0.01, duration=200),
+                    Capture(channel="sensor", duration=2000, num=8, result="trace"),
+                ),
+            ),
+            shots=2,
+        ),
+    )
+    plan, out = run(definition, quiet())
+    assert plan.pacing_of("P1").pacing == "triggered"  # the device triggers itself (ADR 0066)
+    assert [r.dims for r in plan.stage_program.results] == [("n_P1", "shots", "n_trace")]
+    assert {(c.logical, c.role) for c in plan.channels} == {
+        ("P1", "triggered_level_source"),
+        ("P2_pulse", "sequencer"),
+        ("sensor", "sequencer"),
+    }
+    assert out["trace"].dims == ("P1", "shot", "time") and out["trace"].shape == (4, 2, 8)
+    v = np.zeros((4, 3))
+    v[:, 0] = np.linspace(-0.02, 0.04, 4)
+    v[:, 1] = 0.01  # the pulse adds to P2's DC level, 0
+    expected = quiet().model.current(v)
+    np.testing.assert_allclose(
+        out["trace"].values, np.broadcast_to(expected[:, None, None], (4, 2, 8)), rtol=1e-12
+    )
+    with pytest.raises(ValueError, match="capture on 'P1', which is not the sensor"):
+        quiet().compile(
+            compile_sweep(
+                definition.model_copy(
+                    update={
+                        "stage": definition.stage.model_copy(
+                            update={
+                                "sequence": PulseSequence(
+                                    name="wrong",
+                                    body=(
+                                        Capture(channel="P1", duration=2000, num=8, result="trace"),
+                                    ),
+                                )
+                            }
+                        ),
+                        "axes": (SweepAxis(name="P2", channel="P2", start=0.0, stop=0.1, num=2),),
+                    }
+                ),
+                default_stand(),
+                EMITTERS,
+            ).stage_program
+        )
