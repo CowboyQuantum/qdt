@@ -7,8 +7,10 @@ line per frame; stage frames and capture frames are re-keyed into the full index
 arms its `WaveformSense` on a (record, time) slab per stepped point and passes every record it yields
 (ADR 0047). A shot capture (ADR 0060) arms its scope for one record per shot before the stage runs,
 drains it on a thread while the shots play (a real scope acquires only while its `frames()` is being
-read), and re-keys each record to its shot after; a capture on the sequencer's own input (ADR 0069)
-arms nothing, the program's frames carry it. A triggered axis (ADR 0064) is loaded as a list on
+read), and re-keys each record to its shot after; every shot capture is armed before any is drained,
+so a scope takes the channels armed together in one acquisition (ADR 0070); a capture on the
+sequencer's own input (ADR 0069) arms nothing, the program's frames carry it. A triggered axis (ADR
+0064) is loaded as a list on
 its `TriggeredLevelSource` before each program run and advanced by the sequencer's marker; the
 executor releases the lists when the plan ends. The executor holds no data and never averages
 (ADR 0018).
@@ -245,15 +247,19 @@ class Executor:
                         sequencer = self._backends[definition.stage.instrument]
                         # ADR 0060: every shot capture's scope is armed before the shots run, one
                         # record per shot (per point of a triggered axis), drained on a thread while
-                        # they play; its frames are re-keyed record → (point,) shot after
-                        drains = []
+                        # they play; its frames are re-keyed record → (point,) shot after. Every
+                        # capture is armed before any drain starts, so channels armed together on
+                        # one scope share its acquisition (ADR 0070)
+                        armed = []
                         for c in definition.stage.captures():
                             ch = plan.channel(c.channel)
                             if ch.instrument == definition.stage.instrument:
                                 continue  # ADR 0069: the sequencer records its own input as a result
                             slab = shot_capture_slab(plan, c)
-                            source = self._backends[ch.instrument].arm(ch.channel, slab, c.result)
-                            drains.append((c, _Drain(source)))
+                            armed.append(
+                                (c, self._backends[ch.instrument].arm(ch.channel, slab, c.result))
+                            )
+                        drains = [(c, _Drain(source)) for c, source in armed]
                         if drains:
                             self._sleep(CAPTURE_ARM_GRACE_S)
                         for f in sequencer.run(self._compiled, params, self._slab).frames():

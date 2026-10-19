@@ -31,6 +31,12 @@ point mode (bench, 2026-10-19), so on it the segments are read one by one. Wheth
 transfer is `bench/test_scope_segments.py`'s to show; until it has run on the bench, the per-segment
 reads are what Probe 05 measured.
 
+Channels armed together, before any of them reads its frames, share **one acquisition** (ADR 0070):
+the first source to read sends the `:SINGle` and waits for it, the others wait for that, and each then
+reads its own channel (`:WAVeform:SOURce` is set before every read; the reads of the drain threads are
+serialised on the transport). Several records through one `:SINGle` each (an instrument without
+segmented memory) serve one channel only; a second one is refused at `arm`.
+
 A record is converted to volts with the preamble and resampled onto the declared `LinearCoordinate`
 (`np.interp`): the producer aligns, never the consumer (ADR 0015). A declared grid reaching more than
 one sample interval outside the captured span raises. `settings["acquire_timeout_s"]` (default 600)
@@ -38,6 +44,7 @@ bounds a wait for triggers that never come.
 """
 
 import re
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -108,6 +115,8 @@ class InfiniiVisionX:
         self.max_records = max_records
         self.external_trigger_level_v = external_trigger_level_v
         self.acquire_timeout_s = acquire_timeout_s
+        self._lock = threading.RLock()  # the drains of one acquisition read on their own threads
+        self._group: _Acquisition | None = None  # the channels armed together, until one reads
         self.segments_in_one_transfer: bool | None = None
         """Whether segments are read in one transfer: None until the first segmented readout tries."""
         self._logical: dict[str, int] = {}
@@ -198,6 +207,23 @@ class InfiniiVisionX:
             segmented = t.query(":ACQuire:MODE?").strip().upper().startswith("SEGM")
         if not segmented:
             t.write(":ACQuire:MODE RTIMe")
+        # ADR 0070: channels armed together, before any of them reads, share one acquisition
+        window = (start, stop, n_records)
+        group = self._group
+        if group is None or group.started:
+            group = self._group = _Acquisition(window)
+        elif group.window != window:
+            raise ValueError(
+                f"channel {channel!r} is armed over {window} while channel(s) {group.channels} wait "
+                f"for their acquisition over {group.window}: channels captured together share one window"
+            )
+        elif n_records > 1 and not segmented:
+            raise ValueError(
+                f"channel {channel!r} cannot join the acquisition of channel(s) {group.channels}: "
+                f"{n_records} records through one `:SINGle` each serve one channel; segmented memory "
+                "(or one record) serves several"
+            )
+        group.channels.append(n)
         times = np.linspace(start, stop, num)
         return _ScopeRecordSource(
             self,
@@ -212,6 +238,7 @@ class InfiniiVisionX:
             segmented=segmented,
             timeout_s=self.acquire_timeout_s,
             auto=auto,
+            group=group,
         )
 
     def close(self) -> None:
@@ -237,6 +264,39 @@ def _error_code(reply: str) -> int:
     return int(reply.split(",", 1)[0])
 
 
+class _Acquisition:
+    """One acquisition shared by the channels of a scope armed together (ADR 0070): the first source
+    to read runs it, the others wait for it, then each reads its own channel."""
+
+    def __init__(self, window: tuple[float, float, int]) -> None:
+        self.window = window
+        self.channels: list[int] = []
+        self.started = False
+        self._done = threading.Event()
+        self._error: BaseException | None = None
+        self._lock = threading.Lock()
+
+    def run(self, acquire, timeout_s: float) -> None:
+        with self._lock:
+            if not self.started:
+                self.started = True
+                try:
+                    acquire()
+                except BaseException as e:
+                    self._error = e
+                    raise
+                finally:
+                    self._done.set()
+        if not self._done.wait(timeout_s):
+            raise TimeoutError(
+                "the acquisition shared by the channels armed together did not finish"
+            )
+        if self._error is not None:
+            raise RuntimeError(
+                f"the acquisition shared by channels {self.channels} failed: {self._error}"
+            ) from self._error
+
+
 class _ScopeRecordSource:
     """The `Source` an `InfiniiVisionX.arm` returns: one `:SINGle` for every record (segmented) or
     per record, each waited for by polling the run state, never by a blocking `:DIGitize`; segments
@@ -257,12 +317,14 @@ class _ScopeRecordSource:
         segmented: bool = False,
         timeout_s: float = ACQUIRE_TIMEOUT_S,
         auto: bool = False,
+        group: "_Acquisition | None" = None,
     ) -> None:
         self._scope, self._t, self._n = scope, scope._t, channel
         self.dataset, self._variable, self._dtype = dataset, variable, dtype
         self._record_dim, self._time_dim, self._n_records = record_dim, time_dim, n_records
         self._times = times
         self._segmented, self._timeout_s, self._auto = segmented, timeout_s, auto
+        self._group = group or _Acquisition((times[0], times[-1], n_records))
 
     def acquire(self) -> None:
         """`:SINGle`, then wait until the scope reports STOP (every segment caught, or the one
@@ -322,9 +384,14 @@ class _ScopeRecordSource:
             )
         return np.interp(self._times, captured, volts)
 
+    def _select(self) -> None:
+        """Read this source's channel: another channel of the same acquisition may have read last."""
+        self._t.write(f":WAVeform:SOURce CHANnel{self._n}")
+
     def record(self, index: int | None = None) -> np.ndarray:
         """Read the acquired record (segment `index`, 1-based, when segmented) in volts on the
         declared time grid."""
+        self._select()
         if index is not None:
             self._t.write(f":ACQuire:SEGMented:INDex {index}")
         pre = self._preamble()
@@ -332,6 +399,7 @@ class _ScopeRecordSource:
 
     def _segment_codes(self, index: int) -> np.ndarray:
         """Raw codes of segment `index` (1-based), read by index."""
+        self._select()
         self._t.write(f":ACQuire:SEGMented:INDex {index}")
         return self._t.query_block(":WAVeform:DATA?", "<i2")
 
@@ -346,6 +414,7 @@ class _ScopeRecordSource:
         scope, t = self._scope, self._t
         if scope.segments_in_one_transfer is False:
             return None
+        self._select()
         pre = self._preamble()  # one segment's: every segment shares its grid
         t.write("*CLS")  # so the next error read is this command's
         t.write(":WAVeform:SEGMented:ALL ON")
@@ -372,17 +441,25 @@ class _ScopeRecordSource:
     def frames(self) -> Iterator[Frame]:
         n = self._times.size
         records = None
-        if self._segmented:
-            self.acquire()
-            records = self.segments()
+        # one `:SINGle` serves every channel armed with this one (ADR 0070) when it holds every
+        # record: segmented, or one record; several records one `:SINGle` each are this channel's alone
+        shared = self._segmented or self._n_records == 1
+        if shared:
+            self._group.run(self.acquire, self._timeout_s + ARM_TIMEOUT_S + 1.0)
+            if self._segmented:
+                with self._scope._lock:
+                    records = self.segments()
         for k in range(self._n_records):
-            if records is not None:
-                values = records[k]
-            elif self._segmented:
-                values = self.record(k + 1)
-            else:
-                self.acquire()
-                values = self.record()
+            with self._scope._lock:
+                if records is not None:
+                    values = records[k]
+                elif self._segmented:
+                    values = self.record(k + 1)
+                elif shared:
+                    values = self.record()
+                else:
+                    self.acquire()
+                    values = self.record()
             yield Frame(
                 DatasetChunk(
                     dataset_id=self.dataset.dataset_id,

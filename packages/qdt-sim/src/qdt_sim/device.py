@@ -14,7 +14,8 @@ As a `Sequencer` it compiles only backend `"simulated"` programs: the body emitt
 with a `triggered` axis (ADR 0064) is the device triggering itself: at each point of that axis every
 list loaded on it (`load`) sits on that point, as a marker line to a DAC would put it. A `capture` on
 the device's own sensor channel (ADR 0069) is the device recording itself: `num` samples of the sensor
-current at the shot's levels over the window, one record per shot.
+current at the shot's levels over the window, one record per shot. Captures that follow each other
+open together (ADR 0070): the clock advances once, by the longest window.
 
 Built from a stand with `SimulatedDevice.from_config` (the ADR 0021 `BackendFactory`): gate channels
 must be declared `voltage`, the sensor `current`, and a sensor channel's `integration_s` is the device
@@ -347,10 +348,42 @@ class _DeviceRun:
             return x
 
         samples: dict[str, list] = {}  # result -> per-shot values, or per-shot records
+
+        def capture_group(group, pulse: dict[str, float]) -> None:
+            """Consecutive captures open together (ADR 0070): the device's own sensor records each
+            window (ADR 0069: `num` samples, one sample interval of clock each), and the clock
+            advances by whatever the longest scope window adds beyond them."""
+            own_s, longest_s = 0.0, 0.0
+            for c in group:
+                window_s = val(c.duration) * 1e-9
+                if c.channel in device.channels:
+                    record = device.read(
+                        device.gate_vector(pulse),
+                        c.num,
+                        window_s / c.num,
+                        device.bias_level(pulse),
+                        overhead_s=0.0,
+                    )
+                    samples.setdefault(c.result, []).append(record)
+                    own_s += window_s
+                else:
+                    longest_s = max(longest_s, window_s)
+            device.clock_s += max(0.0, longest_s - own_s)
+
         for _ in range(self._shots):
             pulse: dict[str, float] = {}
             shot: dict[str, float] = {}
-            for op in ops:
+            i = 0
+            while i < len(ops):
+                op = ops[i]
+                if op.op == "capture":
+                    j = i
+                    while j < len(ops) and ops[j].op == "capture":
+                        j += 1
+                    capture_group(ops[i:j], pulse)
+                    i = j
+                    continue
+                i += 1
                 if op.op == "difference":  # per shot, before any reduction; takes no time
                     shot[op.result] = shot[op.a] - shot[op.b]
                     samples.setdefault(op.result, []).append(shot[op.result])
@@ -361,23 +394,11 @@ class _DeviceRun:
                 elif op.op == "ramp":
                     pulse[op.channel] = val(op.stop)
                 elif op.op == "measure":
-                    i = device.read(
+                    current = device.read(
                         device.gate_vector(pulse), 1, duration_ns * 1e-9, device.bias_level(pulse)
                     )
-                    shot[op.result] = float(i[0])
+                    shot[op.result] = float(current[0])
                     samples.setdefault(op.result, []).append(shot[op.result])
-                    continue
-                elif op.op == "capture" and op.channel in device.channels:
-                    # ADR 0069: the device records its own sensor over the window: `num` samples of
-                    # the current at the shot's levels, each one sample interval of clock
-                    record = device.read(
-                        device.gate_vector(pulse),
-                        op.num,
-                        duration_ns * 1e-9 / op.num,
-                        device.bias_level(pulse),
-                        overhead_s=0.0,
-                    )
-                    samples.setdefault(op.result, []).append(record)
                     continue
                 device.clock_s += duration_ns * 1e-9
         return {k: np.asarray(v) for k, v in samples.items()}

@@ -17,7 +17,9 @@
     {"logical": "smu_v", "instrument": "smu", "channel": "out", "quantity": "voltage"},
     {"logical": "smu_i", "instrument": "smu", "channel": "out_i", "quantity": "current", "integration_s": 0.02},
     {"logical": "scope1", "instrument": "scope0", "channel": "1", "quantity": "voltage"},
+    {"logical": "scope3", "instrument": "scope0", "channel": "3", "quantity": "voltage"},
     {"logical": "P2_pulse", "instrument": "opx", "channel": "ao1", "quantity": "voltage"},
+    {"logical": "P1_pulse", "instrument": "opx", "channel": "ao2", "quantity": "voltage"},
     {"logical": "sensor", "instrument": "opx", "channel": "ai1", "quantity": "voltage"},
     {"logical": "scope_trigger", "instrument": "opx", "channel": "do1", "quantity": "voltage"},
     {"logical": "dac_trigger", "instrument": "opx", "channel": "do2", "quantity": "voltage"}

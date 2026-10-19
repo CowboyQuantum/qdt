@@ -319,3 +319,56 @@ def test_a_capture_on_the_devices_own_sensor_records_the_model_over_the_window()
                 EMITTERS,
             ).stage_program
         )
+
+
+def test_consecutive_scope_captures_advance_the_clock_once_by_the_longest_window():
+    """ADR 0070: two scope channels captured back to back in the shot open together: the device's
+    clock advances by the longest window once per shot, not by the windows in turn."""
+    from qdt_lab.simulated import SimulatedWaveformSense
+    from qdt_schemas.activity import SequencerStage, SweepDefinition
+    from qdt_schemas.pulse import Capture, PulseSequence, Step
+    from qdt_schemas.stand import ChannelMap, InstrumentConfig
+
+    base = default_stand()
+    stand = base.model_copy(
+        update={
+            "instruments": (
+                *base.instruments,
+                InstrumentConfig(id="scope", backend="simulated", capabilities=("waveform_sense",)),
+            ),
+            "channels": (
+                *base.channels,
+                ChannelMap(logical="scope1", instrument="scope", channel="1", quantity="voltage"),
+                ChannelMap(logical="scope3", instrument="scope", channel="3", quantity="voltage"),
+            ),
+        }
+    )
+    definition = SweepDefinition(
+        name="two windows",
+        stage=SequencerStage(
+            instrument=DEVICE_ID,
+            sequence=PulseSequence(
+                name="step and two windows",
+                body=(
+                    Step(channel="P2_pulse", level=0.01, duration=1000),
+                    Capture(channel="scope1", duration=4000, num=40, result="a"),
+                    Capture(channel="scope3", duration=2000, num=20, result="b"),
+                ),
+            ),
+            shots=3,
+        ),
+    )
+    device = quiet()
+    t0 = device.clock_s
+    plan = compile_sweep(definition, stand, EMITTERS)
+    frames = list(
+        Executor(
+            plan,
+            {DEVICE_ID: device, "scope": SimulatedWaveformSense(noise=0.0)},
+            sleep=lambda s: None,
+        )
+        .run()
+        .frames()
+    )
+    assert len(frames) == 6  # three records on each channel
+    assert device.clock_s - t0 == pytest.approx(3 * (1000e-9 + 4000e-9), rel=1e-9)
