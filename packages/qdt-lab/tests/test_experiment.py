@@ -1222,3 +1222,72 @@ def test_a_sequencers_input_is_read_in_the_shot_and_never_sensed_per_point():
         ValueError, match=r"instrument 'seq' \('sensor'\) lacks capability 'level_sense'"
     ):
         compile_sweep(per_point, stand(), EMITTERS)
+
+
+# --- captures that follow each other open together (ADR 0070) ------------------------------------------
+
+
+def two_scope_stand() -> StandConfig:
+    base = pulsed_scope_stand()
+    return base.model_copy(
+        update={
+            "channels": (
+                *base.channels,
+                ChannelMap(logical="rf2", instrument="seq", channel="ao2", quantity="voltage"),
+                ChannelMap(logical="scope3", instrument="scope", channel="3", quantity="voltage"),
+            )
+        }
+    )
+
+
+def test_every_shot_capture_is_armed_before_any_is_drained_and_the_records_share_their_time_axis():
+    """ADR 0070: a scope takes the channels armed together in one acquisition, so the executor arms
+    every shot capture before it starts the first drain; two records with the same grid share `time`."""
+    from qdt_lab.simulated import SimulatedWaveformSense
+
+    class Spy(SimulatedWaveformSense):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.events: list[tuple[str, str]] = []
+
+        def arm(self, channel, dataset, variable):
+            self.events.append(("arm", channel))
+            inner = super().arm(channel, dataset, variable)
+            spy = self
+
+            class Source:
+                dataset = inner.dataset
+
+                def frames(self):
+                    spy.events.append(("read", channel))
+                    yield from inner.frames()
+
+            return Source()
+
+    seq = PulseSequence(
+        name="two lines",
+        body=(
+            Step(channel="rf", level=0.1, duration=1000),
+            Step(channel="rf2", level=0.1, duration=16),
+            Capture(channel="scope1", duration=4000, num=50, result="a"),
+            Capture(channel="scope3", duration=4000, num=50, result="b"),
+        ),
+    )
+    definition = SweepDefinition(
+        name="two lines", stage=SequencerStage(instrument="seq", sequence=seq, shots=2)
+    )
+    plan = compile_sweep(definition, two_scope_stand(), EMITTERS)
+    assert [(d.name, d.size) for d in plan.dataset.dims] == [("shot", 2), ("time", 50)]
+    assert [(v.name, v.dims) for v in plan.dataset.data_vars] == [
+        ("a", ("shot", "time")),
+        ("b", ("shot", "time")),
+    ]
+    scope = Spy(noise=0.0)
+    frames = list(
+        Executor(plan, {"seq": SimulatedSequencer(), "scope": scope}, sleep=lambda s: None)
+        .run()
+        .frames()
+    )
+    assert scope.events[:2] == [("arm", "1"), ("arm", "3")]
+    assert sorted(scope.events[2:]) == [("read", "1"), ("read", "3")]
+    assert sorted(f.chunk.variables for f in frames) == [("a",), ("a",), ("b",), ("b",)]

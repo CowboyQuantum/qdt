@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import numpy as np
+import pytest
 
 from qdt_lab.drivers.keysight.infiniivision import EXT_TRIGGER_LEVEL_V, InfiniiVisionX
 from qdt_lab.drivers.keysight.infiniivision_emulator import InfiniiVisionEmulator, emulated
@@ -156,3 +157,93 @@ def test_a_scope_that_repeats_the_selected_segment_is_caught_and_read_segment_by
     em.log.clear()
     list(scope.arm("ch00", _records(5), "v").frames())
     assert not any(c.startswith(":WAVeform:SEGMented:ALL") for c in em.log)  # not asked again
+
+
+# --- channels armed together share one acquisition (ADR 0070) --------------------------------------------
+
+
+def _two_lines(records: int, name: str, stop: float = 4e-6) -> Dataset:
+    return Dataset(
+        dataset_id=name,
+        name=name,
+        dims=(Dimension(name="record", size=records), Dimension(name="time", size=100)),
+        coords=(
+            LinearCoordinate(name="time", dim="time", unit="s", start=0.0, stop=stop, num=100),
+        ),
+        data_vars=(DataVariable(name=name, dims=("record", "time"), unit="V", dtype="float64"),),
+        source=SourceDescriptor(kind="live", label=name),
+        created_at=datetime(2026, 10, 19, tzinfo=UTC),
+    )
+
+
+TWO = (
+    ChannelMap(logical="scope1", instrument="scope0", channel="1", quantity="voltage"),
+    ChannelMap(logical="scope3", instrument="scope0", channel="3", quantity="voltage"),
+)
+
+
+def _first_line(t, k):
+    return np.where(t >= 0, 0.25, 0.0)
+
+
+def _second_line(t, k):
+    return np.where(t >= 1e-6, 0.25, 0.0)  # the second line's edge, a microsecond later
+
+
+def test_channels_armed_together_share_one_acquisition_and_each_reads_its_own_data():
+    """ADR 0070: two channels armed before either reads are one `:SINGle` (segmented, every record
+    caught once); each record is its channel's signal on the declared grid; a channel armed after the
+    acquisition has started gets an acquisition of its own."""
+    scope = InfiniiVisionX(
+        InfiniiVisionEmulator(signal=_first_line, signals={3: _second_line}), TWO, max_records=8
+    )
+    a = scope.arm("scope1", _two_lines(3, "a"), "a")
+    b = scope.arm("scope3", _two_lines(3, "b"), "b")
+    fa, fb = list(a.frames()), list(b.frames())
+    assert scope._t.singles == 1
+    assert [f.chunk.region[0].start for f in fa] == [0, 1, 2] and len(fb) == 3
+    t = np.linspace(0.0, 4e-6, 100)
+    np.testing.assert_allclose(fa[1].arrays["a"][0], _first_line(t, 0), atol=2e-4)
+    np.testing.assert_allclose(fb[2].arrays["b"][0], _second_line(t, 0), atol=2e-4)
+    later = scope.arm("scope1", _two_lines(3, "a"), "a")
+    list(later.frames())
+    assert scope._t.singles == 2
+    # one record each, not segmented: still one acquisition for both
+    one = InfiniiVisionX(InfiniiVisionEmulator(signal=_first_line), TWO)
+    sources = [
+        one.arm("scope1", _two_lines(1, "a"), "a"),
+        one.arm("scope3", _two_lines(1, "b"), "b"),
+    ]
+    for s in sources:
+        list(s.frames())
+    assert one._t.singles == 1
+
+
+def test_a_second_channel_needs_one_acquisition_for_every_record_and_the_same_window():
+    plain = InfiniiVisionX(InfiniiVisionEmulator(segmented=False), TWO, max_records=8)
+    plain.arm("scope1", _two_lines(3, "a"), "a")
+    with pytest.raises(ValueError, match="segmented memory"):
+        plain.arm("scope3", _two_lines(3, "b"), "b")
+    scope = InfiniiVisionX(InfiniiVisionEmulator(), TWO, max_records=8)
+    scope.arm("scope1", _two_lines(3, "a"), "a")
+    with pytest.raises(ValueError, match="share one window"):
+        scope.arm("scope3", _two_lines(3, "b", stop=2e-6), "b")
+
+
+def test_an_empty_preamble_right_after_the_acquisition_is_asked_again():
+    """The HD304MSO answered a second channel's preamble with every field empty right after a
+    segmented acquisition (bench, 2026-10-19); the driver selects the source again and asks again."""
+    from qdt_lab.drivers.keysight import infiniivision
+
+    scope = InfiniiVisionX(
+        InfiniiVisionEmulator(signal=_first_line, empty_preambles=2), TWO, max_records=8
+    )
+    a = scope.arm("scope1", _two_lines(3, "a"), "a")
+    frames = list(a.frames())
+    assert len(frames) == 3 and scope.empty_preambles == 2
+    assert scope._t.log.count(":WAVeform:PREamble?") >= 3
+    hopeless = InfiniiVisionX(
+        InfiniiVisionEmulator(empty_preambles=infiniivision.PREAMBLE_RETRIES + 1), TWO
+    )
+    with pytest.raises(ValueError, match="empty preamble"):
+        list(hopeless.arm("scope1", _two_lines(1, "a"), "a").frames())

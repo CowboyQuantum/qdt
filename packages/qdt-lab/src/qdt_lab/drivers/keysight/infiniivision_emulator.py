@@ -62,8 +62,17 @@ class InfiniiVisionEmulator:
         yincrement: float = 1e-4,
         segmented: bool = True,
         all_segments: bool | str = True,
+        signals: dict[int, Signal] | None = None,
+        empty_preambles: int = 0,
     ) -> None:
+        """`signals` gives a channel its own signal (channel number → `signal(t, k)`); every other
+        channel captures `signal`. One `:SINGle` captures all four channels, as the instrument does.
+        `empty_preambles` answers that many `:WAVeform:PREamble?` queries after each `:SINGle` with
+        every field empty, as the HD304MSO did for a second channel right after an acquisition."""
         self.signal: Signal = signal or ring_down
+        self.signals: dict[int, Signal] = dict(signals or {})
+        self.empty_preambles = empty_preambles
+        self._empty_left = 0
         self.points, self.yincrement = points, yincrement
         self.supports_segmented = segmented
         self.supports_all_segments = all_segments
@@ -81,9 +90,13 @@ class InfiniiVisionEmulator:
         self.segment_count: int = 1
         self.records = 0
         self.singles = 0
-        self._captures: list[tuple[float, float, np.ndarray]] = []
+        self._captures: dict[int, list[tuple[float, float, np.ndarray]]] = {}
         self._index = 0
         self.closed = False
+
+    def _acquired(self) -> int:
+        """Segments held by the last acquisition (the same count on every channel)."""
+        return len(self._captures.get(1, []))
 
     def write(self, command: str) -> None:
         self._check_open()
@@ -119,8 +132,8 @@ class InfiniiVisionEmulator:
             self.segment_count = int(arg)
         elif head == ":ACQuire:SEGMented:INDex" and arg.isdigit():
             k = int(arg)
-            if self.acquire_mode != "SEGM" or not 1 <= k <= len(self._captures):
-                raise ValueError(f"no segment {k} ({len(self._captures)} acquired)")
+            if self.acquire_mode != "SEGM" or not 1 <= k <= self._acquired():
+                raise ValueError(f"no segment {k} ({self._acquired()} acquired)")
             self._index = k - 1
         elif head == ":WAVeform:SEGMented:ALL" and arg in ("ON", "OFF"):
             if self.supports_all_segments:
@@ -145,13 +158,17 @@ class InfiniiVisionEmulator:
         left_edge = self.position - self.range * 0.1
         t = left_edge + np.arange(n) * xinc
         count = self.segment_count if self.acquire_mode == "SEGM" else 1
-        self._captures = []
+        self._captures = {n: [] for n in (1, 2, 3, 4)}
         for _ in range(count):
-            volts = np.asarray(self.signal(t, self.records), dtype=np.float64)
-            codes = np.clip(np.round(volts / self.yincrement), -32768, 32767).astype(np.int16)
-            self._captures.append((xinc, left_edge, codes))
+            for n, captures in self._captures.items():  # every channel, the same trigger
+                volts = np.asarray(
+                    self.signals.get(n, self.signal)(t, self.records), dtype=np.float64
+                )
+                codes = np.clip(np.round(volts / self.yincrement), -32768, 32767).astype(np.int16)
+                captures.append((xinc, left_edge, codes))
             self.records += 1
         self._index = 0
+        self._empty_left = self.empty_preambles
 
     def query(self, command: str) -> str:
         self._check_open()
@@ -171,6 +188,9 @@ class InfiniiVisionEmulator:
         if command == ":SYSTem:ERRor?":
             return self.errors.pop(0) if self.errors else '+0,"No error"'
         if command == ":WAVeform:PREamble?":
+            if self._empty_left > 0:
+                self._empty_left -= 1
+                return ",,,,,,,,,"
             xinc, xorig, codes = self._served()
             return f"1,0,{codes.size},1,{xinc:.12e},{xorig:.12e},0,{self.yincrement:.12e},0.0,0"
         raise ValueError(f"emulator does not understand query {command!r}")
@@ -189,14 +209,14 @@ class InfiniiVisionEmulator:
             if (
                 self.supports_all_segments == "repeat"
             ):  # the HD3's answer: the selected one, N times
-                return np.concatenate([self._served()[2]] * len(self._captures))
-            return np.concatenate([codes for _, _, codes in self._captures])
+                return np.concatenate([self._served()[2]] * self._acquired())
+            return np.concatenate([codes for _, _, codes in self._captures[self.source]])
         return self._served()[2].copy()
 
     def _served(self) -> tuple[float, float, np.ndarray]:
-        if not self._captures:
+        if not self._acquired():
             raise ValueError("no acquisition: send :SINGle first")
-        return self._captures[self._index]
+        return self._captures[self.source][self._index]
 
     def close(self) -> None:
         self.closed = True

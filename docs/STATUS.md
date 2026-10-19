@@ -5,27 +5,23 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/opx-input-sink` (PR against `main`: the OPX's input as the sink, ADR 0069; the human
-merges). PRs #25–#72 merged 2026-10-14/19.
-**Last session:** 2026-10-19 (session 24), at the bench, after #72 merged.
-- **Bench housekeeping closed:** the SMU is back in the stand file (its conformance rows pass; the
-  four-instrument server builds clean). The OPX's address and the QDevil report are the human's (below).
-- **The OPX's input is a sink (ADR 0069), both halves proven on the bench (L2-5, `bench/test_l2_sensor.py`):**
-  - a sequencer's voltage input is a sensor: the Sweep and Pulse widgets offer it (a voltage channel of a
-    sequencer that sets no level, neither a `_pulse` line nor a marker line named in a `trigger_from`), read in
-    the shot only (per point needs a meter: the compiler refuses by capability name, the widget disables the
-    choice), result `V_sensor`; marker lines are offered nowhere. On the bench a DC map read by LF-FEM ai1 gives
-    0.498 V/V against the 50 Ω-into-50 Ω half, triggered through `dac_trigger` and stepped from the host alike;
-  - a capture on the sequencer's own input is a program result with its own time axis (`n_<result>` = num): the
-    executor arms nothing, the OPX saves the raw ADC trace per shot from a readout pulse of the window's length
-    on the input element, the simulated device records its sensor current over the window. On the bench L2-4's
-    staircase recorded on the input gives the plane the scope gave, halved (0.498 V/V, flat in time).
-- **Found on the bench:** the cable on ai1 carries QDAC ch01 (`P1`), not ch02: the first run read a flat map in
-  P2 and the halved P1 along the other axis. `QDT_L2_SENSOR_CHANNEL` names the cabled channel.
-- **Churn, again:** a killed server left the scope mid-`:SINGle` (a device clear over VXI-11 fixed it, per the
-  agent's bench notes), and the Flight Deck page still open in the browser polled `/levels/state` against a
-  stand whose scope build timed out, opening the QDAC's serial port twelve times over. The unreachable-instrument
-  slice is overdue.
+**Branch:** `step-6/two-opx-lines` (PR against `main`: two OPX lines in one shot recorded together, ADR 0070;
+the human merges). PRs #25–#73 merged 2026-10-14/19.
+**Last session:** 2026-10-19 (session 25), at the bench, after #73 merged.
+- **Two OPX lines in one shot, recorded together (ADR 0070), proven on the bench (L2-6,
+  `bench/test_l2_two_lines.py`):** captures that follow each other in a shot open together (each marker line
+  once, every own input recording, the shot waiting out the longest window); the executor arms every shot
+  capture before it drains any; the InfiniiVision driver gives the channels armed together one acquisition
+  (one `:SINGle`, each channel read after it, the drains serialised on the transport); the emulator captures
+  all four channels per acquisition. The skew between ao1 and ao2 is 997.8 ns for a programmed 1000 ns, the
+  same on every shot of three runs; plateaus 0.243 and 0.246 V.
+- **Found on the bench, again:** the cables were the other way round from what was said (ao2 on scope ch1,
+  ao1 on ch3). The row names the line on ch1 (`QDT_L2_LINE_ON_CH1`) and says when it is swapped. Earlier the
+  same day the cable on ai1 was QDAC ch01, not ch02. Verify a cable with a one-line probe before building on it.
+- **The HD304MSO once answered a second channel's preamble empty** right after a segmented acquisition; the
+  driver asks again (`PREAMBLE_RETRIES`), the emulator reproduces it; it did not recur in nine later runs.
+- **The unreachable-instrument slice needs no bench:** L0 reproduces the churn (a factory that raises, the
+  Levels poll); the bench only confirms it afterwards. The human has a proposal to discuss first.
 
 ## Bench tasks — next bench session
 1. **The OPX's address:** decide whether to restore its static 10.20 address (its admin page) or keep the
@@ -35,12 +31,18 @@ merges). PRs #25–#72 merged 2026-10-14/19.
    current-sense range measuring nothing (±0.6 nA for any current) and the output filter having no effect on
    the step, with ch02's death-until-power-cycle and the outputs at 0 V after a power cycle until `*RST` as
    context. The human sends it, with `bench/probes/probe04/qdac_settling.py` and `bench/fixtures/probe04/`.
-3. **A time-resolved signal on the OPX's input:** move the combiner board's output (or tee it) from scope ch1 to
-   LF-FEM ai1 and run L2-3's one-shot step response captured on the input (the capture kind, channel `sensor`,
-   in the shot); the 50 Ω load changes the droop, so the oracle is the board into 50 Ω, which Probe 03 did not
-   measure: record it as a probe first.
-4. **A second OPX pulse line:** ao2 to scope ch3; a two-line shot's skew (the emitter/widget slice comes first).
-Every bench row the software claims is proven on its instrument: L1, L2-1 to L2-5, L2-3 as one shot, the OPX's
+3. **Runs today, no new code:** the lag through the combiner's DC side (L2-4 on scope ch1 with P1's settle at
+   10 ms and at 50 ms: the plane's offset shifts by about a fifth of a step and vanishes); the scope's firmware
+   (if Keysight has a release newer than 10.16, re-run `bench/test_scope_segments.py`); where L2-5's +4 mV
+   offset comes from (Probe 02's zero again, and QDAC ch01 at 0 V on the scope).
+4. **Wire now, slice first:** the marker-to-analog delay applied (no wiring; the L2-3 marker record should then
+   start on the step's edge within a sample); a rest level at a sweep's end (no wiring); how a sense range is
+   declared (SMU to scope ch3 at 1 MΩ; the same microamp on each 2450 range); an own capture with a stage axis
+   (no wiring; a pulse-amplitude sweep recorded on ai1).
+5. **A time-resolved signal on the OPX's input:** the combiner's output impedance (≈ 25 kΩ) into the FEM's 50 Ω
+   makes a 0.25 V step half a millivolt; a buffer, an RC network from ao1 to ai1, or a plain ao1 → ai1 loopback
+   (which checks where the record starts) comes first.
+Every bench row the software claims is proven on its instrument: L1, L2-1 to L2-6, L2-3 as one shot, the OPX's
 row streaming, the scope's segmented path, Probe 01–05.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
@@ -50,32 +52,26 @@ row streaming, the scope's segmented path, Probe 01–05.
 3. A dated report in `bench/reports/`.
 
 ## Done
-- **Steps 0–6 and 6b DONE.** ADR 0001–0069. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021; a sixth
+- **Steps 0–6 and 6b DONE.** ADR 0001–0070. Frozen: `Dataset` (0015; v2 by 0031), protocols (0021; a sixth
   beside them by 0064, its past-the-end semantics by 0065), stand/activity/pulse (0022; amended additively by
   0037, 0038, 0047, 0049, 0060, 0064; `stepping` made a preference and `ExecutionPlan.pacing` added by 0066),
   identity/envelope/`qdt-hdf5-v1` (0028), modeling (0033; 0048–0050, 0062), control (0036; 0046, 0050,
-  0057). Registry DDL v3 (0026, 0029, 0050). ADR 0068 and 0069 change no schema: `once` and a record's
-  `n_<result>` live in the program and the slab only.
-- **This session:** ADR 0069. `standChannels` classifies a sequencer's inputs as sensors (and waveforms) and
-  drops marker lines; `sensorPerPoint`, `sensorResult`; `buildSequence`/`newRow` take the stand's sensors; the
-  Pulse widget's measure rows list them; the Sweep widget disables per point for them and names `V_sensor`.
-  The emitter declares `n_<result>` and a result for a capture on the sequencer's own input; the compiler
-  resolves it as a sequencer channel and declares its variable once; the stage slab carries its time dimension;
-  the executor arms nothing for it; `Opx1000` records it as a readout pulse saving the raw ADC trace per shot
-  (`_window_ns`, `_adc_stream`, `_measure_adc`; `plan["captures"]`; `_RunSource` scales and grids it);
-  `SimulatedDevice` records its sensor current over the window (`read(..., overhead_s=0)`). Tests in qdt-lab
-  (compile, run, the OPX offline suite), qdt-sim and Flight Deck; `bench/test_l2_sensor.py` (four rows).
+  0057). Registry DDL v3 (0026, 0029, 0050). ADR 0068, 0069 and 0070 change no schema.
+- **This session:** ADR 0070. `Executor` arms every shot capture before draining; `InfiniiVisionX`'s
+  `_Acquisition` (shared by the channels armed together; `_select` before every read; the transport lock;
+  `PREAMBLE_RETRIES`); the emulator's per-channel captures (`signals`, `empty_preambles`); the OPX program's
+  `capture_group` (one marker per line, every own input recording, the longest wait); the simulated device's
+  `capture_group`; `P1_pulse` (ao2) and `scope3` in the example and local stands. Tests in qdt-lab (the scope
+  offline suite, the experiment suite, the OPX offline suite) and qdt-sim; `bench/test_l2_two_lines.py`.
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- **2026-10-19:** #71 (the HD3's segmented transfer), #72 (`_VisaTransport` discards pending input before every
-  query, the OPX streaming report, BENCH.md's OPX row and L2-4 note, the SMU back), this branch (above).
-- On this branch: 460 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 24
-  hardware-only in `bench/`; Flight Deck 140 unit tests and 14 e2e.
+- **2026-10-19:** #71 (the HD3's segmented transfer), #72 (the serial transport, the OPX streaming report, the
+  SMU back), #73 (the OPX's input as the sink, ADR 0069, L2-5), this branch (above).
+- On this branch: 466 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 25
+  hardware-only in `bench/`; Flight Deck 140 unit tests and 14 e2e (unchanged by this branch).
 
 ## In flight
-- This PR awaits the human. On this laptop `qdt-server --stand` (the full bench stand) is still running from the
-  session (ports 8700, 8765); Flight Deck's dev server is stopped, but a Flight Deck tab may still be open in
-  the browser, polling the server's levels.
+- This PR awaits the human. No server runs on this laptop; a Flight Deck tab may still be open in the browser.
 - **A stale `git am` in this checkout** (`.git/rebase-apply`, 2026-10-15: three "Claude (chat)" patches stopped
   at the third, about ADR 0050 and qdt-telemetry). It does not block commits. `git am --quit` removes it without
   touching any branch; `git am --abort` would move the current branch back, so not that.
@@ -106,6 +102,10 @@ row streaming, the scope's segmented path, Probe 01–05.
 - **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off; BENCH.md says to check.
 - **The marker-to-analog delay (85 ns) is recorded, not applied** (it does not apply to a capture on the OPX's
   own input, which plays no marker).
+- **Two captures with another op between them are two windows** (ADR 0070's rule is positional); the Pulse
+  widget's rows say nothing about grouping.
+- **A capture cannot see an edge played before it** (ADR 0063's limit): L2-6 runs with the scope triggering
+  itself; with a marker line both edges would precede the window.
 - **A triggered axis through the combiner's DC side is still 50 ms per point** (its 20 Hz low-pass).
 - **`provenance_check.sh` matches bare substrings**; a word-boundary pattern is a one-line fix.
 - Carry-overs unchanged: a retune needs a held level (0062); the fitted width is thermal only in linear
@@ -121,11 +121,11 @@ row streaming, the scope's segmented path, Probe 01–05.
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge this PR; name the next slice. Candidates: the server tolerating an unreachable instrument
-(first: it bit twice today); a stimulus and a capture in the widget (L2-3 as one shot from the UI, now on the
-OPX's input too); streaming a 1-D OPX result; a second OPX pulse line; an own capture with a stage axis; how a
-sense range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel
-branches. Step 7 when sign-off arrives.
+**Human:** merge this PR; name the next slice. The unreachable-instrument slice waits for the human's proposal
+(no bench needed). Other candidates: a stimulus and a capture in the widget (L2-3 as one shot from the UI, now on
+the OPX's input too); streaming a 1-D OPX result; an own capture with a stage axis; the marker-to-analog delay
+applied; how a sense range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume
+and parallel branches. Step 7 when sign-off arrives.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -174,6 +174,10 @@ branches. Step 7 when sign-off arrives.
   and the QDevil report left to the human); "you can stop the server now, what other bench tests can I set up
   right now" (the list in the bench tasks); **"let's do (2), it's wired for that now"** (the OPX's input as the
   sink: a sequencer's voltage input is a sensor, a capture on it is a program result, ADR 0069).
+- **2026-10-19 (session 25):** "do we need the bench to answer the unreachable instrument issue? I have a proposal
+  for that I'll discuss later" (no: L0 reproduces it; the human's proposal is pending); "can you list the other
+  bench tests we wanted to do?" (the list in the bench tasks); **"ok let's do the dual opx line acquisition. a01
+  goes to scope 1 and ao2 goes to scope 3"** (ADR 0070; the cables turned out the other way round).
 
 ## Decisions pending
 - **What follows** (the candidates above).
@@ -187,3 +191,4 @@ branches. Step 7 when sign-off arrives.
 - `bench_report.py` and `*IDN?` serials; the dot model's zero-clipping; the diamond estimator on warm edges.
 - Whether a capture in the shot may have a stage axis when the sequencer records its own input (ADR 0069 keeps
   ADR 0060's rule; the validator cannot know the stand).
+- The unreachable-instrument slice: the human's proposal (to be discussed before any design).

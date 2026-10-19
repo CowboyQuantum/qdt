@@ -23,7 +23,9 @@ Sequencer programs (backend "qua"):
   plays the scope's marker (if the body names a line for it; otherwise the scope triggers itself,
   ADR 0063) and the shot waits out the window; a `capture` on one of our own inputs (ADR 0069) is a
   readout pulse of the window's length on that input saving its raw ADC trace per shot, which the
-  host scales to volts and lays on the declared grid. A triggered axis (body `triggered`) is the outermost loop: a
+  host scales to volts and lays on the declared grid. Captures that follow each other open together
+  (ADR 0070): each distinct marker line plays once, every own input records its window, and the
+  other elements wait out the longest scope window. A triggered axis (body `triggered`) is the outermost loop: a
   marker on each of its lines, a wait of the settle, then the inner loops.
 - the conformance program (`{"kind": "flat_index"}`): Probe 01's flat loop index.
 
@@ -641,8 +643,48 @@ def sequence_program(
                 return p[spec["value"]] >> 2
             return _cycles_ns(d, "duration") // CLOCK_NS
 
+        def capture_group(group):
+            """Consecutive captures open together (ADR 0070): our own inputs each record their
+            window, every distinct marker line plays once, and the other elements wait out the
+            longest scope window; the align after the group ends it at the longest activity."""
+            recording: list[str] = []
+            played: set[str] = set()
+            longest = 0
+            for op in group:
+                if op.channel in own:
+                    # ADR 0069: our own input records the window as a raw ADC trace, one per shot
+                    _measure_adc(
+                        qua,
+                        f"readout_{_window_ns(op.duration)}",
+                        _element(op.channel),
+                        adc[op.result],
+                    )
+                    recording.append(_element(op.channel))
+                else:
+                    # ADR 0063: the marker triggers the scope here; the shot waits out the window
+                    # (rounded up to the clock; the window itself is the scope's)
+                    line = lines.get(op.channel)
+                    if line is not None and line not in played:
+                        qua.play("marker", _trigger_element(line))
+                        played.add(line)
+                    longest = max(longest, _window_ns(op.duration))
+            waiting = [e for e in every if e not in recording]
+            if longest and waiting:
+                qua.wait(longest // CLOCK_NS, *waiting)
+
         def body_of_shot():
-            for op in ops:
+            i = 0
+            while i < len(ops):
+                op = ops[i]
+                if op.op == "capture":
+                    j = i
+                    while j < len(ops) and ops[j].op == "capture":
+                        j += 1
+                    capture_group(ops[i:j])
+                    qua.align()
+                    i = j
+                    continue
+                i += 1
                 if op.op in ("step", "ramp"):
                     el = _element(op.channel)
                     if op.op == "ramp":
@@ -672,21 +714,6 @@ def sequence_program(
                         qua.assign(level[op.channel], target)
                 elif op.op == "wait":
                     qua.wait(duration_cycles(op.duration), *every)
-                elif op.op == "capture" and op.channel in own:
-                    # ADR 0069: our own input records the window as a raw ADC trace, one per shot
-                    _measure_adc(
-                        qua,
-                        f"readout_{_window_ns(op.duration)}",
-                        _element(op.channel),
-                        adc[op.result],
-                    )
-                elif op.op == "capture":
-                    # ADR 0063: the marker triggers the scope here; the shot waits out the window
-                    # (rounded up to the clock; the window itself is the scope's)
-                    line = lines.get(op.channel)
-                    if line is not None:
-                        qua.play("marker", _trigger_element(line))
-                    qua.wait(_window_ns(op.duration) // CLOCK_NS, *every)
                 elif op.op == "measure":
                     d = _cycles_ns(op.duration, "measure")
                     qua.measure(

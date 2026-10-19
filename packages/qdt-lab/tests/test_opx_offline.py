@@ -544,3 +544,49 @@ def test_a_capture_on_the_opxs_own_input_is_a_raw_adc_record_per_shot(monkeypatc
         ("time", 0, 50),
     ]
     np.testing.assert_allclose(frames[0].arrays["trace"], out["trace"])
+
+
+# --- captures that follow each other open together (ADR 0070) ------------------------------------------
+
+
+OPX_TWO_LINES = (
+    *LINED,
+    ChannelMap(logical="P1_pulse", instrument="opx", channel="ao2", quantity="voltage"),
+)
+TWO_LINES = (  # the stand the emitter sees: the OPX's channels and the scope's
+    *OPX_TWO_LINES,
+    ChannelMap(logical="scope3", instrument="scope0", channel="3", quantity="voltage"),
+)
+
+
+def test_consecutive_captures_open_together_one_marker_and_the_longest_wait():
+    """ADR 0070: two scope channels captured back to back are one marker on their line and one wait
+    of the longest window; the two lines step in order, each on its own sticky element."""
+    from qdt_schemas.pulse import Capture
+
+    seq = PulseSequence(
+        name="two lines",
+        body=(
+            Step(channel="P2_pulse", level=0.25, duration=1000),
+            Step(channel="P1_pulse", level=0.25, duration=16),
+            Capture(channel="scope1", duration=4000, num=400, result="a"),
+            Capture(channel="scope3", duration=2000, num=200, result="b"),
+            Wait(duration=50_000_000),
+        ),
+    )
+    stage = SequencerStage(instrument="opx", sequence=seq, shots=3)
+    program, _ = QuaEmitter().emit(
+        stage,
+        {},
+        {c.logical: c for c in TWO_LINES},
+        lines={"scope1": "scope_trigger", "scope3": "scope_trigger"},
+    )
+    assert program.results == ()  # the scope fills both records
+    opx = Opx1000(_FakeQMM(), OPX_TWO_LINES)  # built from its own channels, as from_config is
+    compiled = opx.compile(program)
+    config = opx._qm.config
+    assert config["elements"]["el_ao2"]["singleInput"]["port"] == ("con1", 1, 2)
+    script = qm.generate_qua_script(compiled.plan["qua"], config)  # validates program + config
+    assert script.count("play('marker', 'trig_do1')") == 1  # one marker for both channels
+    assert "wait(1000," in script and "wait(500," not in script  # the longest window, 4 µs, once
+    assert script.count("'el_ao1'") >= 2 and script.count("'el_ao2'") >= 2  # both lines play
