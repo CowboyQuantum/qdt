@@ -101,6 +101,30 @@ describe("sweep builders", () => {
     expect(c.pulse.map((x) => x.logical)).toEqual(["P2_pulse"]);
     expect(c.sensors.map((x) => x.logical)).toEqual(["sensor"]);
     expect(c.waveforms.map((x) => x.logical)).toEqual(["scope1"]); // a scope channel is not a DC line
+    // a bench stand (ADR 0063, 0067): the OPX's input is a sensor and a waveform, its marker lines are offered
+    // nowhere, its pulse line stays a pulse line, and the DAC's current readout is a sensor as before
+    const bench = {
+      stand_id: "bench",
+      instruments: [
+        { id: "dac0", backend: "qdac2", capabilities: ["level_source", "level_sense", "triggered_level_source"], settings: { trigger_from: "dac_trigger" } },
+        { id: "scope0", backend: "infiniivision", capabilities: ["waveform_sense"], settings: { trigger_from: "scope_trigger" } },
+        { id: "opx", backend: "qua", capabilities: ["waveform_source", "waveform_sense", "sequencer"] },
+      ],
+      channels: [
+        { logical: "P1", instrument: "dac0", channel: "ch01", quantity: "voltage" },
+        { logical: "P1_i", instrument: "dac0", channel: "ch01_i", quantity: "current" },
+        { logical: "scope1", instrument: "scope0", channel: "1", quantity: "voltage" },
+        { logical: "P2_pulse", instrument: "opx", channel: "ao1", quantity: "voltage" },
+        { logical: "sensor", instrument: "opx", channel: "ai1", quantity: "voltage" },
+        { logical: "scope_trigger", instrument: "opx", channel: "do1", quantity: "voltage" },
+        { logical: "dac_trigger", instrument: "opx", channel: "do2", quantity: "voltage" },
+      ],
+    } as StandConfig;
+    const b = standChannels(bench);
+    expect(b.dc.map((x) => x.logical)).toEqual(["P1"]);
+    expect(b.pulse.map((x) => x.logical)).toEqual(["P2_pulse"]);
+    expect(b.sensors.map((x) => x.logical)).toEqual(["P1_i", "sensor"]);
+    expect(b.waveforms.map((x) => x.logical)).toEqual(["scope1", "sensor"]);
   });
 
   it("builds a capture, alone or at every point of a stepped axis (ADR 0047)", () => {

@@ -3,7 +3,7 @@
 // the compiler's (ADR 0066): the builders pass the stepping preference through and refuse only what cannot run.
 import { describe, expect, it } from "vitest";
 import type { StandConfig } from "../src/schema/api";
-import { captureSequencer, captureSweep, dcSweep, sensorSequencer } from "../src/control/sweeps";
+import { captureSequencer, captureSweep, dcSweep, sensorPerPoint, sensorResult, sensorSequencer } from "../src/control/sweeps";
 import { formSummary } from "../src/widgets/sweep";
 
 /** The simulated stand: the device is its own sequencer, and the scope an instrument of its own. */
@@ -47,6 +47,16 @@ describe("which sequencer reads in the shot", () => {
     expect(sensorSequencer(BENCH, "ai1")).toEqual({ sequencer: "opx" });
     expect(sensorSequencer(BENCH, "smu_i")).toEqual({ reason: "smu_i is read by smu, which is not a sequencer: it can only be sensed per point" });
     expect(sensorSequencer(BENCH, "")).toEqual({ reason: "no channel (none) on the stand" });
+  });
+
+  it("per point needs a meter: a sequencer's own input is read in the shot only, and fills a voltage variable", () => {
+    expect(sensorPerPoint(SIM, "sensor")).toEqual({ ok: true });
+    expect(sensorPerPoint(BENCH, "smu_i")).toEqual({ ok: true });
+    expect(sensorPerPoint(BENCH, "opx_in")).toEqual({ reason: "opx_in is an input of opx, which senses no level per point: it is read in the shot" });
+    expect(sensorPerPoint(BENCH, "")).toEqual({ reason: "no channel (none) on the stand" });
+    expect(sensorResult(BENCH.channels, "opx_in")).toBe("V_sensor");
+    expect(sensorResult(BENCH.channels, "smu_i")).toBe("I_sensor");
+    expect(sensorResult(SIM.channels, "sensor")).toBe("I_sensor");
   });
 
   it("a capture's shot runs on the sequencer that triggers the scope, else on the stand's only sequencer", () => {

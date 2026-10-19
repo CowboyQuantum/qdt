@@ -14,6 +14,8 @@ import {
   captureSequencer,
   captureSweep,
   dcSweep,
+  sensorPerPoint,
+  sensorResult,
   sensorSequencer,
   stageSweep,
   standChannels,
@@ -302,6 +304,10 @@ class SweepWidget {
     this.shotSequencer = reads && "sequencer" in where ? where.sequencer : "";
     shot.disabled = !this.shotSequencer;
     if (shot.disabled && readout.value === "shot") readout.value = "point";
+    // a sequencer's own input has no meter behind it: per point is unavailable and the sensor is read in the shot
+    const perPoint = kind === "dc" && this.standConfig ? sensorPerPoint(this.standConfig, this.value("sensor")) : { ok: true as const };
+    point.disabled = !("ok" in perPoint);
+    if (point.disabled && readout.value === "point" && this.shotSequencer) readout.value = "shot";
     const inShot = reads && readout.value === "shot";
     show(this.readoutField, reads);
     show(this.readoutHint, reads);
@@ -312,7 +318,7 @@ class SweepWidget {
         : !inShot
           ? `can instead be read in a shot of ${this.shotSequencer}, so a wired stand can trigger the ${kind === "dc" ? "inner" : "outer"} axis`
           : kind === "dc"
-            ? `${this.value("sensor")} is integrated by ${this.shotSequencer} in a one-measure shot at each point, the shots averaged`
+            ? `${this.value("sensor")} is integrated by ${this.shotSequencer} in a one-measure shot at each point, the shots averaged${"reason" in perPoint ? `; per point is unavailable: ${perPoint.reason}` : ""}`
             : `${this.value("capture_channel")} is captured in a shot of ${this.shotSequencer} from its marker (t = 0), one record per shot`;
     show(this.shotsField, kind === "stage" || (kind === "dc" && inShot));
     show(this.measureField, kind === "dc" && inShot);
@@ -469,8 +475,8 @@ class SweepWidget {
           shots: Number(v("shots")),
           stepNs: 500,
           measureNs: 2000,
-          result: "I_sensor",
-          sequence: { rows: seq.rows, bindings: seq.bindings, channels: this.channels },
+          result: sensorResult(this.channels, sensor),
+          sequence: { rows: seq.rows, bindings: seq.bindings, channels: this.channels, sensors: this.stand.sensors.map((c) => c.logical) },
         }),
         options,
       };
@@ -482,7 +488,7 @@ class SweepWidget {
         outer,
         inner: { ...axis("inner", innerName), ...paced },
         sensor,
-        result: "I_sensor",
+        result: sensorResult(this.channels, sensor),
         readout,
         ...(readout === "shot" ? { shot: { instrument: this.shotSequencer, measureNs: Number(v("shot_measure_ns")), shots: Number(v("shots")) } } : {}),
       }),

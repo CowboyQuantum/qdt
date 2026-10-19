@@ -1145,3 +1145,31 @@ def test_one_number_with_no_axis_anywhere_is_refused_and_a_repeat_gives_it_one()
     assert [[(s.dim, s.start, s.stop) for s in f.chunk.region] for f in frames] == [
         [("repeat", k, k + 1)] for k in range(4)
     ]
+
+
+def test_a_sequencers_input_is_read_in_the_shot_and_never_sensed_per_point():
+    """ADR 0067 on a bench-shaped stand: a sequencer's voltage input is a sensor through its own
+    `measure` (a 'V' variable over the stepped axes, the shots averaged); sensed per point it would need
+    a LevelSense the sequencer has not, and the compiler says so."""
+    seq = PulseSequence(
+        name="read the input", body=(Measure(channel="sensor", duration=1000, result="V_sensor"),)
+    )
+    axes = (SweepAxis(name="V", channel="gate_R", start=0.0, stop=0.1, num=3),)
+    in_shot = SweepDefinition(
+        name="dc read in the shot",
+        axes=axes,
+        stage=SequencerStage(instrument="seq", sequence=seq, shots=4, reduce={"V_sensor": "mean"}),
+    )
+    plan = compile_sweep(in_shot, stand(), EMITTERS)
+    assert [(v.name, v.dims, v.unit) for v in plan.dataset.data_vars] == [("V_sensor", ("V",), "V")]
+    assert {(c.logical, c.role) for c in plan.channels} == {
+        ("gate_R", "level_source"),
+        ("sensor", "sequencer"),
+    }
+    per_point = SweepDefinition(
+        name="dc sensed per point",
+        axes=axes,
+        sensed=(SensedLevel(name="V_sensor", channel="sensor"),),
+    )
+    with pytest.raises(ValueError, match=r"instrument 'seq' \('sensor'\) lacks capability 'level_sense'"):
+        compile_sweep(per_point, stand(), EMITTERS)

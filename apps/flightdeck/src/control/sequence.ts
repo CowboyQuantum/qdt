@@ -101,8 +101,9 @@ export interface SequenceBuild {
   errors: string[];
 }
 
-/** Rows → a `PulseSequence` against the stand's channels; `sequence` is null when there are errors. */
-export function buildSequence(name: string, rows: readonly OpRow[], channels: readonly ChannelMap[]): SequenceBuild {
+/** Rows → a `PulseSequence` against the stand's channels; `sequence` is null when there are errors. A measure reads
+ * a current channel, or one of `sensors`: a sequencer's own voltage inputs (`standChannels`, ADR 0067). */
+export function buildSequence(name: string, rows: readonly OpRow[], channels: readonly ChannelMap[], sensors: readonly string[] = []): SequenceBuild {
   const byName = new Map(channels.map((c) => [c.logical, c]));
   const errors: string[] = [];
   const symbols = new Map<string, string>();
@@ -119,7 +120,7 @@ export function buildSequence(name: string, rows: readonly OpRow[], channels: re
       const t = text(field);
       if (field === "channel") {
         if (!channel) errors.push(`${where}: ${t ? `unknown channel "${t}"` : "needs a channel"}`);
-        else if (row.op === "measure" && channel.quantity !== "current") errors.push(`${where}: measures a current channel, not "${t}"`);
+        else if (row.op === "measure" && channel.quantity !== "current" && !sensors.includes(channel.logical)) errors.push(`${where}: measures a current channel or a sequencer's input, not "${t}"`);
         else if (row.op === "capture" && channel.quantity !== "voltage") errors.push(`${where}: captures a voltage (scope) channel, not "${t}"`);
         else if (row.op !== "measure" && row.op !== "capture" && channel.quantity !== "voltage") errors.push(`${where}: drives a voltage channel, not "${t}"`);
         op.channel = t;
@@ -218,11 +219,13 @@ export function templateRows(t: { channel: string; symbol: string; sensor: strin
 
 /** A fresh row of `op`, prefilled from the stand (and, for a difference, the last two measure results)
  * so it is valid as soon as it is added. */
-export function newRow(op: OpKind, channels: readonly ChannelMap[], measured: readonly string[] = []): OpRow {
-  // a sequencer pulses its `_pulse` lines (the stand convention, `standChannels`); any voltage line otherwise
-  const voltages = channels.filter((c) => c.quantity === "voltage");
+export function newRow(op: OpKind, channels: readonly ChannelMap[], measured: readonly string[] = [], sensors: readonly string[] = []): OpRow {
+  // a sequencer pulses its `_pulse` lines (the stand convention, `standChannels`); any voltage line otherwise,
+  // except its own inputs (`sensors`), which a measure reads (ADR 0067)
+  const voltages = channels.filter((c) => c.quantity === "voltage" && !sensors.includes(c.logical));
   const voltage = (voltages.find((c) => c.logical.endsWith("_pulse")) ?? voltages[0])?.logical ?? "";
-  const sensor = channels.find((c) => c.quantity === "current")?.logical ?? "";
+  const sensor = sensors.find((s) => channels.some((c) => c.logical === s)) ?? channels.find((c) => c.quantity === "current")?.logical ?? "";
+  const result = channels.find((c) => c.logical === sensor)?.quantity === "voltage" ? "V_sensor" : "I_sensor";
   switch (op) {
     case "step":
       return { op, fields: { channel: voltage, level: "0", duration: "100" } };
@@ -233,10 +236,10 @@ export function newRow(op: OpKind, channels: readonly ChannelMap[], measured: re
     case "drive":
       return { op, fields: { channel: voltage, frequency: "1e9", phase: "0", amplitude: "0", duration: "100" } };
     case "measure":
-      return { op, fields: { channel: sensor, duration: "1000", result: "I_sensor" } };
+      return { op, fields: { channel: sensor, duration: "1000", result } };
     case "capture": {
       // a scope channel by the stand convention, else any voltage line
-      const scope = (voltages.find((c) => /scope/i.test(c.logical)) ?? voltages[0])?.logical ?? "";
+      const scope = (channels.find((c) => c.quantity === "voltage" && /scope/i.test(c.logical)) ?? voltages[0])?.logical ?? "";
       return { op, fields: { channel: scope, duration: "1000000", num: "200", result: "trace" } };
     }
     case "difference":
