@@ -136,7 +136,7 @@ Prototype on lab PC via Docker Compose (`qdt-diraq/deploy/`); localhost-bound du
 | 7 | Other sources | Telemetry, internal extension, lab PC, IT, substrate pilot demo | `steps/07-other-sources.md` |
 | 8 | Frameworks | Governance as data; HTML demoted to renderers | `steps/08-frameworks.md` |
 
-**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 7 is off the critical path and is the only step gated by manager sign-off (Open Decision #5). Steps 6 and 7 can interleave.
+**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 7 is off the critical path; no step is gated by an approval outside the repo (ADR 0072). Steps 6 and 7 can interleave.
 
 ## 8. Flight Deck finish-line sketch
 
@@ -177,7 +177,7 @@ Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licen
 | 2 | `payload_hdf5` location | RESOLVED (ADR 0023): `qdt-schemas[hdf5]` extra, lazy imports |
 | 3 | DAG contract scoping ×3 | Step 8 only |
 | 4 | Offline/prober operation | RESOLVED (ADR 0024): local cache first, idempotent sync to Postgres, client-minted UUIDs |
-| 5 | Manager sign-off | Pending as of Oct 2026. **Gates Step 7 only.** Steps 0–6 proceed on personal hardware and bench. |
+| 5 | Withdrawn | **Closed by ADR 0072** (2026-10-19): no step is gated by an approval outside the repo. |
 | 6 | Lab PC OS | Resolve via IT ask at Step 7 |
 | 7 | Bluefors log access mode | Resolve via IT ask at Step 7 |
 | 8 | Stream transport for `Dataset` | RESOLVED (ADR 0008): WebSocket + Arrow IPC; see `docs/analysis/0001-stream-budget.md` |

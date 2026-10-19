@@ -114,4 +114,4 @@ first fridge task, tracked in `STATUS.md` until a fridge session runs the three-
 a real device and confirms what the sim showed. Carried out of this step unresolved: the Open decisions above, the
 `sensor_peak` method, a bench confirmation of the stability nodes, `PlayedWaveform`, the `tuneups` and `stand_state`
 tables, resume and parallel branches. The DAPS study stays struck. Next: Step 6b (spec merged, ADR 0054 proposed) or
-Step 7 (gated by manager sign-off), the human's choice.
+Step 7, the human's choice.

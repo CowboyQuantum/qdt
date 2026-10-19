@@ -5,9 +5,9 @@
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. The roadmap goal is now **deployment on the lab
-network** (milestone `Deployment`, human, 2026-10-19); it has no step file yet. Step 7 waits for manager sign-off.
-**Branch:** `process/issue-triage` (PR against `main`: ADR 0071, the backlog moved to issues; the human merges).
-PRs #25–#74 merged 2026-10-14/19.
+network** (milestone `Deployment`, human, 2026-10-19); it has no step file yet.
+**Branch:** `docs/drop-sign-off` (PR against `main`: ADR 0072, no step gated by an outside approval; the human
+merges). PRs #25–#74 and #115 (ADR 0071) merged 2026-10-14/19.
 **Last session:** 2026-10-19 (session 26), no bench.
 
 ## Done this session
@@ -33,11 +33,12 @@ PRs #25–#74 merged 2026-10-14/19.
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Agent, on its own branch, after this PR merges:** draft the deployment step file in `docs/steps/` from the
-human's four goals (below), with the ADR that takes lab deployment out of Step 7. Its open decisions to start
-with: whether manager sign-off gates it; the payload transport off-box (Analysis 0003 §3, ADR 0026); where the
-run queue lives (#78); stable names for the instruments on the lab network (#80); where limits and the held point
-live (#79). **Human:** merge this PR; answer the sign-off question; bring the unreachable-instrument proposal (#75).
+**Human:** merge this PR; bring a roadmap patch from the chat instance (new roadmap goals, the deployment step) and
+the unreachable-instrument proposal (#75). **Agent:** `git am --quit` (the stale patch state, below), then apply
+the roadmap patch on its own branch against `main`, run `check_all.sh` and `pytest`, and open the PR. If no patch
+comes, draft the deployment step file from the four goals (below). Its open decisions to start with: the payload
+transport off-box (Analysis 0003 §3, ADR 0026); where the run queue lives (#78); stable names for the instruments
+on the lab network (#80); where limits and the held point live (#79).
 
 ## Direction recorded (human)
 - **2026-10-19 (session 26):** "I'm getting a little worried that you're generating bench tests and tasks that have
@@ -48,7 +49,8 @@ live (#79). **Human:** merge this PR; answer the sign-off question; bring the un
   address and credentials, any other application that understands the schema; (2) orchestration of a set of
   measurement tasks the human enumerates, validated on the bench through the scope; (3) manipulating measurement
   parameters and analysing scans through Flight Deck, in order to discover missing features; (4, stretch)
-  submitting jobs to the lab PC and having it route each job to a fridge logically.
+  submitting jobs to the lab PC and having it route each job to a fridge logically. Then: "let's completely remove
+  the [outside approval] requirement" (ADR 0072: no step is gated by an approval outside the repo; do not raise it).
 - **2026-10-19 (session 25):** "do we need the bench to answer the unreachable instrument issue? I have a proposal
   for that I'll discuss later" (#75); "ok let's do the dual opx line acquisition" (ADR 0070).
 - **2026-10-19 (session 24):** "let's do (2), it's wired for that now" (the OPX's input as the sink, ADR 0069).

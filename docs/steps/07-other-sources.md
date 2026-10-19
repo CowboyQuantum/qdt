@@ -27,7 +27,6 @@ Cryo context (cooldown history, per-measurement fridge state), CI register, and 
 - ≥1 external-system record via the same path
 
 ## Open decisions
-- #5 manager sign-off (gates this step only)
 - #6, #7 lab PC OS and log access mode
 
 ## Status
