@@ -5,42 +5,48 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/bench-streaming-segments` (PR against `main`: a correctness fix for the scope driver and
-today's bench report; the human merges). PRs #25–#70 merged 2026-10-14/18.
-**Last session:** 2026-10-19, at the bench with wiring 1 (Probe 05's: OPX do1 → scope AUX TRIG IN, do2 → QDAC
-ext1, QDAC ch01 → scope ch2 at 1 MΩ, OPX ao1 → scope ch1).
-- **The QDAC is fine:** ch01 reads +0.500, −0.507 and −0.004 V on the scope for +0.5, −0.5 and 0 V set; the
-  outputs-at-0-V quirk did not recur.
-- **The scope's one transfer (#68) gave wrong records, and is fixed here.** The HD304MSO (firmware 10.16)
-  accepts `:WAVeform:SEGMented:ALL ON` with no error, reads back 1, and returns a block of exactly records ×
-  points, but the block holds the *selected* segment repeated, in RAW, NORMAL and MAXIMUM point modes alike
-  (`:WAVeform:SEGMented:XLISt?` does list the ten distinct trigger times). On `main` the driver trusted the
-  block, so every segmented capture on the bench would have returned one segment N times (L2-4 included).
-  `bench/test_scope_segments.py` caught it on its first run. The driver now compares the block's first and last
-  pieces with segments 1 and N read by index on the first segmented readout of a session and falls back to
-  reading by index (0.30 s per segment on the HD3); the emulator models the HD3's answer
-  (`all_segments="repeat"`); the bench test now passes, asserting the records equal the by-index reads.
-- **The OPX did not answer** on its address (ARP incomplete on the dock's segment, while the scope on the same
-  link did), so its streaming test (#67), L2-4 and L2-3 wait.
-
-The previous sessions (2026-10-16/18) merged three slices: the OPX streams a run's results row by row (#67, not
-yet run on the OPX); the scope's one-transfer readout (#68, fixed today); a stage records once per stepped
-point without an axis of its own (ADR 0068, #69).
+**Branch:** `step-6/bench-opx-streaming` (PR against `main`: the serial transport fix, the OPX streaming
+report, L2-4 from the UI; the human merges). PRs #25–#71 merged 2026-10-14/19.
+**Last session:** 2026-10-19, at the bench on wiring 1, after the OPX came back.
+- **The OPX had moved to a self-assigned 169.254 address** (it had rebooted); the Mac's dock port had only a
+  10.20 address, so the OPX answered ARP and mDNS but nothing else. Switching the port to DHCP (self-assigned
+  169.254) fixed it without a password; the local stand file points at the new address. The cluster then
+  reported "health not good enough" until the human attended to it. Nothing to do with the GitHub runner, which
+  was queued because GitHub Actions was degraded (#71 was merged on local checks).
+- **#67 proven on the OPX:** `bench/test_opx_streaming.py` passes; a 6 × 5 map with 40 ms shots delivered its
+  rows 0.2 s apart while it ran (report).
+- **L2-4 from the UI passes** (ADR 0066, 0067 on the bench): the capture kind, outer P1, scope2 read in the shot,
+  pacing auto; "P1: triggered on dac_trigger"; plane fit `slope_row` 1.010 V/V, r² 1.000; the DAC holds +1.0 V
+  after (readback and scope agree).
+- **A serial-reply shift, found and fixed.** The first L2-4 attempt left the DAC at −0.5 V with the Levels widget
+  showing −69 µV for P1. Cause: the SMU in the stand file was unreachable ("connection reset by peer"), so every
+  Levels poll rebuilt all backends and closed them again, the QDAC's serial port threw, and from then on each
+  query read the previous query's reply (the "setpoint" was `P1_i`'s current readout; `release` set P1 to P2's
+  setpoint). `_VisaTransport` now discards pending input before every query (`test_scpi_transport.py`); the SMU
+  is out of today's local stand file. The server's own handling of an unreachable instrument is a follow-up.
+- **The SMU is back** in the local stand file; `qdt-server --stand` builds all four instruments; the server's
+  Levels state reads every channel.
+- **QDAC re-test for the QDevil report:** ch02, dead since 2026-10-15, works after the power cycle (±1 V on the
+  scope within 2 %); the LOW sense range still measures nothing (±0.6 nA with 1 µA flowing). The report narrows
+  to the LOW range and the filter; ch02 and the 0 V quirk are context.
+- **L2-3 as one shot passes both ways** (wiring 2, the combiner board): the scope triggering itself on the
+  analog edge, τ 1.82 µs; triggered by the OPX's marker (`trigger_from` on scope0), τ 1.81 µs; Probe 03's record
+  gives 1.86 µs by the same fit. The shot form of ADR 0063 is proven on a real droop, in its interim and its
+  marker variants.
+- Earlier the same day (#71): the HD3's segmented transfer returns the selected segment repeated; the driver
+  checks and falls back; the QDAC's output followed its setpoints (no 0 V quirk).
 
 ## Bench tasks — next bench session
-1. **Bring the OPX back on the network** (power, its Ethernet to the switch, or its address), then
-   **`bench/test_opx_streaming.py`** (the OPX alone, nothing cabled): #67's hardware check.
-2. **L2-4 from the UI** (ADR 0067), on wiring 1: `qdt-server --stand` with the bench stand file; the capture
-   kind, outer P1, capture channel scope2, readout in the shot. The plan box should say "P1: triggered on
-   dac_trigger"; the five records must be the five levels (the fix above matters here). The L2-4 pytest row
-   (`QDT_L2_STAIRCASE=1 QDT_L2_STAIRCASE_SCOPE_CHANNEL=2`) is the same check without the UI.
-3. **L2-3 as one shot** (`bench/test_l2_paced.py`), on wiring 2: QDAC ch01 → combiner DC in, OPX ao1 → combiner
-   pulse in, board out → scope ch1, do1 still on the scope's AUX TRIG IN, ground switches up. Run first with the
-   scope self-triggering (no `trigger_from` on scope0 in the stand file), then with the marker.
-4. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
-   `*RST`, seen twice (not on 2026-10-19).
-A stability diagram through the UI cannot be built on this stand yet (the widget offers only current channels as
-sensors, and the OPX's input is a voltage channel); L2-4 checks the same pacing.
+1. ~~**The SMU**~~ — back in the stand file the same afternoon: it answered once its stale session had gone
+   (five hardware conformance rows pass; the full four-instrument server builds with no error).
+2. **The OPX's address:** decide whether to restore its static 10.20 address (its admin page) or keep the
+   self-assigned one; the agent's bench notes cover both.
+3. **The QDevil report** (drafted 2026-10-19, outside the repo because it carries the serial): the LOW
+   current-sense range measuring nothing (re-tested 2026-10-19, still ±0.6 nA for any current) and the output
+   filter having no effect on the step, with ch02's death-until-power-cycle and the outputs at 0 V after a
+   power cycle until `*RST` as context. The human sends it.
+Every bench row the software claims is now proven on its instrument: L1, L2-1 to L2-4, L2-3 as one shot, the
+OPX's row streaming, the scope's segmented path, Probe 01–05.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
 1. The four-node tune-up on a real device through `POST /tuneups`; compare outcomes to the sim's.
@@ -64,22 +70,24 @@ sensors, and the OPX's input is a voltage channel); L2-4 checks the same pacing.
   and an e2e host-stepped map read in the shot).
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- **2026-10-19:** `InfiniiVisionX.segments()` checks the one-transfer block against segments read by index and
-  falls back; the emulator's `all_segments="repeat"`; an offline test of the HD3's answer; the bench test asserts
-  the records whichever way they were read; BENCH.md's scope row; the bench report `2026-10-19-step6.md`.
-- On this branch: 454 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 20
+- **2026-10-19:** #71 (the HD3's segmented transfer: `InfiniiVisionX.segments()` checks the block against
+  segments read by index and falls back; the emulator's `all_segments="repeat"`); this branch: `_VisaTransport`
+  discards pending input before every query (`test_scpi_transport.py`), the OPX streaming report, BENCH.md's
+  OPX row and L2-4 note.
+- On this branch: 456 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 20
   hardware-only in `bench/`; Flight Deck 137 unit tests and 14 e2e.
 
 ## In flight
-- This PR (the scope fix and the bench report) awaits the human. The simulated `qdt_server` and Flight Deck's
-  `pnpm dev` from the 2026-10-19 demo may still be running on this laptop (ports 8700, 8765, 5173); stop the
-  simulated server before `qdt-server --stand`.
+- This PR awaits the human. On this laptop `qdt-server --stand` (the full bench stand) and Flight Deck's
+  `pnpm dev` are still running from the session (ports 8700, 8765, 5173).
 - **A stale `git am` in this checkout** (`.git/rebase-apply`, 2026-10-15: three "Claude (chat)" patches stopped
   at the third, about ADR 0050 and qdt-telemetry). It does not block commits. `git am --quit` removes it without
   touching any branch; `git am --abort` would move the current branch back, so not that.
 
 ## Known broken / not yet real
-- **The OPX's row streaming (#67) is unverified on hardware**: the OPX did not answer on 2026-10-19.
+- **An instrument in the stand file that does not answer breaks every backend build** (the server rebuilds on
+  each request and closes what it built): the server should build what it can, or remember the failure, instead
+  of churning the others' connections. A follow-up slice.
 - **The HD3 cannot read its segments in one transfer** (firmware 10.16: `:WAVeform:SEGMented:ALL` repeats the
   selected segment), so segmented records are read by index, 0.30 s each.
 - **A 1-D OPX result still arrives at the end of the run** (ADR 0015 gives a 1-D result one frame), so a long
@@ -93,7 +101,6 @@ sensors, and the OPX's input is a voltage channel); L2-4 checks the same pacing.
   capture) is posted by hand.
 - **Timing now depends on the stand:** host stepping added a job submission per point that may have hidden
   a too-short `settle_s`; triggered, exactly the declared settle is waited. Check stand files' settles.
-- **L2-3 as one shot is unrun** (the combiner is not wired).
 - **The LF-FEM's digital I/O adapter**: nothing in software can tell when it is off; BENCH.md says to check.
 - **The marker-to-analog delay (85 ns) is recorded, not applied.**
 - **A triggered axis through the combiner's DC side is still 50 ms per point** (its 20 Hz low-pass).
@@ -111,9 +118,8 @@ sensors, and the OPX's input is a voltage channel); L2-4 checks the same pacing.
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge this PR (without it, a segmented capture on the bench returns one segment repeated); bring the OPX
-back on the network and say "run the OPX tests" (the streaming test, then L2-4 from the UI); re-wire to wiring 2 for
-L2-3; name the next slice. Candidates: a stimulus and a capture in the widget (L2-3 as one shot); the sequencer's
+**Human:** merge this PR; name the next slice. Candidates: the server
+tolerating an unreachable instrument; a stimulus and a capture in the widget (L2-3 as one shot); the sequencer's
 voltage inputs as sensors; streaming a 1-D OPX result; a second OPX pulse line; an OPX-ADC capture; how a sense
 range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches.
 Step 7 when sign-off arrives.
@@ -157,7 +163,10 @@ Step 7 when sign-off arrives.
   segments (#68), a stage result once per point with no stage axis (ADR 0068).
 - **2026-10-19:** "walk me through a flight deck demo" (the simulated server and `pnpm dev`, a guided tour); "tell
   me how to wire up the bench"; "wiring one is set up" (the scope's one transfer caught and fixed; the OPX
-  unreachable).
+  unreachable); "typically I run a sudo command to expose the ip of the opx" (it was `sudo ifconfig
+  en11 alias`, not the cause: the OPX had moved to a link-local address); "the gh runner seems stuck" (GitHub
+  Actions degraded; #71 merged on local checks); "ok the opx should be good to go" (#67 proven, L2-4 from the UI); "the combiner board is wired up" (L2-3 as one
+  shot, both ways); "is the qdevil report still needed?" (yes, narrowed: ch02 revived, the LOW range still dead).
 
 ## Decisions pending
 - **What follows** (the candidates above).

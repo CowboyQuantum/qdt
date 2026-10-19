@@ -6,6 +6,7 @@ imported lazily, ADR 0006). Tests hand a driver an emulator implementing the sam
 conformance suite runs on the real driver code without hardware.
 """
 
+import contextlib
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -54,16 +55,30 @@ def make_block(payload: bytes) -> bytes:
 
 
 class _VisaTransport:
+    """A pyvisa resource behind `ScpiTransport`. Every query first discards whatever the instrument
+    had left unread: a query that failed (a timeout, a serial error) leaves its reply in the buffer,
+    and the next query would read it as its own. On the bench (2026-10-19) that shifted a QDAC-II's
+    replies by one, so a level read back for `release` was another channel's setpoint and the gate
+    was set to it. A transport that cannot discard (not every pyvisa-py session can) is left alone."""
+
     def __init__(self, resource) -> None:
         self._r = resource
 
     def write(self, command: str) -> None:
         self._r.write(command)
 
+    def _discard_pending(self) -> None:
+        from pyvisa import constants
+
+        with contextlib.suppress(Exception):  # a session without flush, or nothing to discard: fine
+            self._r.flush(constants.VI_READ_BUF_DISCARD)
+
     def query(self, command: str) -> str:
+        self._discard_pending()
         return self._r.query(command).strip()
 
     def query_block(self, command: str, dtype: str) -> np.ndarray:
+        self._discard_pending()
         dt = np.dtype(dtype)
         return np.asarray(
             self._r.query_binary_values(
