@@ -5,37 +5,42 @@
 
 **Current step:** none in progress. Steps 0–6 and 6b are DONE. **Step 7 waits for manager sign-off**; between
 steps, the human picks slices from the open decisions.
-**Branch:** `step-6/status-after-merges` (a docs PR: this file after #67–#69 merged; the human merges). PRs
-#25–#69 merged 2026-10-14/18.
-**Last session:** 2026-10-16/18, software only (the dock was unplugged throughout). The human asked for three
-slices in this order; all three are merged:
-1. **The OPX streams a run's results row by row** (#67): ADR 0015's chunking on the OPX. A result over two or more
-   program axes arrives one slab of its first axis per frame, fetched as soon as every measure stream holds it
-   (`count_so_far`, `fetch` by slice); a run that ends short raises; a 1-D result and the conformance program
-   stay one fetch at the end. A triggered stability diagram's live view now fills row by row.
-   `bench/test_opx_streaming.py` (the OPX alone) proves it on hardware; not yet run.
-2. **The scope reads every segment in one transfer** (#68): `:WAVeform:SEGMented:ALL` and one `:WAVeform:DATA?`
-   when the scope accepts the command (the error queue, read after `*CLS`) and the block holds records × the
-   preamble's points; otherwise segment by segment, decided on the first segmented readout and kept. **Merged
-   before its bench run** (the human's call): `bench/test_scope_segments.py` (the scope alone) reads one
-   acquisition both ways and compares; if the HD3 refuses the command, the driver reads per segment as before.
-3. **A stage records once per stepped point without an axis of its own** (ADR 0068, #69): the program
-   gets a one-point axis `once` (`n_once` = 1) and the slab a one-point dimension, which the executor strips;
-   only a value with no axis anywhere is refused. A definition now compiles on any stand, triggered or stepped
-   from the host; a DC sweep read in the shot runs host-stepped, and the widget offers "software" for it again.
+**Branch:** `step-6/bench-streaming-segments` (PR against `main`: a correctness fix for the scope driver and
+today's bench report; the human merges). PRs #25–#70 merged 2026-10-14/18.
+**Last session:** 2026-10-19, at the bench with wiring 1 (Probe 05's: OPX do1 → scope AUX TRIG IN, do2 → QDAC
+ext1, QDAC ch01 → scope ch2 at 1 MΩ, OPX ao1 → scope ch1).
+- **The QDAC is fine:** ch01 reads +0.500, −0.507 and −0.004 V on the scope for +0.5, −0.5 and 0 V set; the
+  outputs-at-0-V quirk did not recur.
+- **The scope's one transfer (#68) gave wrong records, and is fixed here.** The HD304MSO (firmware 10.16)
+  accepts `:WAVeform:SEGMented:ALL ON` with no error, reads back 1, and returns a block of exactly records ×
+  points, but the block holds the *selected* segment repeated, in RAW, NORMAL and MAXIMUM point modes alike
+  (`:WAVeform:SEGMented:XLISt?` does list the ten distinct trigger times). On `main` the driver trusted the
+  block, so every segmented capture on the bench would have returned one segment N times (L2-4 included).
+  `bench/test_scope_segments.py` caught it on its first run. The driver now compares the block's first and last
+  pieces with segments 1 and N read by index on the first segmented readout of a session and falls back to
+  reading by index (0.30 s per segment on the HD3); the emulator models the HD3's answer
+  (`all_segments="repeat"`); the bench test now passes, asserting the records equal the by-index reads.
+- **The OPX did not answer** on its address (ARP incomplete on the dock's segment, while the scope on the same
+  link did), so its streaming test (#67), L2-4 and L2-3 wait.
 
-## Bench tasks — next bench session (with the dock plugged in)
-1. **`bench/test_opx_streaming.py`** (the OPX alone, nothing cabled): #67's hardware check.
-2. **`bench/test_scope_segments.py`** (the scope alone): #68's check, now on `main`. If the HD3 refuses
-   `:WAVeform:SEGMented:ALL`, the driver keeps reading per segment and the test records what the scope lacks.
-3. **L2-3 as one shot** (`bench/test_l2_paced.py`): re-wire ao1 → combiner pulse in, QDAC ch01 → combiner DC in,
-   board out → scope ch1; run first with the scope self-triggering (no `trigger_from` on scope0), then with the
-   marker. Commit the report.
-4. **A stability diagram through the UI**: the plan box should say "P1: triggered on dac_trigger", and with #67
-   the rows fill as the OPX runs. Then **L2-4 from the UI** (ADR 0067): the capture kind, outer P1, readout in
-   the shot, QDAC ch01 on a scope input.
-5. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
-   `*RST`, seen twice.
+The previous sessions (2026-10-16/18) merged three slices: the OPX streams a run's results row by row (#67, not
+yet run on the OPX); the scope's one-transfer readout (#68, fixed today); a stage records once per stepped
+point without an axis of its own (ADR 0068, #69).
+
+## Bench tasks — next bench session
+1. **Bring the OPX back on the network** (power, its Ethernet to the switch, or its address), then
+   **`bench/test_opx_streaming.py`** (the OPX alone, nothing cabled): #67's hardware check.
+2. **L2-4 from the UI** (ADR 0067), on wiring 1: `qdt-server --stand` with the bench stand file; the capture
+   kind, outer P1, capture channel scope2, readout in the shot. The plan box should say "P1: triggered on
+   dac_trigger"; the five records must be the five levels (the fix above matters here). The L2-4 pytest row
+   (`QDT_L2_STAIRCASE=1 QDT_L2_STAIRCASE_SCOPE_CHANNEL=2`) is the same check without the UI.
+3. **L2-3 as one shot** (`bench/test_l2_paced.py`), on wiring 2: QDAC ch01 → combiner DC in, OPX ao1 → combiner
+   pulse in, board out → scope ch1, do1 still on the scope's AUX TRIG IN, ground switches up. Run first with the
+   scope self-triggering (no `trigger_from` on scope0 in the stand file), then with the marker.
+4. **The QDevil report:** the three findings in BENCH.md plus the outputs at 0 V after a power cycle until
+   `*RST`, seen twice (not on 2026-10-19).
+A stability diagram through the UI cannot be built on this stand yet (the widget offers only current channels as
+sensors, and the OPX's input is a voltage channel); L2-4 checks the same pacing.
 
 ## Fridge (L3) tasks — not a gate; run when a fridge exists
 1. The four-node tune-up on a real device through `POST /tuneups`; compare outcomes to the sim's.
@@ -59,18 +64,24 @@ slices in this order; all three are merged:
   and an e2e host-stepped map read in the shot).
 - **Packages:** `qdt-schemas`, `qdt-lab`, `qdt-sim`, `qdt-registry`, `qdt-analysis`, `qdt-tuning`,
   `qdt-server`, `qdt-telemetry`, `apps/flightdeck`.
-- On `main`: 453 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 20
+- **2026-10-19:** `InfiniiVisionX.segments()` checks the one-transfer block against segments read by index and
+  falls back; the emulator's `all_segments="repeat"`; an offline test of the HD3's answer; the bench test asserts
+  the records whichever way they were read; BENCH.md's scope row; the bench report `2026-10-19-step6.md`.
+- On this branch: 454 Python tests (+5 Postgres-parametrized), 4 skipped, 38 hardware-only in `packages/`, 20
   hardware-only in `bench/`; Flight Deck 137 unit tests and 14 e2e.
 
 ## In flight
-- Nothing open but this docs PR.
+- This PR (the scope fix and the bench report) awaits the human. The simulated `qdt_server` and Flight Deck's
+  `pnpm dev` from the 2026-10-19 demo may still be running on this laptop (ports 8700, 8765, 5173); stop the
+  simulated server before `qdt-server --stand`.
 - **A stale `git am` in this checkout** (`.git/rebase-apply`, 2026-10-15: three "Claude (chat)" patches stopped
   at the third, about ADR 0050 and qdt-telemetry). It does not block commits. `git am --quit` removes it without
   touching any branch; `git am --abort` would move the current branch back, so not that.
 
 ## Known broken / not yet real
-- **Merged unverified on hardware:** the OPX's row streaming (#67) and the scope's one transfer (#68); the two
-  bench tests above prove them.
+- **The OPX's row streaming (#67) is unverified on hardware**: the OPX did not answer on 2026-10-19.
+- **The HD3 cannot read its segments in one transfer** (firmware 10.16: `:WAVeform:SEGMented:ALL` repeats the
+  selected segment), so segmented records are read by index, 0.30 s each.
 - **A 1-D OPX result still arrives at the end of the run** (ADR 0015 gives a 1-D result one frame), so a long
   triggered 1-D scan fills at once.
 - **Stepped from the host, a stage with no axis of its own is one OPX job per point** (ADR 0068); triggered
@@ -100,12 +111,12 @@ slices in this order; all three are merged:
   Windows pnpm via `corepack pnpm`.
 
 ## Next action
-**Human:** merge this docs PR; plug the dock in and say "run the bench tests", so #67 and #68 are proven on
-their instruments; name the next slice. Candidates: a stimulus and a
-capture in the widget (L2-3 as one shot); the sequencer's voltage inputs as sensors; streaming a 1-D OPX
-result; the bench tasks above; a second OPX pulse line; an OPX-ADC capture; how a sense range is declared; a
-rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches. Step 7 when sign-off
-arrives.
+**Human:** merge this PR (without it, a segmented capture on the bench returns one segment repeated); bring the OPX
+back on the network and say "run the OPX tests" (the streaming test, then L2-4 from the UI); re-wire to wiring 2 for
+L2-3; name the next slice. Candidates: a stimulus and a capture in the widget (L2-3 as one shot); the sequencer's
+voltage inputs as sensors; streaming a 1-D OPX result; a second OPX pulse line; an OPX-ADC capture; how a sense
+range is declared; a rest level at a sweep's end; a `tuneups`/`stand_state` table; resume and parallel branches.
+Step 7 when sign-off arrives.
 
 ## Direction recorded (human)
 - **2026-10-13:** web app end state. Curated analyses only. The control path came before the drivers
@@ -144,6 +155,9 @@ arrives.
   sense and don't clash?" (#65 taken, #64 left out); **"take the readout choices from 64"** (ADR 0067); **"let's
   tackle everything on this list in this order"**: the OPX streaming rows (#67), one transfer for all scope
   segments (#68), a stage result once per point with no stage axis (ADR 0068).
+- **2026-10-19:** "walk me through a flight deck demo" (the simulated server and `pnpm dev`, a guided tour); "tell
+  me how to wire up the bench"; "wiring one is set up" (the scope's one transfer caught and fixed; the OPX
+  unreachable).
 
 ## Decisions pending
 - **What follows** (the candidates above).
