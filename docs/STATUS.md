@@ -4,61 +4,60 @@
 > A fresh session must be able to continue from this file alone.
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
-**Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`, ADR 0073), NOT STARTED in
-code; its design ADRs are in `main` (0074 accepted and amended by 0080; 0075–0079 proposed). Steps 0–6 and
-6b are DONE. Milestone `Deployment`.
-**Branch:** `step-6c/accept-0074` (PR against `main`: ADR 0080, Step 6c amended, this file; the human merges).
-PRs #116 (ADR 0072) and #117 (the chat instance's patch: ADRs 0073–0079, Step 6c, Analyses 0005–0006)
-merged 2026-10-22. Every merged branch was deleted 2026-10-22; `origin/step-6/sweep-stepping` (PR #64,
-closed unmerged) remains on purpose.
-**Last session:** 2026-10-22 (session 27), no bench.
+**Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS: goal 1's first
+slice is in L0 (deliverables 2 code half, 3, 4); the `qdt-db` runbook (deliverable 1) is written and awaits
+its first run on the human's personal Windows PC. Steps 0–6 and 6b are DONE. Milestone `Deployment`.
+**Branch:** `step-6c/goal-1-remote-registry` (PR against `main`; the human merges). Earlier today: #117
+(the chat instance's ADRs 0073–0079) and #118 (ADR 0080, 0074 accepted) merged.
+**Last session:** 2026-10-22 (session 27, continued), no bench.
 
 ## Done this session
-- **PR #117 unblocked:** CI failed only on ruff in the patch's two new scripts (`check_vocabulary.py`,
-  `issues_generality.py`); fixed, green, merged by the human. The roadmap patch STATUS asked for is in.
-- **ADR 0080 (accepted):** ADR 0074 accepted as written, amended twice at the human's direction: the stand
-  server syncs after every record it ingests and once at start, falling back to its cache when `qdt-db` or
-  the share is unreachable (no timer; catch-up by insert-if-absent; a read-only server never syncs); goal 1
-  is rehearsed on a personal Windows PC standing in as `qdt-db` before the lab PC, with one runbook for both.
-  The host is Windows for now (native Postgres service, SMB share); the Linux preference stays in Analysis
-  0003 §4. The ADR also records why other applications read over HTTP and not SQL.
-- **Step 6c amended:** deliverables 1–2 and the L0 list carry the sync and the Windows host; two open
-  decisions (ADR 0074, the lab PC's OS) are marked settled.
-- No code changed beyond the lint fix. 466 Python tests (+5 Postgres-parametrized), 4 skipped; Flight Deck
-  unchanged. The stale `git am` state noted last session is gone.
+- **Sync after every record and at start (ADR 0080).** `RunManager.sync`/`sync_later`: after a record is
+  ingested (after the run's state is set) and once in the lifespan, in a thread, one at a time; without
+  `QDT_REGISTRY_DSN` nothing is tried; unreachable → one warning (no DSN in it), the rows stay unsynced,
+  the next success carries everything. The registry keeps its remote engine only once `_prepare` answered,
+  so a server down at the first attempt still gets its tables and DDL check later. The server test suite
+  clears the two env vars so a developer's server never receives test records.
+- **The read server (ADR 0074, 0081).** `python -m qdt_server --read-only` / `Settings.read_only`: no
+  backends, no stand, no `RunManager`; needs `QDT_REGISTRY_DSN` (reader role) and `QDT_PAYLOAD_STORE`.
+  Every route that needs a stand or writes sits on an `APIRouter` included only on a stand server; replay
+  stays. `GET /server` → `ServerInfo`; `GET /records/{id}/payload` streams the HDF5 bytes with
+  `X-Content-SHA256` on both kinds. `openapi.json` and Flight Deck's `api.ts` regenerated.
+- **Flight Deck against a read server:** `api.server()` at boot; only plot, empty and history registered;
+  no Run cluster in the strip (absent), stand reads "registry"; the layout under `READ_ONLY_LAYOUT_KEY`.
+  `e2e/readonly.test.ts`: a stand server measures and syncs, a read server serves it to a fresh Flight Deck
+  with no command anywhere, History opens the record on the read server's stream.
+- **The script read path (ADR 0081).** `Registry.devices(remote=)`, `payload_file`/`payload`/`output(remote=)`,
+  `init_server()` and `python -m qdt_registry init`. `docs/tutorials/test_04_remote_read.py`: read A through
+  `qdt_registry` with a reader DSN (a write as the reader is refused; no bytes without the share), read B
+  over HTTP from a read server connected as the reader, hash-checked, arrays equal to the laptop's.
+  Locally the reader is a SQLite file opened `mode=ro`; in CI it is Postgres with the real role.
+- **`deploy/qdt-db/roles.sql`** (three roles, default privileges), run by CI against `qdt_test` before the
+  suite, with `QDT_TEST_PG_READER_DSN`. **Not yet run against a real Postgres by the agent** (no Docker on
+  this machine): this PR's CI run is its first; if `l0` fails there, that is where.
+- **`deploy/qdt-db/README.md`:** the Windows runbook (native service, roles, `pg_hba`/firewall on a
+  placeholder subnet, schema step, SMB share and UNC mount, the read server as a start-up task with `--ui`,
+  the measurement PC's two variables, nightly dump + mirror, restore drill, the §6 smoke test that is the
+  goal 1 demo, the human's checklist, the Postgres half of the tests without Docker). Closes #112, #114.
+- **Docs:** ADR 0081 (what the slice settled); Step 6c L0 row reworded (replay stays), status IN PROGRESS;
+  steps index; tutorials index. 476 Python tests (+6 Postgres-parametrized), 4 skipped; Flight Deck 142
+  unit, 15 e2e. `check_all` green.
 
 ## In flight
-- This PR awaits the human.
+- This PR awaits the human; its CI run is the first run of `roles.sql` on Postgres.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Step 6c, goal 1, deliverables 1–4, as a demo on the human's own machines:** a personal Windows desktop
-as `qdt-db`, a laptop as the measurement PC running `qdt-server` on the simulated stand with Flight Deck.
-The demo: take a measurement on the laptop; it reaches the desktop's Postgres by the automatic sync; read it
-on the desktop both in Flight Deck (against `qdt-server --read-only`) and from a Python script. Branch
-`step-6c/goal-1-<short-name>`. Order, each its own commit and each with its L0 rows from the step file:
-1. **Deliverable 2's code half first** (it is the smallest and the demo needs it): after
-   `self.registry.ingest` in `packages/qdt-server/src/qdt_server/runs.py` (the `_set(... "completed")`
-   block), a `sync` in a thread that logs and swallows a failed connection; one more at the end of
-   `create_app`'s lifespan setup in `app.py`. L0: unreachable → run completes, record in cache unsynced;
-   reachable → next ingest uploads everything; the read-only server never syncs.
-2. **Deliverable 3:** `--read-only` in `__main__.py`/`Settings`: no backends, no command routes
-   (`POST`/`DELETE` 404/405), `GET /records/{id}/payload` with a SHA-256 header, reads through the registry
-   with the reader DSN. Flight Deck hides commands when the server reports read-only (deliverable 5's UI
-   half; the token itself can wait). L0 rows as in the step file.
-3. **Deliverable 4:** `Registry.payload` for a record not in the local store (reader mode: fetch over HTTP
-   from the read server, or read the share); `docs/tutorials/test_04_remote_read.py` against an ephemeral
-   Postgres with the reader role, failing to write. Closes #112 on the way if a documented local Postgres
-   without Docker falls out of it (deliverable 14).
-4. **Deliverable 1:** `deploy/qdt-db/README.md` — the Windows runbook from Analysis 0003 §8: native Postgres
-   service, database `qdt`, roles `qdt_admin`/`qdt_writer`/`qdt_reader`, `pg_hba` and firewall scoped to a
-   placeholder subnet, the SMB share for `QDT_PAYLOAD_STORE`, nightly dump, restore drill, the smoke test
-   (write on the laptop, read on the desktop). Placeholder names only (rule 7). The human runs it on the
-   desktop; what the agent cannot verify from the laptop is listed as the human's checklist.
-Then the human runs the demo; every step that needed a workaround becomes an issue on `Deployment`.
-Not in scope for this demo: the command token (deliverable 5), the IT ask (6), goals 2–4.
+**Human (the demo, deliverable 1 and 2's share):** run `deploy/qdt-db/README.md` §1–§3 on the personal PC
+and §4 on the laptop, then the §6 smoke test: a sweep on the laptop's Flight Deck, the record in the
+desktop's Flight Deck (no Run button) and in a script (tutorial 04's pattern). Every step that needs a
+workaround becomes an issue on `Deployment` (`found-by-human` is fine; label it `blocker` if it stops the
+demo). Tick §7's checklist. **Agent, next session:** blockers from the demo first; otherwise deliverable 5
+(the command token: a stand server bound off loopback refuses `POST`/`DELETE` without a bearer token from
+its token file; loopback exempt; Flight Deck sends the token it was given), with the step file's L0 rows.
+Branch `step-6c/<short-name>`.
 
 ## Direction recorded (human)
 - **2026-10-22 (session 27):** the next focus is "set up the measurement database backend on my desktop PC
@@ -70,16 +69,13 @@ Not in scope for this demo: the command token (deliverable 5), the IT ask (6), g
   sync — please add a sync attempt after every measurement, and if the database PC is not reachable
   default to the local cache." "Both my personal PC and the lab PC are Windows, for now. We can keep the
   desire to have the lab be a Linux box with documented reasons, but for now it's Windows."
-- **2026-10-22 (chat instance, via PR #117):** ADRs 0078 (boundaries: clients over HTTP in their own repos,
-  libraries inside qdt, nothing extracted now) and 0079 (general electronic test with a spin-qubit layer)
+- **2026-10-22 (chat instance, via PR #117):** ADRs 0078 (boundaries) and 0079 (general electronic test)
   proposed; Analyses 0005–0006 with the human's answers.
-- **2026-10-19 (session 26):** ADR 0071 (work traces to the plan; findings become issues), ADR 0072 (no
-  outside approval gate), ADR 0073 (deployment is Step 6c) and the four deployment goals; the verbatim
-  record is in `git show 5f2dd72:docs/STATUS.md`, § Direction recorded.
+- **2026-10-19 (session 26):** ADR 0071, 0072, 0073 and the four deployment goals; the verbatim record is in
+  `git show 5f2dd72:docs/STATUS.md`, § Direction recorded.
 - Earlier direction (sessions ≤ 25): `git show b94193f:docs/STATUS.md`, § Direction recorded.
 
 ## Decisions pending
 All are `decision` issues (`gh issue list --label decision`), plus Step 6c's remaining open decisions:
-ADR 0075 (before deliverables 7–8), ADR 0077 (before 9–10), the LAN probe range (with deliverable 6), and
-how the script read path fetches payload bytes (HTTP from the read server, or the share; decided in
-deliverable 4 with a line in its ADR or tutorial).
+ADR 0075 (before deliverables 7–8), ADR 0077 (before 9–10), the LAN probe range (with deliverable 6).
+How a script gets payload bytes is settled: HTTP from the read server (ADR 0081).

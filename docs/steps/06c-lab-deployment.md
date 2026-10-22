@@ -72,8 +72,11 @@ Frozen at exit with an ADR.
     stand through the hub is an L2 demonstration, routing to a fridge is L3.
 
 ## L0 tests (CI)
-- `--read-only`: no command route exists (every `POST`/`DELETE` is 404/405); payload GET returns the bytes
-  and a matching SHA-256.
+- `--read-only`: no command route exists — every route that needs a stand or writes is absent (404/405:
+  `/stand`, `/levels*`, `/sweeps/compile`, `/runs*`, `POST /records/{id}/results`, `/nodes`, `/tuneups*`)
+  and the server's OpenAPI document omits them; `POST /stream/replay` stays, it commands nothing
+  (ADR 0074 lists replay among what the read server serves; ADR 0081); `GET /server` says which kind
+  answered; payload GET returns the bytes and a matching SHA-256; the read server never syncs.
 - Token: a non-loopback request without a token is refused, with a token accepted; loopback exempt.
 - Script read path: the tutorial reads a record and its payload from an ephemeral Postgres with the reader
   role and fails to write.
@@ -155,4 +158,8 @@ Each closes by an ADR or by the human's decision recorded on its issue.
 - A local Postgres test run without Docker (#112): deliverable 14.
 
 ## Status
-NOT STARTED
+IN PROGRESS (session 27, 2026-10-22). Goal 1 in L0: deliverable 2's code half (sync after every record and at
+start), 3 (`--read-only`, `GET /server`, payload GET, Flight Deck without commands, e2e), 4 (reader DSN,
+`init`, tutorial 04; payload bytes over HTTP — ADR 0081). Deliverable 1 is written (`deploy/qdt-db/README.md`,
+`roles.sql`) and awaits its first run on the human's personal PC; deliverable 2's share and the L1 rows R-1
+… R-3 wait for that machine. Deliverables 5–16 not started.

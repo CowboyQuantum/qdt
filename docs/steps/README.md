@@ -13,6 +13,6 @@ One file per roadmap step, fixed headings. `STATUS.md` points at the current one
 | 5 | [Instrument drivers (the last mile)](05-instrument-drivers-last-mile.md) | DONE (ADR 0040–0047) |
 | 6 | [Closed-loop tuning](06-closed-loop-tuning.md) | DONE (ADR 0048–0050, 0052, 0053; L3 confirmation deferred to the first fridge session) |
 | 6b | [Flight Deck workspace](06b-flightdeck-workspace.md) | DONE (ADR 0054–0059) |
-| 6c | [Lab deployment](06c-lab-deployment.md) | NOT STARTED (ADR 0073; milestone `Deployment`) |
+| 6c | [Lab deployment](06c-lab-deployment.md) | IN PROGRESS — goal 1 in L0, runbook written (ADR 0073, 0080, 0081; milestone `Deployment`) |
 | 7 | [Other sources onto the substrate](07-other-sources.md) | NOT STARTED |
 | 8 | [Frameworks extraction](08-frameworks.md) | NOT STARTED |
