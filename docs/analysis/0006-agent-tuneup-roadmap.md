@@ -80,5 +80,24 @@ the `AgentStep` slice, and can start against simulator records now.
 4. Historical tune-ups as an internal replay set; who curates them?
 5. First artefact: the failure library spec or the `AgentStep` schema?
 
-### Answers
-_(recorded after the human's review)_
+### Answers (human, 2026-10-22)
+1. **Where it lives: a fully separate repo, `autopilot`, that reaches qdt only through its API.** This
+   supersedes the split this note proposed (`qdt-mcp` and `AgentStep` inside qdt). Consequences:
+   - qdt stays model-agnostic; its versioned HTTP API (ADR 0074's read contract plus the stand server's
+     command API) is the only coupling, so it must be documented and versioned as a public contract.
+   - The MCP tool server, `AgentStep`, the record-to-image rendering (from payload bytes fetched over HTTP),
+     case memory, evals, the runner and the approval interface all live in `autopilot`, with its own store
+     for agent records that refer to qdt record ids.
+   - What `autopilot` needs from qdt, all through the API: the read server and command token (0074), the
+     server-side queue and limits (0075), discovery (0077), and simulated stands whose fault scenarios can
+     be selected per run — the failure library itself is physics and belongs in `qdt-sim`.
+   - Site-specific playbook material and historical replays stay out of both public repos.
+2. **Approvals at A4: every action**, per action. A4 needs a way to approve a planned sequence in one
+   decision so a sweep campaign is not dozens of clicks; each approval still records who and when.
+3. **Thresholds (starting values, to revisit):** A1 ends at agreement with the human's next action on 80% of
+   a 50-step replay set; A2 at 90% success over the failure library, zero limit violations, and a measurement
+   count within 2× of the deterministic tune-up.
+4. **Historical replays:** yes, internal only, curated by the human, starting with about ten tune-ups whose
+   outcomes are well remembered.
+5. **First artefact:** open. Recommendation: `AgentStep` first, in `autopilot` (small; unblocks A0 and A1
+   against qdt's existing API and records), with the failure-library spec written in parallel for `qdt-sim`.

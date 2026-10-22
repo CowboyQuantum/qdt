@@ -117,5 +117,16 @@ the index; one issue per session.
 5. Which agent-loop changes become an ADR.
 6. Guide in the release mirror or workshop only.
 
-### Answers
-_(recorded after the human's review)_
+### Answers (human, 2026-10-22)
+1. **Audience:** the human and future LLM context windows. Write for a reader who arrives cold, reads
+   the map before the ADR index, and acts on what it reads.
+2. **Shape:** three pages when the guide graduates out of analysis — `docs/guide/architecture.md`,
+   `roadmap.md`, `workflows.md`.
+3. **Diagrams:** both — a package dependency diagram and a data-flow view (the flow player covers flows).
+4. **Dates:** none on the roadmap; order by dependency. Dates, if any, live on GitHub milestones.
+5. **Agent-loop changes:** an ADR for two of them — STATUS follows every landing (a patch carries a full
+   STATUS replacement, or `/session-start` reconciles STATUS with `git log`), and chat patches land through a
+   PR so CI runs. The other three (issue templates for people, a map before the index, one issue per session)
+   are conventions in `CLAUDE.md`.
+6. **Release mirror:** architecture and the consumer/producer workflows ship in the mirror as user
+   documentation; the roadmap and the steering workflow stay in the workshop only.
