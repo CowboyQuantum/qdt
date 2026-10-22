@@ -1,0 +1,13 @@
+# Domain words that must not appear in the general layer (ADR 0079): qdt-schemas, qdt-lab, qdt-registry.
+# One term per line; case-insensitive; matched as whole words. The spin-qubit layer (qdt-tuning, qdt-sim,
+# the dot methods in qdt-analysis, Flight Deck widgets, qdt-server's tune-up routes) may use them freely.
+plunger
+barrier
+qubit
+quantum dot
+double dot
+charge sensor
+charge sensing
+virtual gate
+virtual gates
+cooldown

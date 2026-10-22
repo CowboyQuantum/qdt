@@ -13,6 +13,9 @@ nav:
       - analysis/0001-stream-budget.md
       - analysis/0002-renderer-benchmark.md
       - analysis/0003-registry-deployment-requirements.md
+      - analysis/0004-pulse-scope-and-custom-isa.md
+      - analysis/0005-system-snapshot.md
+      - analysis/0006-agent-tuneup-roadmap.md
   - Probes: probes/01-stream-semantics.md
   - Tutorials: tutorials/README.md
   - API: api.md

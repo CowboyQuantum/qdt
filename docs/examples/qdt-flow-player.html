@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>qdt — how information flows</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF0EF; --sheet:#F8FAF9; --ink:#1C2424; --ink-2:#56625F; --ink-3:#86918E;
+  --wire:#A9B3B0; --box:#FFFFFF; --signal:#2C55C9; --signal-soft:rgba(44,85,201,.14); --trail:rgba(44,85,201,.35);
+  --rule:#D6DCDA;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#121718; --sheet:#182022; --ink:#E2E8E6; --ink-2:#A3AFAC; --ink-3:#6E7A77;
+    --wire:#4B5755; --box:#1D2729; --signal:#86A6FF; --signal-soft:rgba(134,166,255,.16); --trail:rgba(134,166,255,.4);
+    --rule:#2A3436; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#121718; --sheet:#182022; --ink:#E2E8E6; --ink-2:#A3AFAC; --ink-3:#6E7A77;
+  --wire:#4B5755; --box:#1D2729; --signal:#86A6FF; --signal-soft:rgba(134,166,255,.16); --trail:rgba(134,166,255,.4);
+  --rule:#2A3436; color-scheme: dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--sans)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+
+.wrap{max-width:1240px;margin:0 auto;padding:28px 24px 40px}
+header h1{font-size:28px;line-height:1.2;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+header p{margin:0;color:var(--ink-2);max-width:68ch}
+
+.cases{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 18px}
+.case{background:transparent;border:1px solid var(--rule);border-radius:999px;padding:6px 14px;color:var(--ink-2);font-size:14px}
+.case:hover{border-color:var(--wire);color:var(--ink)}
+.case[aria-pressed="true"]{border-color:var(--signal);color:var(--ink);background:var(--signal-soft)}
+.case .tag{font-size:12px;color:var(--ink-3);margin-left:6px}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
+.board{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:10px;overflow-x:auto}
+.board svg{display:block;width:100%;min-width:640px;height:auto}
+.panel{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:18px 18px 14px;position:sticky;top:16px}
+.panel h2{font-size:18px;margin:0 0 4px;font-weight:600}
+.panel .lede{color:var(--ink-2);margin:0 0 14px;font-size:14px}
+.now{border-left:3px solid var(--signal);padding:6px 0 6px 12px;margin:0 0 14px;min-height:78px}
+.now .obj{font-family:var(--mono);font-size:14px;color:var(--signal);display:block;margin-bottom:2px}
+.now .txt{font-size:14px}
+.controls{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.controls button{background:var(--box);border:1px solid var(--rule);border-radius:8px;padding:6px 12px;font-size:14px}
+.controls button.play{background:var(--signal);border-color:var(--signal);color:var(--sheet);font-weight:500;min-width:84px}
+.controls .count{margin-left:auto;color:var(--ink-3);font-size:13px;font-variant-numeric:tabular-nums}
+ol.steps{list-style:none;margin:0;padding:0;counter-reset:s;max-height:340px;overflow:auto;border-top:1px solid var(--rule)}
+ol.steps li{counter-increment:s}
+ol.steps button{all:unset;display:grid;grid-template-columns:26px 1fr;gap:6px;width:100%;padding:7px 4px;border-bottom:1px solid var(--rule);font-size:13.5px;color:var(--ink-2);cursor:pointer}
+ol.steps button::before{content:counter(s);color:var(--ink-3);font-variant-numeric:tabular-nums}
+ol.steps button:focus-visible{outline:2px solid var(--signal);outline-offset:-2px}
+ol.steps li.done button{color:var(--ink)}
+ol.steps li.cur button{color:var(--ink);background:var(--signal-soft)}
+ol.steps code{font-family:var(--mono);font-size:12.5px}
+.note{font-size:12.5px;color:var(--ink-3);margin:12px 0 0}
+
+/* svg */
+.node rect{fill:var(--box);stroke:var(--wire);stroke-width:1.25}
+.node.proposed rect{stroke-dasharray:5 4}
+.node.external rect{fill:transparent;stroke-dasharray:2 3}
+.node text{fill:var(--ink);font-family:var(--sans)}
+.node .sub{fill:var(--ink-3);font-size:11.5px}
+.node .name{font-weight:600;font-size:13.5px}
+.node.dim{opacity:.38}
+.node.on rect{stroke:var(--signal);stroke-width:2;fill:var(--signal-soft)}
+.wire-base{fill:none;stroke:var(--rule);stroke-width:1}
+.trail{fill:none;stroke:var(--trail);stroke-width:1.5}
+.live{fill:none;stroke:var(--signal);stroke-width:2.25}
+.dot{fill:var(--signal)}
+.tag-bg{fill:var(--sheet);stroke:var(--signal);stroke-width:1}
+.tag-tx{fill:var(--signal);font-family:var(--mono);font-size:12px}
+.legend text{fill:var(--ink-3);font-size:11.5px;font-family:var(--sans)}
+.legend rect{fill:transparent;stroke:var(--wire)}
+
+@media (max-width: 920px){
+  .grid{grid-template-columns:1fr}
+  .panel{position:static}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>How information flows through qdt</h1>
+    <p>Pick a use case and press Play. Each step lights the two parts that talk and names the object that travels between them. Dashed boxes are proposed for Step 6c or later; dotted ones are outside qdt.</p>
+  </header>
+
+  <div class="cases" id="cases" role="group" aria-label="Use case"></div>
+
+  <div class="grid">
+    <div class="board"><svg id="svg" viewBox="0 0 960 560" role="img" aria-label="qdt parts and the path of the selected use case"></svg></div>
+    <aside class="panel" aria-live="polite">
+      <h2 id="title"></h2>
+      <p class="lede" id="lede"></p>
+      <div class="now"><span class="obj" id="obj"></span><span class="txt" id="txt"></span></div>
+      <div class="controls">
+        <button id="back" aria-label="Previous step">Back</button>
+        <button id="play" class="play">Play</button>
+        <button id="next" aria-label="Next step">Next</button>
+        <span class="count" id="count"></span>
+      </div>
+      <ol class="steps" id="steps"></ol>
+      <p class="note" id="note"></p>
+    </aside>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------- parts
+const N = {
+  fd:       {x:170, y:40,  w:220, h:52, name:"Flight Deck", sub:"browser workspace"},
+  client:   {x:440, y:40,  w:200, h:52, name:"Script or app", sub:"another lab computer", ext:true},
+  hub:      {x:700, y:40,  w:220, h:52, name:"Measurement hub", sub:"stretch \u2014 ADR 0076", prop:true},
+  server:   {x:80,  y:172, w:360, h:52, name:"qdt-server (stand)", sub:"REST :8700 \u00b7 stream :8765 \u00b7 measurement PC"},
+  read:     {x:520, y:172, w:300, h:52, name:"Read server", sub:"on qdt-db \u2014 ADR 0074", prop:true},
+  lab:      {x:30,  y:312, w:150, h:56, name:"qdt-lab", sub:"compiler \u00b7 executor"},
+  sim:      {x:210, y:312, w:150, h:56, name:"qdt-sim", sub:"simulated dot"},
+  tuning:   {x:390, y:312, w:150, h:56, name:"qdt-tuning", sub:"calibration DAG"},
+  analysis: {x:570, y:312, w:150, h:56, name:"qdt-analysis", sub:"pure methods"},
+  registry: {x:750, y:312, w:180, h:56, name:"qdt-registry", sub:"cache \u2192 sync"},
+  inst:     {x:30,  y:452, w:250, h:52, name:"Instruments", sub:"QDAC-II \u00b7 OPX \u00b7 scope \u00b7 SMU", ext:true},
+  pg:       {x:680, y:452, w:250, h:52, name:"Postgres + payload store", sub:"qdt-db", ext:true},
+};
+const rowOf = id => N[id].y;
+
+// ---------------------------------------------------------------- use cases
+// step: [from, to, object, explanation]
+const CASES = [
+ {id:"run", name:"Run a sweep", tag:"", lede:"A measurement engineer defines a sweep in Flight Deck and runs it on the bench. The map streams live while the record is written.",
+  steps:[
+  ["fd","server","SweepDefinition","The Sweep widget posts the axes, stage and pulse sequence to POST /sweeps/compile."],
+  ["server","lab","SweepDefinition + StandConfig","The server hands the definition and the stand to the compiler, which decides how each axis advances."],
+  ["lab","server","ExecutionPlan","The compiler returns the plan; its identity is what the Run button is bound to."],
+  ["server","fd","ExecutionPlan","The strip shows the plan's identity. Editing the sweep afterwards marks it stale."],
+  ["fd","server","Run","Run posts the compiled plan to POST /runs and gets a Run back to follow."],
+  ["server","lab","backends","The server builds a backend for each instrument in the stand; the executor starts."],
+  ["lab","inst","protocol calls","Levels are set, the sequencer program is loaded and played, captures armed. Only the drivers speak vendor languages."],
+  ["inst","lab","readings","Points and captured waveforms come back through the same protocols."],
+  ["lab","server","DatasetChunk","The executor assembles readings into Dataset chunks addressed by coordinate region."],
+  ["server","fd","DatasetChunk (WebSocket)","Chunks stream to every open plot pane. The map fills in as the scan runs."],
+  ["lab","registry","MeasurementRecord + payload","The recorder writes the envelope and the qdt-hdf5-v1 payload to the local cache first."],
+  ["registry","pg","sync()","The cache syncs to Postgres and the payload store whenever the server is reachable."],
+ ]},
+ {id:"sim", name:"Run on the simulator", tag:"", lede:"The same sweep with no hardware. qdt-sim answers the protocols, so nothing above it can tell the difference.",
+  steps:[
+  ["fd","server","SweepDefinition","Compile, exactly as on the bench."],
+  ["server","lab","SweepDefinition + StandConfig","The default stand names simulated backends."],
+  ["lab","server","ExecutionPlan","Same plan shape, same identity rules."],
+  ["fd","server","Run","Run from the strip."],
+  ["lab","sim","protocol calls","The executor calls the same protocols; qdt-sim implements them."],
+  ["sim","lab","readings","A constant-interaction double dot with a biased-SET sensor and clocked noise answers."],
+  ["lab","server","DatasetChunk","Chunks are built the same way."],
+  ["server","fd","DatasetChunk (WebSocket)","A stability diagram appears in the plot pane."],
+  ["lab","registry","MeasurementRecord + payload","Simulated records are recorded like real ones, with the simulator named in provenance."],
+ ]},
+ {id:"replay", name:"Open a stored record", tag:"", lede:"History lists what the registry holds; opening a record replays it down the same wire as live data.",
+  steps:[
+  ["fd","server","GET /records","The History widget asks for records, filtered by device, stand or time."],
+  ["server","registry","find()","The server queries the registry through its public API; it never writes SQL itself."],
+  ["registry","server","MeasurementRecord[]","Envelopes come back: ids, hashes, sweep, stand, device."],
+  ["server","fd","MeasurementRecord[]","History shows the list. Choose one and pick a plot pane."],
+  ["fd","server","POST /stream/replay","The pane asks for the record to be replayed."],
+  ["registry","server","qdt-hdf5-v1 payload","The payload is read, its hash checked, old versions upgraded on load."],
+  ["server","fd","DatasetChunk (WebSocket)","The record streams like a live run, so every widget treats it the same way."],
+ ]},
+ {id:"analysis", name:"Analyse a record", tag:"", lede:"A curated method runs on a stored record. The result names the record and method that produced it.",
+  steps:[
+  ["fd","server","POST /records/{id}/results","The Analysis widget chooses a method and its parameters."],
+  ["server","registry","get() + payload()","The server loads the envelope and the Dataset."],
+  ["server","analysis","Dataset + MethodSpec","The method gets data in and nothing else: no files, no database."],
+  ["analysis","server","AnalysisResult","Estimates with standard errors, a fitted Dataset, overlay geometry."],
+  ["server","registry","AnalysisResult","The result is stored beside the record it came from."],
+  ["server","fd","AnalysisResult","The plot pane draws the fit as an overlay on the record."],
+ ]},
+ {id:"tuneup", name:"Run a tune-up", tag:"", lede:"A calibration DAG runs node by node. Each node is an experiment, an analysis and a decision, and its outcome feeds the next.",
+  steps:[
+  ["fd","server","POST /tuneups","The Tune-up widget starts a TuneUp over the chosen nodes."],
+  ["server","tuning","TuneUp","qdt-tuning orders the CalibrationNodes topologically."],
+  ["tuning","lab","SweepDefinition (bound)","The first node's sweep, with inputs bound from upstream outcomes."],
+  ["lab","sim","protocol calls","Measured on the simulator today; on a device after the first fridge session."],
+  ["lab","registry","MeasurementRecord","The node's data is recorded like any run."],
+  ["tuning","analysis","Dataset + MethodSpec","The node's method fits the record."],
+  ["analysis","tuning","AnalysisResult","Estimates come back to the node."],
+  ["tuning","tuning","DecisionRule \u2192 NodeOutcome","The rule accepts or rejects; the outcome carries the values the next node needs."],
+  ["tuning","registry","NodeOutcome","Outcomes persist, so a tune-up can be inspected and resumed."],
+  ["server","fd","TuneUp progress","The widget shows each node's state and the virtual-gate matrix it found."],
+ ]},
+ {id:"read", name:"Read from another computer", tag:"6c, proposed", lede:"With the registry on qdt-db, any lab computer reads records without touching the measurement PC (ADR 0074).",
+  steps:[
+  ["client","read","GET /records","An application uses the documented HTTP read contract (OpenAPI)."],
+  ["read","registry","find() (reader role)","The read server queries through qdt-registry with the read-only database role."],
+  ["registry","pg","SELECT","Only qdt-registry talks to Postgres; the schema stays internal."],
+  ["read","client","MeasurementRecord[]","Records come back as JSON schema objects."],
+  ["client","read","GET /records/{id}/payload","The payload is fetched as bytes with its SHA-256 in a header."],
+  ["client","registry","qdt_registry (reader DSN)","A Python script can instead use qdt_registry directly with the reader credentials."],
+  ["fd","read","History","Flight Deck opened from the read server browses the same records, with no command controls."],
+ ]},
+ {id:"discover", name:"Discover instruments", tag:"6c, proposed", lede:"Press Discover: the stand server finds what is reachable, and a person binds ports to logical channels (ADR 0077).",
+  steps:[
+  ["fd","server","POST /instruments/discover","A command, so it carries the desk's token when sent from another computer."],
+  ["server","lab","discover()","VISA enumeration, mDNS, an opt-in probe of a configured range, vendor discoverers."],
+  ["lab","inst","*IDN? (read only)","Each candidate is identified. Discovery never sets an output."],
+  ["inst","lab","identity + ports","Model, serial, and each port's direction and quantity."],
+  ["server","fd","Inventory","The Instruments widget lists each instrument, its ports and whether it is online."],
+  ["fd","server","PUT /stand (binding)","A person names ports and saves the stand."],
+  ["server","registry","StandVersion","The binding is versioned with who, when and why, so records keep exact provenance."],
+ ]},
+ {id:"hub", name:"Submit a job through the hub", tag:"stretch", lede:"One URL for every desk. Stands connect outward to the hub; a lease gives one person control of a stand (ADR 0076).",
+  steps:[
+  ["server","hub","register (outward)","The stand server opens a connection to the hub at start, so the measurement PC needs no inbound rule."],
+  ["client","hub","login + Lease","A user logs in and takes a lease on the stand; others are queued behind it."],
+  ["client","hub","Job","A job is a small graph of tasks: measure, analyse, decide."],
+  ["hub","server","Task (measure)","The hub routes the measure task to the leased stand's queue."],
+  ["server","lab","ExecutionPlan","The stand runs it like any queued run."],
+  ["lab","inst","protocol calls","On hardware, or on the simulator."],
+  ["server","hub","DatasetChunk (relayed)","The stream is relayed through the hub."],
+  ["hub","client","DatasetChunk + Event","The user watches live; job events mark each task's state."],
+ ]},
+];
+
+// ---------------------------------------------------------------- geometry
+const cx = id => N[id].x + N[id].w/2;
+const top_ = id => N[id].y;
+const bot = id => N[id].y + N[id].h;
+function route(a, b){
+  if (a === b) return null;
+  const A = N[a], B = N[b];
+  if (A.y === B.y){
+    const order = Object.keys(N).filter(k => N[k].y === A.y).sort((p,q)=>N[p].x-N[q].x);
+    const adj = Math.abs(order.indexOf(a) - order.indexOf(b)) === 1;
+    if (adj){
+      const y = A.y + A.h/2;
+      return A.x < B.x ? `M${A.x+A.w} ${y}H${B.x}` : `M${A.x} ${y}H${B.x+B.w}`;
+    }
+    const y = bot(a) + 22;
+    return `M${cx(a)-12} ${bot(a)}V${y}H${cx(b)+12}V${bot(b)}`;
+  }
+  if (B.y > A.y){
+    const ax = cx(a) + (cx(b) > cx(a) ? 16 : -16), bx = cx(b) + (cx(a) > cx(b) ? 16 : -16);
+    const y = bot(a) + 24;
+    return Math.abs(ax-bx) < 4 ? `M${ax} ${bot(a)}V${top_(b)}` : `M${ax} ${bot(a)}V${y}H${bx}V${top_(b)}`;
+  }
+  const ax = cx(a) + (cx(b) > cx(a) ? 16 : -16), bx = cx(b) + (cx(a) > cx(b) ? 16 : -16);
+  const y = top_(a) - 24;
+  return Math.abs(ax-bx) < 4 ? `M${ax} ${top_(a)}V${bot(b)}` : `M${ax} ${top_(a)}V${y}H${bx}V${bot(b)}`;
+}
+
+// ---------------------------------------------------------------- draw
+const svg = document.getElementById("svg"), NS = "http://www.w3.org/2000/svg";
+const el = (t, a={}, p=svg) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+const layers = {};
+function drawBase(){
+  svg.innerHTML = "";
+  const defs = el("defs");
+  const m = el("marker", {id:"arr", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse"}, defs);
+  el("path", {d:"M0 0L10 5L0 10z", style:"fill:var(--signal)"}, m);
+  layers.trail = el("g"); layers.nodes = el("g"); layers.live = el("g"); layers.tag = el("g");
+  for (const id in N){
+    const n = N[id];
+    const g = el("g", {class:"node" + (n.prop ? " proposed" : "") + (n.ext ? " external" : ""), "data-id":id}, layers.nodes);
+    el("rect", {x:n.x, y:n.y, width:n.w, height:n.h, rx:8}, g);
+    el("text", {x:n.x+n.w/2, y:n.y+22, "text-anchor":"middle", class:"name"}, g).textContent = n.name;
+    el("text", {x:n.x+n.w/2, y:n.y+40, "text-anchor":"middle", class:"sub"}, g).textContent = n.sub;
+  }
+  const lg = el("g", {class:"legend"});
+  el("rect", {x:330, y:470, width:28, height:16, rx:4, "stroke-dasharray":"5 4"}, lg);
+  el("text", {x:366, y:482}, lg).textContent = "proposed";
+  el("rect", {x:450, y:470, width:28, height:16, rx:4, "stroke-dasharray":"2 3"}, lg);
+  el("text", {x:486, y:482}, lg).textContent = "outside qdt";
+}
+
+// ---------------------------------------------------------------- state
+let ci = 0, si = -1, playing = false, timer = null, anim = null;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = id => document.getElementById(id);
+
+function renderCases(){
+  const host = $("cases"); host.innerHTML = "";
+  CASES.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "case"; b.setAttribute("aria-pressed", i === ci ? "true" : "false");
+    b.innerHTML = c.name + (c.tag ? `<span class="tag">${c.tag}</span>` : "");
+    b.onclick = () => { stop(); ci = i; si = -1; renderCases(); renderPanel(); show(); };
+    host.appendChild(b);
+  });
+}
+function renderPanel(){
+  const c = CASES[ci];
+  $("title").textContent = c.name;
+  $("lede").textContent = c.lede;
+  const ol = $("steps"); ol.innerHTML = "";
+  c.steps.forEach((s, i) => {
+    const li = document.createElement("li");
+    li.className = i < si ? "done" : i === si ? "cur" : "";
+    const b = document.createElement("button");
+    b.innerHTML = `<span>${N[s[0]].name} \u2192 ${N[s[1]].name}: <code>${s[2]}</code></span>`;
+    b.onclick = () => { stop(); si = i; renderPanel(); show(); };
+    li.appendChild(b); ol.appendChild(li);
+  });
+  $("count").textContent = si < 0 ? `${c.steps.length} steps` : `${si+1} / ${c.steps.length}`;
+  $("note").textContent = c.tag ? "Proposed design: the parts and calls in this use case do not exist in the code yet." : "Built and tested today.";
+  const cur = ol.querySelector(".cur"); if (cur) cur.scrollIntoView({block:"nearest"});
+}
+function show(){
+  const c = CASES[ci];
+  layers.trail.innerHTML = ""; layers.live.innerHTML = ""; layers.tag.innerHTML = "";
+  if (anim) cancelAnimationFrame(anim);
+  const involved = new Set(c.steps.flatMap(s => [s[0], s[1]]));
+  svg.querySelectorAll(".node").forEach(g => {
+    const id = g.dataset.id;
+    g.classList.toggle("dim", !involved.has(id));
+    g.classList.remove("on");
+  });
+  for (let i = 0; i < si; i++){ const d = route(c.steps[i][0], c.steps[i][1]); if (d) el("path", {d, class:"trail"}, layers.trail); }
+  if (si < 0){ $("obj").textContent = ""; $("txt").textContent = "Press Play, or choose a step."; return; }
+  const [a, b, obj, txt] = c.steps[si];
+  $("obj").textContent = obj; $("txt").textContent = txt;
+  svg.querySelector(`.node[data-id="${a}"]`).classList.add("on");
+  svg.querySelector(`.node[data-id="${b}"]`).classList.add("on");
+  const d = route(a, b);
+  if (!d) { tagAt(cx(a), top_(a) - 14, obj); return; }
+  const p = el("path", {d, class:"live", "marker-end":"url(#arr)"}, layers.live);
+  const len = p.getTotalLength();
+  const mid = p.getPointAtLength(len/2);
+  const dot = el("circle", {r:5.5, class:"dot"}, layers.live);
+  if (reduce){ const e = p.getPointAtLength(len); dot.setAttribute("cx", e.x); dot.setAttribute("cy", e.y); tagAt(mid.x, mid.y - 14, obj); return; }
+  p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+  const t0 = performance.now(), dur = 900;
+  const step = t => {
+    const k = Math.min(1, (t - t0)/dur), e = 1 - Math.pow(1-k, 3);
+    p.style.strokeDashoffset = len * (1 - e);
+    const pt = p.getPointAtLength(len * e); dot.setAttribute("cx", pt.x); dot.setAttribute("cy", pt.y);
+    if (k < 1) anim = requestAnimationFrame(step); else tagAt(mid.x, mid.y - 14, obj);
+  };
+  anim = requestAnimationFrame(step);
+}
+function tagAt(x, y, text){
+  layers.tag.innerHTML = "";
+  const g = el("g", {}, layers.tag);
+  const t = el("text", {x, y, "text-anchor":"middle", class:"tag-tx"}, g); t.textContent = text;
+  const bb = t.getBBox();
+  const r = el("rect", {x:bb.x-8, y:bb.y-4, width:bb.width+16, height:bb.height+8, rx:6, class:"tag-bg"});
+  g.insertBefore(r, t);
+  let dx = 0; if (bb.x - 8 < 4) dx = 4 - (bb.x - 8); if (bb.x + bb.width + 8 > 956) dx = 956 - (bb.x + bb.width + 8);
+  if (dx) g.setAttribute("transform", `translate(${dx} 0)`);
+}
+function next(){ const n = CASES[ci].steps.length; if (si < n - 1){ si++; renderPanel(); show(); return true; } return false; }
+function back(){ if (si > 0){ si--; renderPanel(); show(); } else if (si === 0){ si = -1; renderPanel(); show(); } }
+function play(){
+  if (si >= CASES[ci].steps.length - 1) si = -1;
+  playing = true; $("play").textContent = "Pause";
+  const tick = () => { if (!playing) return; if (next()) timer = setTimeout(tick, reduce ? 1600 : 2200); else stop(); };
+  tick();
+}
+function stop(){ playing = false; clearTimeout(timer); $("play").textContent = "Play"; }
+$("play").onclick = () => playing ? stop() : play();
+$("next").onclick = () => { stop(); next(); };
+$("back").onclick = () => { stop(); back(); };
+document.addEventListener("keydown", e => {
+  if (e.target.closest("button") && (e.key === " " || e.key === "Enter")) return;
+  if (e.key === "ArrowRight"){ stop(); next(); }
+  else if (e.key === "ArrowLeft"){ stop(); back(); }
+  else if (e.key === " "){ e.preventDefault(); playing ? stop() : play(); }
+});
+
+drawBase(); renderCases(); renderPanel(); show();
+</script>
+</body>
+</html>
