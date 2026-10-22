@@ -452,6 +452,13 @@ class Registry:
 
     # --- sync ------------------------------------------------------------------------------------
 
+    def init_server(self) -> int:
+        """Create the server's tables where they are missing and check its DDL version: the runbook's
+        schema step (`deploy/qdt-db/README.md`), run once with the admin role so the tables are the
+        admin's and the writer's and reader's default privileges apply. Returns the DDL version."""
+        self._engine(True)
+        return DDL_VERSION
+
     def sync(self) -> SyncReport:
         """Upload everything not yet confirmed: devices, objects, each record after its payload, then
         analysis results, each after its output payload if it has one, then node outcomes.

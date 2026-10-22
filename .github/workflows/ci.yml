@@ -15,11 +15,17 @@ jobs:
           --health-cmd "pg_isready -U qdt -d qdt_test" --health-interval 2s --health-timeout 3s --health-retries 30
     env:
       QDT_TEST_PG_DSN: postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt_test
+      QDT_TEST_PG_READER_DSN: postgresql+psycopg://qdt_reader:reader@127.0.0.1:5432/qdt_test  # tutorial 04 reads as the reader role
       QDT_WALLCLOCK_ADVISORY: "1"  # wall-clock rate tests warn below target, fail only below half (ADR 0039)
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages --all-extras
+      - name: registry roles on the ephemeral server (deploy/qdt-db/roles.sql, as the lab PC runs it)
+        run: |
+          psql postgresql://qdt:qdt@127.0.0.1:5432/qdt_test -v ON_ERROR_STOP=1 -v db=qdt_test -v admin_pw=admin -v writer_pw=writer -v reader_pw=reader -f deploy/qdt-db/roles.sql
+          # the suite creates its tables as `qdt`, not as qdt_admin: give the reader those too
+          psql postgresql://qdt:qdt@127.0.0.1:5432/qdt_test -v ON_ERROR_STOP=1 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO qdt_reader"
       - run: bash scripts/check_all.sh
       - run: uv run pytest -q
   extras-matrix:

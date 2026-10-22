@@ -2,6 +2,7 @@
 
     python -m qdt_registry find [--device D] [--stand S] [--definition NAME] [--remote]
     python -m qdt_registry sync                      # needs QDT_REGISTRY_DSN and QDT_PAYLOAD_STORE
+    python -m qdt_registry init                      # once per server, as the admin role (deploy/qdt-db)
     python -m qdt_registry serve RECORD_ID           # with stored analysis overlays; then Flight Deck
     python -m qdt_registry serve --output RESULT_ID  # a result's own Dataset, e.g. its detection map
 
@@ -71,6 +72,9 @@ def cli() -> None:
     f.add_argument("--definition", help="definition name")
     f.add_argument("--remote", action="store_true", help="ask the server, not the cache")
     sub.add_parser("sync", help="upload unsynced rows and payloads to the server")
+    sub.add_parser(
+        "init", help="create the server's tables (once, as the admin role) and report the DDL version"
+    )
     s = sub.add_parser(
         "serve", help="stream one record's payload (or a result's output) for Flight Deck"
     )
@@ -89,6 +93,8 @@ def cli() -> None:
         _find(reg, a)
     elif a.command == "sync":
         print(reg.sync())
+    elif a.command == "init":
+        print(f"server ready, ddl_version {reg.init_server()}")
     else:
         if not a.record_id and not a.output:
             p.error("serve needs a RECORD_ID or --output RESULT_ID")

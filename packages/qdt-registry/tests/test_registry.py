@@ -290,3 +290,11 @@ def test_a_reader_with_only_the_servers_address_reads_devices_records_and_payloa
         reader.payload(record.record_id)  # not in the reader's own cache or store
     with pytest.raises(RuntimeError, match="QDT_PAYLOAD_STORE"):
         Registry(tmp_path / "no-store", remote_dsn=dsn).payload(record.record_id, remote=True)
+
+
+def test_init_server_prepares_an_empty_server_once(tmp_path, server):
+    """The runbook's schema step (ADR 0074): tables and the DDL version, then a client finds nothing."""
+    dsn, store = server
+    reg = Registry(tmp_path / "admin", remote_dsn=dsn, remote_store=store)
+    assert reg.init_server() == reg.init_server()  # idempotent
+    assert Registry(tmp_path / "reader", remote_dsn=dsn).find(remote=True) == []
