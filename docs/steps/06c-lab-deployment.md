@@ -4,6 +4,8 @@
 > Inserted before Step 7 by ADR 0073. Milestone `Deployment` (issues #75–#80 and those added to it).
 > Design: ADR 0074 (registry and control path on the lab network), ADR 0075 (stand state and the run
 > queue on the server), ADR 0077 (instruments are discovered), ADR 0076 (measurement hub, stretch). Host runbook: Analysis 0003.
+> ADR 0074 accepted and amended by ADR 0080 (2026-10-22): sync after every record, goal 1 rehearsed on a
+> personal Windows PC first.
 > The repo and its issues are public (rule 7): `qdt-db`, `<stand-host>`, `<lab-subnet>` and the like are
 > placeholders; real names, addresses and credentials never appear here.
 
@@ -27,7 +29,13 @@ Frozen at exit with an ADR.
 1. `qdt-db` initialised per Analysis 0003 §8: Postgres as a service that starts with the machine, roles
    `qdt_admin`/`qdt_writer`/`qdt_reader` (ADR 0074), `pg_hba` and firewall scoped to `<lab-subnet>`,
    nightly dump to a second disk, one restore drill. `deploy/qdt-db/README.md` is the runbook (no Docker).
-2. The payload share on `qdt-db`, mounted by the stand server as `QDT_PAYLOAD_STORE` and surviving reboots.
+   The host is Windows for now: Postgres as a native service, never inside WSL2 (Analysis 0003 §4; ADR 0080).
+   Rehearsed first on a personal PC standing in as `qdt-db`, with a laptop as the measurement PC and a
+   simulated stand; the lab PC is a second run of the same runbook (ADR 0080). Placeholder names only.
+2. The payload share on `qdt-db` (SMB), mounted by the stand server as `QDT_PAYLOAD_STORE` and surviving
+   reboots. The stand server syncs after every record it ingests and once at start; when `qdt-db` or the
+   share is unreachable the record stays in the cache, the run's outcome is unchanged, and the next
+   successful sync carries everything missed (ADR 0080). No timer. A read-only server never syncs.
 3. `qdt-server --read-only`: no backends, no command routes; `GET /records/{id}/payload` with SHA-256;
    the OpenAPI document published with the docs as the read contract. Runs on `qdt-db` as a service.
 4. A read path for scripts through `qdt_registry` with the reader role (a reader mode if the client reads
@@ -69,6 +77,9 @@ Frozen at exit with an ADR.
 - Token: a non-loopback request without a token is refused, with a token accepted; loopback exempt.
 - Script read path: the tutorial reads a record and its payload from an ephemeral Postgres with the reader
   role and fails to write.
+- Sync after ingest (ADR 0080): with the server unreachable a run completes and its record is in the
+  cache, unsynced; with the server reachable again the next ingest uploads every unsynced record and
+  payload; the sync runs after the run's state is set; a read-only server never syncs.
 - `StandState`: versions round-trip; the latest is in force; a level and a compiled sweep beyond a limit
   are refused against the simulated stand; the held point is not re-applied without confirmation.
 - Queue: order holds through reorder, remove and abort; a queued entry survives a server restart; one
@@ -128,19 +139,19 @@ each record from History. The dated report lists every step that needed a workar
 
 ## Open decisions
 Each closes by an ADR or by the human's decision recorded on its issue.
-- Accept or amend **ADR 0074** (read server, HTTP read contract, roles, share, command token) before
-  deliverables 2–5, and **ADR 0075** (stand state, server queue) before 7–8.
-- How payloads reach `qdt-db` from other machines (Analysis 0003 §3; ADR 0026 deferred it): ADR 0074
-  proposes the share for stand servers and HTTP for every reader; HTTP upload waits for the hub.
-- Database roles and where credentials live: ADR 0074 proposes three roles and per-machine environment.
+- **Settled 2026-10-22 (ADR 0080):** ADR 0074 accepted — read server, HTTP read contract, three roles,
+  payloads on the share for stand servers and HTTP for every reader (HTTP upload waits for the hub),
+  credentials in per-machine environment, command token. Still open: accept or amend **ADR 0075**
+  (stand state, server queue) before deliverables 7–8.
 - Where the run queue lives (#78): ADR 0075 proposes the stand server.
 - Where limits, couplings and the held point live (#79): ADR 0075 proposes versioned `StandState`.
 - Accept or amend **ADR 0077** (instruments are discovered) before deliverables 9–10; it closes #75 and,
   by binding to identity rather than address, #80 (DHCP reservations stay good practice, not a requirement).
 - The instrument range the LAN probe may touch, and whether IT allows probing at all (mDNS alone otherwise):
   part of deliverable 6's IT ask.
-- The lab PC's OS (plan §12 #6, #114): a Windows host with Postgres either as a native service or in WSL2
-  (Analysis 0003 §4's caveats: mirrored networking, systemd, start at boot); decided with deliverable 1.
+- **Settled 2026-10-22 (ADR 0080):** the lab PC's OS (plan §12 #6, #114) is Windows for now, Postgres as a
+  native service, not WSL2; the Linux preference and its reasons stay in Analysis 0003 §4, and the runbook
+  gains a Linux section when a Linux host exists.
 - A local Postgres test run without Docker (#112): deliverable 14.
 
 ## Status
