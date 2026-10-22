@@ -21,9 +21,9 @@ ISSUES = [
 def main():
     if "--apply" not in sys.argv:
         print(json.dumps([{"title": t, "labels": l} for t, _, l in ISSUES], indent=1)); print(f"\n{len(ISSUES)} issues (dry run)", file=sys.stderr); return
-    subprocess.run(["gh", "label", "create", "generality", "--color", "5319e7", "--force"], capture_output=True)
+    subprocess.run(["gh", "label", "create", "generality", "--color", "5319e7", "--force"], check=False, capture_output=True)
     for title, body, labels in ISSUES:
-        subprocess.run(["gh", "issue", "create", "--title", title, "--body", body, *sum((["--label", x] for x in labels), [])], check=True)
+        subprocess.run(["gh", "issue", "create", "--title", title, "--body", body, *[a for x in labels for a in ("--label", x)]], check=True)
         print("created:", title)
 
 

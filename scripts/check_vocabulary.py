@@ -12,7 +12,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GENERAL = ["packages/qdt-schemas/src", "packages/qdt-lab/src", "packages/qdt-registry/src"]
 TERMS = [t.strip() for t in (ROOT / "scripts/vocabulary_terms.txt").read_text().splitlines() if t.strip() and not t.startswith("#")]
-PAT = re.compile(r"\b(" + "|".join(re.escape(t) for t in TERMS) + r")\b", re.I)
+PAT = re.compile(r"\b(" + "|".join(re.escape(t) for t in TERMS) + r")\b", re.IGNORECASE)
 BASELINE = ROOT / "scripts/vocabulary_baseline.txt"
 
 
