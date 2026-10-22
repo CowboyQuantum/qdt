@@ -99,5 +99,15 @@ the `AgentStep` slice, and can start against simulator records now.
    count within 2× of the deterministic tune-up.
 4. **Historical replays:** yes, internal only, curated by the human, starting with about ten tune-ups whose
    outcomes are well remembered.
-5. **First artefact:** open. Recommendation: `AgentStep` first, in `autopilot` (small; unblocks A0 and A1
-   against qdt's existing API and records), with the failure-library spec written in parallel for `qdt-sim`.
+5. **First artefact (settled 2026-10-22):** when `autopilot` work begins — much later, in its own repo —
+   `AgentStep` first (small; unblocks A0 and A1 against qdt's API and records). In qdt, a **fault-model spec
+   for `qdt-sim`** is written when the physics core is next touched: the fault physics (latching, leaky
+   barriers, switchers, unintentional dots, drift, charge noise, sensor detuning) must live in the
+   simulator because it has to respond to the agent's actions; scenario recipes, ground truth and scoring are
+   `autopilot`'s. Ground truth never travels through qdt: the scorer chooses the parameters and, once the
+   physics core is importable, computes the answer itself. A sim-control endpoint (create a simulated stand
+   from a fault configuration and seed, behind its own token) is a future issue, not a deliverable.
+6. **Boundaries (2026-10-22, ADR 0078):** `autopilot` and, after Step 6c, Flight Deck are clients over HTTP
+   in their own repos; the instrument layer and the physics core stay inside qdt behind enforced seams until
+   something else imports them. Nothing is extracted now; qdt keeps `autopilot` in mind only through its
+   versioned API.
