@@ -1,0 +1,4 @@
+packages/qdt-lab/src/qdt_lab/experiment/compile.py:virtual gate
+packages/qdt-lab/src/qdt_lab/experiment/execute.py:virtual gate
+packages/qdt-schemas/src/qdt_schemas/activity.py:virtual gate
+packages/qdt-schemas/src/qdt_schemas/envelope.py:cooldown

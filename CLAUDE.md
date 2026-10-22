@@ -56,7 +56,7 @@ Run `/session-check` before claiming anything is done.
 uv sync --all-packages --all-extras      # full dev install
 uv run pytest                             # L0 suite (what CI runs)
 uv run pytest bench/ -m hardware          # L1/L2, bench only
-bash scripts/check_all.sh                 # provenance + descriptions + import boundaries + lock + lint
+bash scripts/check_all.sh                 # provenance + descriptions + imports + vocabulary + lock + lint
 uv run mkdocs serve                       # docs at localhost:8000
 (cd apps/flightdeck && pnpm test)        # front end; run pnpm from apps/flightdeck so corepack picks the pinned version
 uv run python -m qdt_lab.stream           # synthetic stream on ws://127.0.0.1:8765; then `pnpm dev` in apps/flightdeck
