@@ -22,7 +22,7 @@ import { scriptWidget } from "./widgets/script";
 import { sweepWidget } from "./widgets/sweep";
 import { tuneupWidget } from "./widgets/tuneup";
 import { Bus } from "./workspace/bus";
-import { loadLayout, safeStorage } from "./workspace/layout";
+import { LAYOUT_KEY, defaultLayout, loadLayout, READ_ONLY_LAYOUT_KEY, readOnlyLayout, safeStorage } from "./workspace/layout";
 import { mountStrip } from "./workspace/strip";
 import { applyTheme, loadWebFonts, setWebFonts, ThemeManager } from "./workspace/theme";
 import { WidgetRegistry } from "./workspace/widget";
@@ -32,7 +32,12 @@ const params = new URLSearchParams(location.search);
 const api = new ApiClient(apiBase(params));
 const bus = new Bus();
 const datasets = new Datasets();
-const registry = new WidgetRegistry().register(plotWidget).register(emptyWidget).register(historyWidget).register(sweepWidget).register(pulseWidget).register(levelsWidget).register(gatesWidget).register(analysisWidget).register(tuneupWidget).register(scriptWidget);
+// The kind of server decides what is on offer (ADR 0074): against a read server the command widgets and
+// the strip's Run are absent, not disabled; an unreachable server is treated as a stand server.
+const readOnly = (await api.server().catch(() => null))?.read_only === true;
+const registry = new WidgetRegistry().register(plotWidget).register(emptyWidget).register(historyWidget);
+if (!readOnly) registry.register(sweepWidget).register(pulseWidget).register(levelsWidget).register(gatesWidget).register(analysisWidget).register(tuneupWidget).register(scriptWidget);
+const layoutKey = readOnly ? READ_ONLY_LAYOUT_KEY : LAYOUT_KEY;
 
 const themes = new ThemeManager(safeStorage(), applyTheme, matchMedia("(prefers-color-scheme: light)").matches);
 themes.apply();
@@ -51,8 +56,9 @@ mountStrip(document.querySelector("header.strip")!, {
   datasets,
   themes,
   onReplayFile: async (file) => start(new ReplaySource(new Uint8Array(await file.arrayBuffer()), file.name, 1)),
+  readOnly,
 });
-new Workspace(document.getElementById("ws")!, registry, bus, { api, datasets, params }, loadLayout(registry.ids()));
+new Workspace(document.getElementById("ws")!, registry, bus, { api, datasets, params }, loadLayout(registry.ids(), safeStorage(), layoutKey, readOnly ? readOnlyLayout : defaultLayout), layoutKey);
 
 const replay = params.get("replay");
 if (replay) {

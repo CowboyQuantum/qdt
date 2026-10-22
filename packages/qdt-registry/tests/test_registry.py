@@ -267,3 +267,26 @@ def test_a_server_down_at_the_first_sync_is_prepared_when_it_answers(tmp_path, d
     server.mkdir()  # the server comes up
     assert reg.sync().records == 1
     assert reg.find(remote=True) == [record]
+
+
+def test_a_reader_with_only_the_servers_address_reads_devices_records_and_payloads(
+    tmp_path, server, device, recorded_run
+):
+    """ADR 0074: the read server and a script read the server side without a cache of their own;
+    payload bytes come from the server's store, and a client without one says what to set."""
+    dsn, store = server
+    writer = Registry(tmp_path / "writer", remote_dsn=dsn, remote_store=store)
+    writer.register_device(device)
+    record, path, _, _ = recorded_run(tmp_path)
+    writer.ingest(record, path)
+    writer.sync()
+
+    reader = Registry(tmp_path / "reader", remote_dsn=dsn, remote_store=store)
+    assert reader.devices() == [] and reader.devices(remote=True) == [device]
+    assert reader.find(remote=True) == [record]
+    assert reader.payload_file(record.record_id, remote=True) == store / record.payload.path
+    assert reader.payload(record.record_id, remote=True).dataset == writer.payload(record.record_id).dataset
+    with pytest.raises(KeyError):
+        reader.payload(record.record_id)  # not in the reader's own cache or store
+    with pytest.raises(RuntimeError, match="QDT_PAYLOAD_STORE"):
+        Registry(tmp_path / "no-store", remote_dsn=dsn).payload(record.record_id, remote=True)

@@ -616,3 +616,83 @@ def test_a_server_uploads_what_an_earlier_session_left_when_it_starts(tmp_path, 
     with TestClient(create_app(Settings(root=root, stream_port=0))) as c:  # the same cache, a server
         assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
     assert [r.record_id for r in _records_on_the_server(tmp_path, dsn)] == [run.record_id]
+
+
+# --- the read server (ADR 0074): no stand, no command; records, payloads and replay from the server ---
+
+
+def _stand_server_that_measured_once(tmp_path, monkeypatch):
+    """A stand server on the laptop that ran one sweep and synced it; (dsn, store, run)."""
+    dsn, store = _server_env(monkeypatch, tmp_path)
+    (tmp_path / "server").mkdir()
+    with TestClient(create_app(Settings(root=tmp_path / "laptop", stream_port=0))) as c:
+        run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
+        assert run.state == "completed" and run.record_id, run.error
+        assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
+    return dsn, store, run
+
+
+STAND_ROUTES = [
+    ("GET", "/stand"),
+    ("GET", "/levels"),
+    ("GET", "/levels/state"),
+    ("POST", "/levels"),
+    ("DELETE", "/levels"),
+    ("POST", "/sweeps/compile"),
+    ("POST", "/runs"),
+    ("GET", "/runs"),
+    ("POST", "/runs/x/abort"),
+    ("POST", "/records/x/results"),
+    ("GET", "/nodes"),
+    ("POST", "/tuneups"),
+    ("GET", "/tuneups"),
+    ("POST", "/tuneups/x/stop"),
+]
+
+
+def test_a_read_server_serves_the_registry_and_has_no_command(tmp_path, monkeypatch):
+    _, store, run = _stand_server_that_measured_once(tmp_path, monkeypatch)
+    desktop = Settings(root=tmp_path / "desktop", stream_port=0, read_only=True)
+    with TestClient(create_app(desktop)) as c:
+        assert c.get("/server").json() == {"read_only": True, "stand_id": None, "device_id": None}
+        assert [d["device_id"] for d in c.get("/devices").json()] == [DEVICE_ID]
+        [rec] = c.get("/records").json()
+        assert rec["record_id"] == run.record_id
+        assert c.get(f"/records/{run.record_id}").json()["record_id"] == run.record_id
+        # the bytes, with their hash, as any application on the network would fetch them
+        r = c.get(f"/records/{run.record_id}/payload")
+        assert r.status_code == 200 and r.headers["content-type"] == "application/x-hdf5"
+        got = hashlib.sha256(r.content).hexdigest()
+        assert got == r.headers["x-content-sha256"] == rec["payload"]["sha256"]
+        assert r.content == (store / rec["payload"]["path"]).read_bytes()
+        assert c.get("/records/" + "0" * 32 + "/payload").status_code == 404
+        assert c.get("/results").json() == [] and c.get("/outcomes").json() == []
+        # replay works: the record goes on this server's own stream
+        url = c.get("/stream").json()["url"]
+        assert c.post("/stream/replay", json={"record_id": run.record_id}).status_code == 202
+        assert asyncio.run(collect(url, timeout=30))
+        # no command route exists — not refused, absent — and the API document says so
+        for method, path in STAND_ROUTES:
+            assert c.request(method, path, json={}).status_code in (404, 405), (method, path)
+        paths = c.get("/openapi.json").json()["paths"]
+        assert not any(p in paths for p in ("/stand", "/runs", "/levels", "/tuneups", "/nodes"))
+        assert not hasattr(c.app.state, "runs")  # nothing that could sync or run
+        assert c.app.state.registry.unsynced()["records"] == 0  # its own cache holds nothing
+
+
+def test_a_read_server_needs_the_registry_server(tmp_path):
+    desktop = Settings(root=tmp_path / "desktop", stream_port=0, read_only=True)
+    with pytest.raises(RuntimeError, match=DSN_ENV), TestClient(create_app(desktop)):
+        pass
+
+
+def test_a_stand_server_says_what_it_drives_and_serves_its_own_payloads(client):
+    info = client.get("/server").json()
+    assert info["read_only"] is False and info["device_id"] == DEVICE_ID and info["stand_id"]
+    run = wait_for(client, client.post("/runs", json={"definition": definition()}).json()["run_id"])
+    assert run.record_id, run.error
+    r = client.get(f"/records/{run.record_id}/payload")
+    assert r.status_code == 200
+    assert hashlib.sha256(r.content).hexdigest() == r.headers["x-content-sha256"]
+    for method, path in STAND_ROUTES:  # present here: a stand server has every route
+        assert client.request(method, path, json={}).status_code not in (404, 405) or "/x/" in path

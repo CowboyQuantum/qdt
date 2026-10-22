@@ -13,8 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -123,6 +124,10 @@ class Settings:
     backends: BackendFactory = simulated_backends
     ui: Path | None = None
     """A built Flight Deck (`apps/flightdeck/dist`) to serve at `/`, after the API routes; None serves none."""
+    read_only: bool = False
+    """A read server (ADR 0074): no backends, no stand, no command route; records, results, outcomes,
+    payload bytes and replay from the registry server (`QDT_REGISTRY_DSN`, `QDT_PAYLOAD_STORE`), which
+    it needs. Runs on the database PC, answers when the measurement PC is off."""
 
 
 class RunRequest(BaseModel):
@@ -187,6 +192,18 @@ class StreamInfo(BaseModel):
     url: str = Field(description="WebSocket URL of the Dataset stream.")
 
 
+class ServerInfo(BaseModel):
+    """What kind of server answered (ADR 0074): Flight Deck shows no command against a read server."""
+
+    read_only: bool = Field(
+        description="True for a read server: no stand, no command route; records and replay only."
+    )
+    stand_id: str | None = Field(description="The stand this server drives; null on a read server.")
+    device_id: str | None = Field(
+        description="The device the stand server's records are about; null on a read server."
+    )
+
+
 def _register_or_reuse(registry: Registry, device: DeviceRecord) -> None:
     """Register the server's device, or accept the one already registered under that id when it is
     the same kind of device (a restart registers at a later time; the registry treats a differing
@@ -208,6 +225,17 @@ def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         registry = Registry.from_env(settings.root)
+        if settings.read_only:
+            if not (registry.remote_dsn and registry.remote_store):
+                raise RuntimeError(
+                    "a read server reads the registry server: set QDT_REGISTRY_DSN (reader role) "
+                    "and QDT_PAYLOAD_STORE (the payload store's path on this machine)"
+                )
+            async with StreamServer(settings.stream_host, settings.stream_port) as stream:
+                app.state.registry = registry
+                app.state.stream = stream
+                yield
+            return
         _register_or_reuse(registry, settings.device)
         async with StreamServer(settings.stream_host, settings.stream_port) as stream:
             app.state.registry = registry
@@ -242,12 +270,27 @@ def create_app(settings: Settings) -> FastAPI:
     def tuneups(request: Request) -> TuneUpManager:
         return request.app.state.tuneups
 
-    @app.get("/stand", response_model=StandConfig)
+    # A read server answers from the registry server; a stand server from its own cache (ADR 0074).
+    remote = settings.read_only
+    # Everything that needs a stand: the routes below on `stand` exist only on a stand server.
+    stand = APIRouter()
+
+    @app.get("/server", response_model=ServerInfo)
+    def get_server() -> ServerInfo:
+        if settings.read_only:
+            return ServerInfo(read_only=True, stand_id=None, device_id=None)
+        return ServerInfo(
+            read_only=False, stand_id=settings.stand.stand_id, device_id=settings.device.device_id
+        )
+
+    @stand.get("/stand", response_model=StandConfig)
     def get_stand(request: Request) -> StandConfig:
         return runs(request).stand
 
     @app.get("/devices", response_model=list[DeviceRecord])
     def get_devices(request: Request) -> list[DeviceRecord]:
+        if remote:
+            return registry(request).devices(remote=True)
         return [registry(request).device(settings.device.device_id)]
 
     @app.get("/stream", response_model=StreamInfo)
@@ -256,18 +299,18 @@ def create_app(settings: Settings) -> FastAPI:
 
     # --- the stand's operating point (ADR 0053): click-to-set lands here ----------------------------
 
-    @app.get("/levels", response_model=list[FixedLevel])
+    @stand.get("/levels", response_model=list[FixedLevel])
     def get_levels(request: Request) -> list[FixedLevel]:
         """The DC levels the server holds for the stand; every sweep inherits them (ADR 0038, 0053)."""
         return runs(request).levels()
 
-    @app.get("/levels/state", response_model=list[ChannelLevel])
+    @stand.get("/levels/state", response_model=list[ChannelLevel])
     def level_state(request: Request) -> list[ChannelLevel]:
         """Every level-setting or level-sensing channel of the stand now: its setpoint, the held level
         and its readback (ADR 0057). Read by the Levels widget; polled, never stored."""
         return runs(request).level_state()
 
-    @app.post("/levels", response_model=list[FixedLevel])
+    @stand.post("/levels", response_model=list[FixedLevel])
     def set_levels(body: list[FixedLevel], request: Request) -> list[FixedLevel]:
         """Set these channels now and hold them; returns the whole operating point."""
         try:
@@ -277,37 +320,37 @@ def create_app(settings: Settings) -> FastAPI:
         except (ValueError, RuntimeError) as e:
             raise HTTPException(400, str(e)) from None
 
-    @app.delete("/levels", response_model=list[FixedLevel])
+    @stand.delete("/levels", response_model=list[FixedLevel])
     def clear_levels(request: Request) -> list[FixedLevel]:
         """Forget the held operating point; the stand stays where it is."""
         return runs(request).clear_levels()
 
-    @app.post("/sweeps/compile", response_model=ExecutionPlan)
+    @stand.post("/sweeps/compile", response_model=ExecutionPlan)
     def compile_sweep_route(definition: SweepDefinition, request: Request) -> ExecutionPlan:
         try:
             return runs(request).compile(definition)
         except (ValueError, KeyError) as e:
             raise HTTPException(400, str(e)) from None
 
-    @app.post("/runs", response_model=Run, status_code=202)
+    @stand.post("/runs", response_model=Run, status_code=202)
     async def start_run(body: RunRequest, request: Request) -> Run:
         try:
             return await runs(request).start(body.definition, body.options)
         except (ValueError, KeyError) as e:
             raise HTTPException(400, str(e)) from None
 
-    @app.get("/runs", response_model=list[Run])
+    @stand.get("/runs", response_model=list[Run])
     def list_runs(request: Request) -> list[Run]:
         return list(runs(request).runs.values())
 
-    @app.get("/runs/{run_id}", response_model=Run)
+    @stand.get("/runs/{run_id}", response_model=Run)
     def get_run(run_id: str, request: Request) -> Run:
         try:
             return runs(request).runs[run_id]
         except KeyError:
             raise HTTPException(404, f"no run {run_id!r}") from None
 
-    @app.post("/runs/{run_id}/abort", response_model=Run, status_code=202)
+    @stand.post("/runs/{run_id}/abort", response_model=Run, status_code=202)
     def abort_run(run_id: str, request: Request) -> Run:
         """Queued: aborted at once. Running: stops between frames; poll the run for its record."""
         try:
@@ -325,21 +368,40 @@ def create_app(settings: Settings) -> FastAPI:
         campaign: str | None = None,
     ) -> list[MeasurementRecord]:
         return registry(request).find(
-            device_id=device_id, definition_name=definition_name, campaign=campaign
+            device_id=device_id, definition_name=definition_name, campaign=campaign, remote=remote
         )
 
     @app.get("/records/{record_id}", response_model=MeasurementRecord)
     def get_record(record_id: str, request: Request) -> MeasurementRecord:
         try:
-            return registry(request).get(record_id)
+            return registry(request).get(record_id, remote=remote)
         except KeyError:
             raise HTTPException(404, f"no record {record_id!r}") from None
+
+    @app.get("/records/{record_id}/payload", response_class=FileResponse)
+    def get_payload(record_id: str, request: Request) -> FileResponse:
+        """The record's payload bytes (`qdt-hdf5-v1`), with its SHA-256 in `X-Content-SHA256` so a
+        reader on another machine can check what it got (ADR 0074). No reader mounts the share."""
+        reg = registry(request)
+        try:
+            record = reg.get(record_id, remote=remote)
+        except KeyError:
+            raise HTTPException(404, f"no record {record_id!r}") from None
+        path = reg.payload_file(record_id, remote=remote)
+        if not path.is_file():
+            raise HTTPException(404, f"payload of record {record_id!r} is not in this server's store")
+        return FileResponse(
+            path,
+            media_type="application/x-hdf5",
+            filename=path.name,
+            headers={"X-Content-SHA256": record.payload.sha256},
+        )
 
     @app.get("/methods", response_model=list[MethodSpec])
     def list_methods() -> list[MethodSpec]:
         return catalogue.specs()
 
-    @app.post("/records/{record_id}/results", response_model=AnalysisResult, status_code=201)
+    @stand.post("/records/{record_id}/results", response_model=AnalysisResult, status_code=201)
     async def analyse(record_id: str, body: MethodRequest, request: Request) -> AnalysisResult:
         reg = registry(request)
         try:
@@ -361,12 +423,12 @@ def create_app(settings: Settings) -> FastAPI:
     def list_results(
         request: Request, record_id: str | None = None, method: str | None = None
     ) -> list[AnalysisResult]:
-        return registry(request).results(record_id=record_id, method_name=method)
+        return registry(request).results(record_id=record_id, method_name=method, remote=remote)
 
     @app.get("/results/{result_id}", response_model=AnalysisResult)
     def get_result(result_id: str, request: Request) -> AnalysisResult:
         try:
-            return registry(request).result(result_id)
+            return registry(request).result(result_id, remote=remote)
         except KeyError:
             raise HTTPException(404, f"no result {result_id!r}") from None
 
@@ -379,13 +441,14 @@ def create_app(settings: Settings) -> FastAPI:
         try:
             if body.result_id:
                 source = PayloadSource(
-                    await asyncio.to_thread(reg.output, body.result_id), registry_ref=body.result_id
+                    await asyncio.to_thread(reg.output, body.result_id, remote=remote),
+                    registry_ref=body.result_id,
                 )
             elif body.record_id:
-                record = reg.get(body.record_id)
+                record = reg.get(body.record_id, remote=remote)
                 overlays = [
                     a
-                    for r in reg.results(record_id=body.record_id, status="ok")
+                    for r in reg.results(record_id=body.record_id, status="ok", remote=remote)
                     for a in r.annotations
                 ]
                 if record.plan_id in stream.datasets:
@@ -393,7 +456,7 @@ def create_app(settings: Settings) -> FastAPI:
                         stream.publish_annotation(a)
                     return StreamInfo(url=stream.url)
                 source = PayloadSource(
-                    await asyncio.to_thread(reg.payload, body.record_id),
+                    await asyncio.to_thread(reg.payload, body.record_id, remote=remote),
                     registry_ref=body.record_id,
                     annotations=overlays,
                 )
@@ -409,12 +472,12 @@ def create_app(settings: Settings) -> FastAPI:
 
     # --- tune-ups (Step 6, ADR 0050) -----------------------------------------------------------
 
-    @app.get("/nodes", response_model=list[CalibrationNode])
+    @stand.get("/nodes", response_model=list[CalibrationNode])
     def list_nodes(request: Request) -> list[CalibrationNode]:
         """The calibration nodes this server can run: every template, built for the stand's sequencer."""
         return tuneups(request).templates()
 
-    @app.post("/tuneups", response_model=TuneUp, status_code=202)
+    @stand.post("/tuneups", response_model=TuneUp, status_code=202)
     async def start_tuneup(body: TuneUpRequest, request: Request) -> TuneUp:
         try:
             nodes = tuneups(request).nodes_for(body.node_ids)
@@ -424,18 +487,18 @@ def create_app(settings: Settings) -> FastAPI:
         except (ValueError, KeyError) as e:
             raise HTTPException(400, str(e)) from None
 
-    @app.get("/tuneups", response_model=list[TuneUp])
+    @stand.get("/tuneups", response_model=list[TuneUp])
     def list_tuneups(request: Request) -> list[TuneUp]:
         return list(tuneups(request).tuneups.values())
 
-    @app.get("/tuneups/{tuneup_id}", response_model=TuneUp)
+    @stand.get("/tuneups/{tuneup_id}", response_model=TuneUp)
     def get_tuneup(tuneup_id: str, request: Request) -> TuneUp:
         try:
             return tuneups(request).tuneups[tuneup_id]
         except KeyError:
             raise HTTPException(404, f"no tune-up {tuneup_id!r}") from None
 
-    @app.post("/tuneups/{tuneup_id}/stop", response_model=TuneUp)
+    @stand.post("/tuneups/{tuneup_id}/stop", response_model=TuneUp)
     def stop_tuneup(tuneup_id: str, request: Request) -> TuneUp:
         try:
             return tuneups(request).stop(tuneup_id)
@@ -451,14 +514,19 @@ def create_app(settings: Settings) -> FastAPI:
         node_id: str | None = None,
         status: str | None = None,
     ) -> list[NodeOutcome]:
-        return registry(request).outcomes(tuneup_id=tuneup_id, node_id=node_id, status=status)
+        return registry(request).outcomes(
+            tuneup_id=tuneup_id, node_id=node_id, status=status, remote=remote
+        )
 
     @app.get("/outcomes/{outcome_id}", response_model=NodeOutcome)
     def get_outcome(outcome_id: str, request: Request) -> NodeOutcome:
         try:
-            return registry(request).outcome(outcome_id)
+            return registry(request).outcome(outcome_id, remote=remote)
         except KeyError:
             raise HTTPException(404, f"no outcome {outcome_id!r}") from None
+
+    if not settings.read_only:  # a read server has no stand: these routes do not exist on it
+        app.include_router(stand)
 
     # last, so every API route matches first: the UI is static files on the same origin, nothing more
     if settings.ui is not None:

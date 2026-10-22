@@ -1,11 +1,17 @@
 """`python -m qdt_server`: the control path on one machine, against the simulated backend (Step 4b).
 
     uv run python -m qdt_server [--root ~/.qdt/registry] [--host 127.0.0.1] [--port 8700] [--stream-port 8765]
-                                [--ui apps/flightdeck/dist] [--stand stand.json --device-id <id>]
+                                [--ui apps/flightdeck/dist] [--stand stand.json --device-id <id>] [--read-only]
 
 Then Flight Deck (`corepack pnpm dev` in apps/flightdeck, or the built one served at / with --ui)
 connects to the stream, and the API is at http://127.0.0.1:8700 (interactive docs at /docs).
 `scripts/demo_control_path.py` does all of it in one command.
+
+With `QDT_REGISTRY_DSN` and `QDT_PAYLOAD_STORE` set, a stand server uploads every record to the registry
+server after it is ingested, and once at start (ADR 0080); unreachable, the record waits in the cache.
+`--read-only` is the other kind of server (ADR 0074): on the database PC, no stand and no command,
+serving records, results, outcomes, payload bytes and replay from the registry server to Flight Deck
+and to any application over HTTP; it answers when the measurement PC is off.
 
 On the bench (Step 5), `--stand stand.json --device-id <id>` runs on the real instruments instead of
 the simulator: the stand file is a `StandConfig` whose instruments name a driver backend ('qdac2',
@@ -41,8 +47,18 @@ def cli() -> None:
     p.add_argument("--ui", type=pathlib.Path, default=None, help="built Flight Deck to serve at /")
     p.add_argument("--stand", type=pathlib.Path, default=None, help="real stand (StandConfig JSON)")
     p.add_argument("--device-id", default=None, help="device under test (with --stand)")
+    p.add_argument(
+        "--read-only",
+        action="store_true",
+        help="a read server (ADR 0074): no stand, no commands; records, results, payloads and "
+        "replay from QDT_REGISTRY_DSN / QDT_PAYLOAD_STORE",
+    )
     a = p.parse_args()
-    settings = Settings(root=a.root, stream_host=a.host, stream_port=a.stream_port, ui=a.ui)
+    if a.read_only and (a.stand is not None or a.device_id):
+        p.error("--read-only drives no stand: drop --stand/--device-id")
+    settings = Settings(
+        root=a.root, stream_host=a.host, stream_port=a.stream_port, ui=a.ui, read_only=a.read_only
+    )
     if a.stand is not None:
         if not a.device_id:
             p.error("--stand needs --device-id (the device the records are about)")

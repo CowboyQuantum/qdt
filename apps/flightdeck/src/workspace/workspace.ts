@@ -12,10 +12,12 @@ import {
   MAX_PLOT_PANES,
   type Column,
   type Layout,
+  LAYOUT_KEY,
   type Pane,
   PLOT_WIDGET,
   resizeColumn,
   resizeRows,
+  safeStorage,
   saveLayout,
   setPaneState,
   setWidget,
@@ -47,6 +49,8 @@ export class Workspace {
     private readonly bus: Bus,
     ctx: Omit<WidgetContext, "bus" | "layout" | "paneId" | "pane">,
     layout: Layout,
+    /** Where this layout persists; a read server's layout has its own key (ADR 0074). */
+    private readonly layoutKey: string = LAYOUT_KEY,
   ) {
     this.layout = layout;
     this.ctx = {
@@ -85,7 +89,7 @@ export class Workspace {
     if (next === this.layout) return;
     this.layout = next;
     this.render();
-    saveLayout(this.layout);
+    saveLayout(this.layout, safeStorage(), this.layoutKey);
   }
 
   private height(column: Column): number {
@@ -159,7 +163,7 @@ export class Workspace {
         state,
         save: (next) => {
           this.layout = setPaneState(this.layout, p.id, next);
-          saveLayout(this.layout);
+          saveLayout(this.layout, safeStorage(), this.layoutKey);
         },
       },
     };
@@ -216,7 +220,7 @@ export class Workspace {
         document.body.classList.remove("resizing");
         g.removeEventListener("pointermove", move);
         g.removeEventListener("pointerup", up);
-        saveLayout(this.layout);
+        saveLayout(this.layout, safeStorage(), this.layoutKey);
         this.updateHeads();
       };
       g.addEventListener("pointermove", move);
@@ -227,7 +231,7 @@ export class Workspace {
       if (!d) return;
       e.preventDefault();
       set(this.layout.widths[side] + (side === "left" ? d : -d));
-      saveLayout(this.layout);
+      saveLayout(this.layout, safeStorage(), this.layoutKey);
       this.updateHeads();
     });
     return g;
@@ -264,7 +268,7 @@ export class Workspace {
         document.body.classList.remove("resizing", "h");
         g.removeEventListener("pointermove", move);
         g.removeEventListener("pointerup", up);
-        saveLayout(this.layout);
+        saveLayout(this.layout, safeStorage(), this.layoutKey);
       };
       g.addEventListener("pointermove", move);
       g.addEventListener("pointerup", up);
@@ -274,7 +278,7 @@ export class Workspace {
       if (!d) return;
       e.preventDefault();
       apply(fraction() + d);
-      saveLayout(this.layout);
+      saveLayout(this.layout, safeStorage(), this.layoutKey);
     });
     return g;
   }

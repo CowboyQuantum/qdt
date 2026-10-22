@@ -49,6 +49,7 @@ export interface QdtControlApi {
   SequencerProgram?: SequencerProgram;
   SequencerResult?: SequencerResult;
   SequencerStage?: SequencerStage;
+  ServerInfo?: ServerInfo;
   SimScenario?: SimScenario;
   SourceDescriptor?: SourceDescriptor;
   StandConfig?: StandConfig;
@@ -1914,6 +1915,26 @@ export interface RunRequest {
   options?: {
     [k: string]: string | number | boolean;
   };
+}
+/**
+ * What kind of server answered (ADR 0074): Flight Deck shows no command against a read server.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "ServerInfo".
+ */
+export interface ServerInfo {
+  /**
+   * The device the stand server's records are about; null on a read server.
+   */
+  device_id: string | null;
+  /**
+   * True for a read server: no stand, no command route; records and replay only.
+   */
+  read_only: boolean;
+  /**
+   * The stand this server drives; null on a read server.
+   */
+  stand_id: string | null;
 }
 /**
  * A reproducible simulated situation: which scalar parameters of the simulated device's model are

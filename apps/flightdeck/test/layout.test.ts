@@ -7,6 +7,8 @@ import {
   defaultLayout,
   LAYOUT_KEY,
   loadLayout,
+  READ_ONLY_LAYOUT_KEY,
+  readOnlyLayout,
   MAX_SIDE,
   MAX_PLOT_PANES,
   MAX_SIDES,
@@ -231,5 +233,35 @@ describe("pane state (ADR 0061)", () => {
     expect(parsed.center[0]!.state).toBeUndefined();
     expect(parsed.left[0]!.widget).toBe("empty");
     expect(parsed.left[0]!.state).toBeUndefined();
+  });
+});
+
+describe("the layout against a read server (ADR 0074)", () => {
+  const memory = () => {
+    const store = new Map<string, string>();
+    return { store, storage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) } };
+  };
+  const READ_ONLY = ["plot", "empty", "history"];
+
+  it("offers the records and the plot only, and is the fallback when nothing is stored under its key", () => {
+    const l = readOnlyLayout();
+    expect(l.left.map((p) => p.widget)).toEqual(["history"]);
+    expect(l.center.map((p) => p.widget)).toEqual(["plot"]);
+    expect(l.right.map((p) => p.widget)).toEqual(["empty"]);
+    const { storage } = memory();
+    const loaded = loadLayout(READ_ONLY, storage, READ_ONLY_LAYOUT_KEY, readOnlyLayout);
+    expect(loaded.left.map((p) => p.widget)).toEqual(["history"]);
+    expect(loaded.right.map((p) => p.widget)).toEqual(["empty"]);
+  });
+
+  it("persists under its own key, so the stand server's layout in the same browser is untouched", () => {
+    const { store, storage } = memory();
+    saveLayout(defaultLayout(), storage);
+    saveLayout(readOnlyLayout(), storage, READ_ONLY_LAYOUT_KEY);
+    expect(store.has(LAYOUT_KEY) && store.has(READ_ONLY_LAYOUT_KEY)).toBe(true);
+    expect(loadLayout(READ_ONLY, storage, READ_ONLY_LAYOUT_KEY, readOnlyLayout).left.map((p) => p.widget)).toEqual(["history"]);
+    expect(loadLayout(defaultLayout().left.map((p) => p.widget).concat(READ_ONLY), storage).left.map((p) => p.widget)).toEqual(["sweep", "analysis", "tuneup"]);
+    // a stand layout read with only the read server's widgets known shows `empty` where a command widget was
+    expect(loadLayout(READ_ONLY, storage).left.map((p) => p.widget)).toEqual(["empty", "empty", "empty"]);
   });
 });

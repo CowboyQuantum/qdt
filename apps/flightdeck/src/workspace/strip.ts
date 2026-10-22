@@ -15,6 +15,8 @@ export interface StripOptions {
   datasets: Datasets;
   themes: ThemeManager;
   onReplayFile(file: File): void;
+  /** Against a read server (ADR 0074): no stand to name and nothing to run, so the Run cluster is absent. */
+  readOnly?: boolean;
 }
 
 export function mountStrip(header: HTMLElement, o: StripOptions): void {
@@ -34,17 +36,14 @@ export function mountStrip(header: HTMLElement, o: StripOptions): void {
   const message = h("span", { id: "message" });
   const file = h("input", { id: "file", type: "file", accept: ".qdtrec" });
   const themeButton = h("button", { id: "theme", type: "button", text: `Theme: ${o.themes.current.name}`, attrs: { "aria-haspopup": "menu", "aria-expanded": "false" } });
+  const command = o.readOnly ? [] : [nextRun, plan, run, runState, abort];
   header.replaceChildren(
     h("h1", { text: "Flight Deck" }),
     h("span", { className: "kv" }, "stand ", stand),
     h("span", { className: "kv" }, "device ", device),
     h("span", { className: "kv" }, "source ", source),
     pill,
-    nextRun,
-    plan,
-    run,
-    runState,
-    abort,
+    ...command,
     h("span", { className: "spacer" }),
     status,
     progress,
@@ -53,13 +52,15 @@ export function mountStrip(header: HTMLElement, o: StripOptions): void {
     themeButton,
   );
 
-  o.api
-    .stand()
-    .then((s) => {
-      stand.textContent = s.stand_id;
-      o.bus.emit("stand", { stand: s });
-    })
-    .catch(() => (stand.textContent = "?"));
+  if (o.readOnly) stand.textContent = "registry"; // a read server drives no stand; it serves the records
+  else
+    o.api
+      .stand()
+      .then((s) => {
+        stand.textContent = s.stand_id;
+        o.bus.emit("stand", { stand: s });
+      })
+      .catch(() => (stand.textContent = "?"));
   o.api
     .devices()
     .then((d) => (device.textContent = d[0]?.device_id ?? "—"))
