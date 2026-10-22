@@ -25,9 +25,11 @@ now with the split in view; `autopilot` begins much later, in its own repo, with
    | Component | Where | Why |
    |---|---|---|
    | `autopilot` (Analysis 0006) | Separate repo, created when its work begins | A client of the lab |
+   | `dispatch` — circuit design and compile to calibrated pulses, with a choice of backend | Separate repo, when the §10 pulse primitives exist (frames first) | A client of the lab: reads calibrations, submits through the API |
    | Flight Deck | Separate repo, after Step 6c | A client of the lab; already true in code |
    | Instrument layer (`qdt-lab` protocols, drivers, transports, emulators, conformance, discovery, pool) | Inside qdt behind an enforced seam | Runs where the hardware is; no second consumer yet |
-   | Physics core (`qdt-sim` model, sensor, noise, fault models) | Inside qdt behind an enforced seam | Runs where the compute is; no second consumer yet |
+   | Physics core (`qdt-sim` model, sensor, noise, fault models; later `phantom`, with charge and spin layers in one package) | Inside qdt behind an enforced seam | Runs where the compute is; no second consumer yet |
+   | Measurement hub (`qdt-hub`, to be named `tower`; ADR 0076) | Inside qdt until it earns a repo by this rule | Runs where the lab's state is |
    | `jig` | Separate, personal account | Not about qdt |
 
 3. **Nothing moves now.** No extraction is scheduled. The seams are drawn inside qdt as they are touched:
@@ -43,6 +45,12 @@ now with the split in view; `autopilot` begins much later, in its own repo, with
    configuration and seed, behind its own token) — not built until asked; fault models live in `qdt-sim`
    and the physics core's reproducibility contract (seed + model version → identical output) is written
    as if public. `AgentStep`, tool servers, rendering for agents, approvals and evals are `autopilot`'s.
+
+6. **Names.** The fleet is named for an airfield's places and roles: Flight Deck (what you see and drive),
+   Dispatch (the circuit written for this device), Tower (who may use which stand, and the queue), Autopilot
+   (runs without you), Phantom (the stand-in device), Jig (how the work is done). `dispatch`'s simulated
+   backend is `phantom`'s spin layer on its charge layer, not a separate simulator; an ideal gate-level
+   simulator may bypass qdt, but the compile is checked only through qdt against `phantom`.
 
 ## Consequences
 - Easier: one repo and one CI while the API churns through 6c; the same seams serve any future consumer;
