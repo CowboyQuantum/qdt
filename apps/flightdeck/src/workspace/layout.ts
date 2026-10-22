@@ -53,6 +53,16 @@ export function defaultLayout(): Layout {
   };
 }
 
+/** Against a read server (ADR 0074): the records and the plots; nothing that commands a stand exists. */
+export function readOnlyLayout(): Layout {
+  return {
+    left: [{ id: newPaneId(), widget: "history", size: 1 }],
+    center: [{ id: newPaneId(), widget: PLOT_WIDGET, size: 1 }],
+    right: [{ id: newPaneId(), widget: EMPTY_WIDGET, size: 1 }],
+    widths: { left: 0.3, right: 0.14 },
+  };
+}
+
 export function columnOf(layout: Layout, paneId: string): Column | null {
   for (const c of COLUMNS) if (layout[c].some((p) => p.id === paneId)) return c;
   return null;
@@ -136,8 +146,8 @@ export function resizeColumn(layout: Layout, side: "left" | "right", width: numb
 
 /** Parse a stored layout; anything malformed falls back to the default so a stale key never breaks the app.
  * `known` lists the widget ids that exist; a side pane naming an unknown widget shows `empty`. */
-export function parseLayout(text: string | null, known: readonly string[]): Layout {
-  const fallback = defaultLayout();
+export function parseLayout(text: string | null, known: readonly string[], makeFallback: () => Layout = defaultLayout): Layout {
+  const fallback = makeFallback();
   if (!text) return fallback;
   let raw: unknown;
   try {
@@ -180,19 +190,26 @@ export function serializeLayout(layout: Layout): string {
 
 /** Versioned: a new default layout (new widgets) retires the stored one rather than hiding them. */
 export const LAYOUT_KEY = "flightdeck.layout.v4";
+/** The layout against a read server lives under its own key: one browser may face both kinds of server. */
+export const READ_ONLY_LAYOUT_KEY = "flightdeck.layout.read.v1";
 
 /** localStorage is a per-viewer convenience: absent, blocked or full, the app still runs. */
-export function loadLayout(known: readonly string[], storage: Pick<Storage, "getItem"> | null = safeStorage()): Layout {
+export function loadLayout(
+  known: readonly string[],
+  storage: Pick<Storage, "getItem"> | null = safeStorage(),
+  key: string = LAYOUT_KEY,
+  makeFallback: () => Layout = defaultLayout,
+): Layout {
   try {
-    return parseLayout(storage?.getItem(LAYOUT_KEY) ?? null, known);
+    return parseLayout(storage?.getItem(key) ?? null, known, makeFallback);
   } catch {
-    return defaultLayout();
+    return makeFallback();
   }
 }
 
-export function saveLayout(layout: Layout, storage: Pick<Storage, "setItem"> | null = safeStorage()): void {
+export function saveLayout(layout: Layout, storage: Pick<Storage, "setItem"> | null = safeStorage(), key: string = LAYOUT_KEY): void {
   try {
-    storage?.setItem(LAYOUT_KEY, serializeLayout(layout));
+    storage?.setItem(key, serializeLayout(layout));
   } catch {
     /* private window, quota, or no storage at all */
   }

@@ -10,3 +10,4 @@ would use them: top-to-bottom, commented, no test scaffolding visible beyond a f
 | `test_01_sweep.py` | declare a sweep, run it on the simulated device, stream it |
 | `test_02_registry.py` | record a run, store it in the registry, find it, replay it |
 | `test_03_analysis.py` | analyse a recorded run from a query, keep the result, replay it with overlays |
+| `test_04_remote_read.py` | read a measurement from another computer: a script with the reader DSN, and any application over HTTP from the read server (Step 6c goal 1) |

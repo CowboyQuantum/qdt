@@ -15,6 +15,7 @@ import type {
   ReplayRequest,
   Run,
   RunRequest,
+  ServerInfo,
   StandConfig,
   StreamInfo,
   SweepDefinition,
@@ -65,6 +66,10 @@ export class ApiClient {
     return (await r.json()) as T;
   }
 
+  /** What kind of server this is (ADR 0074): a read server has no stand and offers no command. */
+  server(): Promise<ServerInfo> {
+    return this.call("GET", "/server");
+  }
   stand(): Promise<StandConfig> {
     return this.call("GET", "/stand");
   }

@@ -3069,6 +3069,47 @@
         "title": "SequencerStage",
         "type": "object"
       },
+      "ServerInfo": {
+        "description": "What kind of server answered (ADR 0074): Flight Deck shows no command against a read server.",
+        "properties": {
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The device the stand server's records are about; null on a read server.",
+            "title": "Device Id"
+          },
+          "read_only": {
+            "description": "True for a read server: no stand, no command route; records and replay only.",
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "stand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stand this server drives; null on a read server.",
+            "title": "Stand Id"
+          }
+        },
+        "required": [
+          "read_only",
+          "stand_id",
+          "device_id"
+        ],
+        "title": "ServerInfo",
+        "type": "object"
+      },
       "SimScenario": {
         "additionalProperties": false,
         "description": "A reproducible simulated situation: which scalar parameters of the simulated device's model are\noverridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the\ntruth a method must recover; this package holds the recipe only (rule 1).",
@@ -4373,6 +4414,39 @@
         "summary": "Get Record"
       }
     },
+    "/records/{record_id}/payload": {
+      "get": {
+        "description": "The record's payload bytes (`qdt-hdf5-v1`), with its SHA-256 in `X-Content-SHA256` so a\nreader on another machine can check what it got (ADR 0074). No reader mounts the share.",
+        "operationId": "get_payload_records__record_id__payload_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Payload"
+      }
+    },
     "/records/{record_id}/results": {
       "post": {
         "operationId": "analyse_records__record_id__results_post",
@@ -4662,6 +4736,24 @@
           }
         },
         "summary": "Abort Run"
+      }
+    },
+    "/server": {
+      "get": {
+        "operationId": "get_server_server_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Server"
       }
     },
     "/stand": {

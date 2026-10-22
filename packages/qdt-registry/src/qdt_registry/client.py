@@ -314,9 +314,20 @@ class Registry:
             raise KeyError(f"no device {device_id!r}")
         return load("DeviceRecord", body)
 
-    def payload(self, record_id: str) -> Payload:
-        """The payload of a record in this client's store (sync does not download)."""
-        return read_payload(self.store / self.get(record_id).payload.path)
+    def devices(self, *, remote: bool = False) -> list[DeviceRecord]:
+        """Every registered device, oldest first. `remote=True` asks the server."""
+        q = select(devices.c.body).order_by(devices.c.registered_at, devices.c.device_id)
+        with self._engine(remote).connect() as conn:
+            return [load("DeviceRecord", b) for b in conn.execute(q).scalars()]
+
+    def payload_file(self, record_id: str, *, remote: bool = False) -> Path:
+        """Where a record's payload lies: in this client's store, or (`remote=True`) in the server's
+        store, which a read server or a stand server mounts (ADR 0074)."""
+        return self._store(remote) / self.get(record_id, remote=remote).payload.path
+
+    def payload(self, record_id: str, *, remote: bool = False) -> Payload:
+        """The payload of a record in this client's store (sync does not download), or the server's."""
+        return read_payload(self.payload_file(record_id, remote=remote))
 
     def results(
         self,
@@ -345,12 +356,20 @@ class Registry:
             raise KeyError(f"no analysis result {result_id!r}")
         return load("AnalysisResult", body)
 
-    def output(self, result_id: str) -> Payload:
-        """The output payload of a result in this client's store (ADR 0031); KeyError without one."""
-        ref = self.result(result_id).output
+    def output(self, result_id: str, *, remote: bool = False) -> Payload:
+        """The output payload of a result in this client's store (ADR 0031), or the server's;
+        KeyError without one."""
+        ref = self.result(result_id, remote=remote).output
         if ref is None:
             raise KeyError(f"result {result_id!r} has no output payload")
-        return read_payload(self.store / ref.path)
+        return read_payload(self._store(remote) / ref.path)
+
+    def _store(self, remote: bool) -> Path:
+        if not remote:
+            return self.store
+        if self.remote_store is None:
+            raise RuntimeError(f"no server payload store configured: set {STORE_ENV}")
+        return self.remote_store
 
     def add_outcome(self, outcome: NodeOutcome) -> NodeOutcome:
         """Store a calibration node's outcome (ADR 0050; append-only, idempotent). The record and the
@@ -433,6 +452,13 @@ class Registry:
 
     # --- sync ------------------------------------------------------------------------------------
 
+    def init_server(self) -> int:
+        """Create the server's tables where they are missing and check its DDL version: the runbook's
+        schema step (`deploy/qdt-db/README.md`), run once with the admin role so the tables are the
+        admin's and the writer's and reader's default privileges apply. Returns the DDL version."""
+        self._engine(True)
+        return DDL_VERSION
+
     def sync(self) -> SyncReport:
         """Upload everything not yet confirmed: devices, objects, each record after its payload, then
         analysis results, each after its output payload if it has one, then node outcomes.
@@ -480,8 +506,9 @@ class Registry:
         if self._remote is None:
             if not self.remote_dsn:
                 raise RuntimeError(f"no server configured: set {DSN_ENV}")
-            self._remote = create_engine(self.remote_dsn)
-            _prepare(self._remote)
+            engine = create_engine(self.remote_dsn)
+            _prepare(engine)  # kept only once it answered: a server down now is retried next time
+            self._remote = engine
         return self._remote
 
     def _pending(self, name: str, table: Table, key: str) -> list[dict[str, Any]]:

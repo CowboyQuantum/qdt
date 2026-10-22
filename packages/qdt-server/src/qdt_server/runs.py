@@ -5,6 +5,7 @@ A run may be aborted: queued, it never starts; running, it stops between frames 
 is recorded with outcome `aborted`."""
 
 import asyncio
+import logging
 import threading
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -14,7 +15,7 @@ from typing import Any
 
 from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitter, compile_sweep
 from qdt_lab.stream import Frame, Source, StreamServer
-from qdt_registry import Registry
+from qdt_registry import Registry, SyncReport
 from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
 from qdt_schemas.control import ChannelLevel, Run
 from qdt_schemas.data import AttrValue, Dataset
@@ -24,6 +25,8 @@ BackendFactory = Callable[[dict[str, AttrValue]], Mapping[str, Any]]
 """Builds the backends for one run from the run's options (seed, noise, ...)."""
 
 TERMINAL = frozenset({"completed", "aborted", "failed"})
+
+log = logging.getLogger(__name__)
 
 
 class _Stoppable:
@@ -68,6 +71,30 @@ class RunManager:
         self._lock = asyncio.Lock()
         self._levels: dict[str, float] = {}
         self._live: Mapping[str, Any] | None = None
+        self._sync_lock = asyncio.Lock()
+        self._syncs: set[asyncio.Task[SyncReport | None]] = set()
+
+    # --- the registry server (ADR 0080) -----------------------------------------------------------
+
+    async def sync(self) -> SyncReport | None:
+        """Upload what the cache holds and the server lacks, if a server is configured (`QDT_REGISTRY_DSN`
+        and `QDT_PAYLOAD_STORE`). None without one. A server or share that is unreachable is logged and
+        leaves every row unsynced for the next attempt; this never raises and never touches a run.
+        One sync at a time: two runs ending close together upload in turn, the second finding nothing."""
+        if not self.registry.remote_dsn:
+            return None
+        async with self._sync_lock:
+            try:
+                return await asyncio.to_thread(self.registry.sync)
+            except Exception as e:  # noqa: BLE001 — records stay in the cache; the next sync retries
+                log.warning("registry sync failed; records stay in the local cache: %s", e)
+                return None
+
+    def sync_later(self) -> None:
+        """Schedule `sync` without waiting for it: after a record is ingested and once at start."""
+        task = asyncio.create_task(self.sync())
+        self._syncs.add(task)
+        task.add_done_callback(self._syncs.discard)
 
     # --- the stand's operating point (ADR 0053, 0057) ---------------------------------------------
 
@@ -235,5 +262,6 @@ class RunManager:
                     finished_at=datetime.now(UTC),
                     record_id=record.record_id,
                 )
+                self.sync_later()  # after the state is set: a slow server never holds a run
             except Exception as e:  # noqa: BLE001 — the run reports its failure
                 self._set(run_id, state="failed", finished_at=datetime.now(UTC), error=str(e))
