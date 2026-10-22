@@ -480,8 +480,9 @@ class Registry:
         if self._remote is None:
             if not self.remote_dsn:
                 raise RuntimeError(f"no server configured: set {DSN_ENV}")
-            self._remote = create_engine(self.remote_dsn)
-            _prepare(self._remote)
+            engine = create_engine(self.remote_dsn)
+            _prepare(engine)  # kept only once it answered: a server down now is retried next time
+            self._remote = engine
         return self._remote
 
     def _pending(self, name: str, table: Table, key: str) -> list[dict[str, Any]]:

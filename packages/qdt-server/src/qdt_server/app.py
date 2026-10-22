@@ -221,6 +221,7 @@ def create_app(settings: Settings) -> FastAPI:
                 settings.root / "outbox",
             )
             app.state.tuneups = TuneUpManager(app.state.runs)
+            app.state.runs.sync_later()  # what an earlier session left in the cache (ADR 0080)
             yield
 
     # one schema per model (no -Input/-Output pairs): the UI's generated types mirror qdt-schemas 1:1

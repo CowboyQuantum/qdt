@@ -246,3 +246,24 @@ def test_node_outcomes_are_stored_queried_and_synced(tmp_path, server, device, r
     assert report.tuning_outcomes == 2 and reg.unsynced()["tuning_outcomes"] == 0
     assert reg.outcomes(tuneup_id="ef" * 16, remote=True) == [accepted, failed]
     assert reg.sync().tuning_outcomes == 0
+
+
+def test_a_server_down_at_the_first_sync_is_prepared_when_it_answers(tmp_path, device, recorded_run):
+    """ADR 0080: the stand server retries after every record, so a connection that failed must not
+    leave a half-made engine behind: the first sync that reaches the server still creates its tables."""
+    server = tmp_path / "server"  # not created yet: the server is down
+    reg = Registry(
+        tmp_path / "client",
+        remote_dsn=f"sqlite:///{(server / 'server.sqlite').as_posix()}",
+        remote_store=server / "store",
+    )
+    reg.register_device(device)
+    record, path, _, _ = recorded_run(tmp_path)
+    reg.ingest(record, path)
+    with pytest.raises(Exception, match="unable to open database file"):
+        reg.sync()
+    assert reg.unsynced()["records"] == 1
+
+    server.mkdir()  # the server comes up
+    assert reg.sync().records == 1
+    assert reg.find(remote=True) == [record]

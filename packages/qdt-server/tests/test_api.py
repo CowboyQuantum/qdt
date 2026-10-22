@@ -1,6 +1,8 @@
 """The Step 4b loop over the API against the simulator: compile, run, stream, record, analyse, replay."""
 
 import asyncio
+import hashlib
+import logging
 import time
 from datetime import UTC, datetime
 
@@ -9,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from qdt_lab.stream import collect
+from qdt_registry import DSN_ENV, STORE_ENV, Registry
 from qdt_schemas.activity import SweepDefinition
 from qdt_schemas.control import Run
 from qdt_schemas.envelope import MeasurementRecord
@@ -527,3 +530,89 @@ def test_a_step_and_its_capture_compose_one_shot_through_the_server(client):
     result = AnalysisResult.model_validate(r.json())
     assert result.status == "ok", result.message
     assert result.estimate("tau").value == pytest.approx(1.5e-3, rel=0.02)
+
+
+# --- the registry server (ADR 0080): every record is offered to it; the cache keeps what it refuses ---
+
+
+def _server_env(monkeypatch, tmp_path):
+    """A SQLite file standing in for the server: its directory missing means the server is down."""
+    dsn = f"sqlite:///{(tmp_path / 'server' / 'server.sqlite').as_posix()}"
+    store = tmp_path / "server" / "store"
+    monkeypatch.setenv(DSN_ENV, dsn)
+    monkeypatch.setenv(STORE_ENV, str(store))
+    return dsn, store
+
+
+def _until(condition, timeout: float = 10.0) -> bool:
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < timeout:
+        if condition():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _records_on_the_server(tmp_path, dsn) -> list[MeasurementRecord]:
+    """As another computer would read them: a fresh client with only the server's address."""
+    return Registry(tmp_path / "another-computer", remote_dsn=dsn).find(remote=True)
+
+
+def test_a_record_reaches_the_registry_server_after_its_run(tmp_path, monkeypatch):
+    dsn, store = _server_env(monkeypatch, tmp_path)
+    (tmp_path / "server").mkdir()
+    with TestClient(create_app(Settings(root=tmp_path / "registry", stream_port=0))) as c:
+        run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
+        assert run.state == "completed" and run.record_id, run.error
+        assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
+    [remote] = _records_on_the_server(tmp_path, dsn)
+    assert remote.record_id == run.record_id
+    assert hashlib.sha256((store / remote.payload.path).read_bytes()).hexdigest() == remote.payload.sha256
+
+
+def test_an_unreachable_server_keeps_the_record_in_the_cache_until_the_next_run(
+    tmp_path, monkeypatch, caplog
+):
+    dsn, _ = _server_env(monkeypatch, tmp_path)  # tmp_path/server does not exist: the server is down
+    failed = lambda: any("registry sync failed" in r.message for r in caplog.records)
+    with (
+        caplog.at_level(logging.WARNING, logger="qdt_server.runs"),
+        TestClient(create_app(Settings(root=tmp_path / "registry", stream_port=0))) as c,
+    ):
+        reg = c.app.state.registry
+        assert _until(failed)  # the start-up sync, against a server that is down
+        caplog.clear()
+        first = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
+        assert first.state == "completed" and first.record_id, first.error
+        assert _until(failed)
+        assert reg.unsynced()["records"] == 1  # kept, not lost; the run is unaffected
+        assert all(DSN_ENV not in r.message and "server.sqlite" not in r.message for r in caplog.records)
+
+        (tmp_path / "server").mkdir()  # the server comes up
+        second = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
+        assert second.state == "completed" and second.record_id, second.error
+        assert _until(lambda: reg.unsynced()["records"] == 0)  # both uploaded by one sync
+    ids = {r.record_id for r in _records_on_the_server(tmp_path, dsn)}
+    assert ids == {first.record_id, second.record_id}
+
+
+def test_without_a_server_the_cache_is_the_registry(client, caplog):
+    with caplog.at_level(logging.WARNING, logger="qdt_server.runs"):
+        run = wait_for(client, client.post("/runs", json={"definition": definition()}).json()["run_id"])
+        assert run.state == "completed", run.error
+        time.sleep(0.2)
+    assert client.app.state.registry.unsynced()["records"] == 1
+    assert not [r for r in caplog.records if "sync" in r.message]  # nothing to try, nothing to warn
+
+
+def test_a_server_uploads_what_an_earlier_session_left_when_it_starts(tmp_path, monkeypatch):
+    root = tmp_path / "registry"
+    with TestClient(create_app(Settings(root=root, stream_port=0))) as c:  # no server configured
+        run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
+        assert run.record_id, run.error
+        assert c.app.state.registry.unsynced()["records"] == 1
+    dsn, _ = _server_env(monkeypatch, tmp_path)
+    (tmp_path / "server").mkdir()
+    with TestClient(create_app(Settings(root=root, stream_port=0))) as c:  # the same cache, a server
+        assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
+    assert [r.record_id for r in _records_on_the_server(tmp_path, dsn)] == [run.record_id]
