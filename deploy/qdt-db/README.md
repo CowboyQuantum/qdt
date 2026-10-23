@@ -593,7 +593,16 @@ by hand to see it work, then make Windows start it at boot.
    - `http://localhost:8700/` shows Flight Deck: a *History* pane on the left, a plot in the middle, and no
      *Run* button in the top strip.
 
-   Press Ctrl-C in the PowerShell window to stop it before the next step.
+   If `/server` answers but `/records` shows `Internal Server Error`, the server is running but cannot
+   log in to the database: the password or account in the script is wrong. The PowerShell window shows
+   the full error, and PostgreSQL's own log says it in one line: the newest file in
+   `C:\Program Files\PostgreSQL\17\data\log\` ends with `password authentication failed for user
+   "qdt_reader"`. Test the password on its own with `psql -U qdt_reader -h 127.0.0.1 -d qdt -c "SELECT 1;"`
+   (Part 2's check), fix the script, and restart the server.
+
+   Press Ctrl-C in the PowerShell window to stop it before the next step. Only one server can own the two
+   ports: starting a second while the first is running fails with `only one usage of each socket address`
+   (Appendix B says how to find the first).
 
 4. Open the firewall for the two ports, as in Part 3, in PowerShell **as administrator**:
 
@@ -872,5 +881,7 @@ few seconds before falling back.
 | Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
 | stand server log (Mac) | `registry sync failed … Permission denied: '/Users/…/qdt-payloads/…'` | The share is not mounted on the Mac (the read-only mount point refused the write, as intended). `bash deploy/qdt-db/mac-payload-mount.sh check` shows what the last attempt logged; running it without `check` mounts again. The waiting record is copied on the next sync. |
 | Python | `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` (or any spelling other than `postgresql.psycopg`) | A typo in the first word of `QDT_REGISTRY_DSN`. It must begin exactly `postgresql+psycopg://`. |
+| read server window | `error while attempting to bind on address ('0.0.0.0', 8765) … only one usage of each socket address` | A read server is already running on this PC (an earlier window, or the scheduled task from Part 6, step 5). Only one can own the ports. To find it: `Get-NetTCPConnection -LocalPort 8700 \| Select-Object OwningProcess`, then `Stop-Process -Id <that number>`, or press Ctrl-C in its window. If the scheduled task started it, it is doing its job; leave it. |
+| browser, read server | `http://localhost:8700/server` answers but `/records` shows `Internal Server Error` | The server cannot log in to the database: the reader password or account in `read-server.ps1` is wrong. PostgreSQL's log (newest file in `C:\Program Files\PostgreSQL\17\data\log\`) says `password authentication failed for user "qdt_reader"`. Part 6, step 3. |
 | PowerShell | `The argument '…\read-server.ps1' to the -File parameter does not exist` | No file has exactly that name. `Get-ChildItem` on its folder shows the real name; usually it is `read-server.ps1.txt` (Notepad added `.txt`): `Rename-Item …\read-server.ps1.txt read-server.ps1`. Part 6, step 2 says how to create it with the right name. |
 | browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |

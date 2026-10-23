@@ -52,7 +52,10 @@ runbook as problems appeared), no bench.
 ## In flight
 - `step-6c/runbook-paths` awaits the human. **Unverified:** `mac-payload-mount.sh` itself (merged in
   #126; the steps it automates are verified by hand). The human runs `uninstall` then `install` on the
-  Mac as the test. **Open:** whether Part 6 step 3 runs once the file exists under its right name.
+  Mac as the test. **Open:** Part 6 step 3 — the read server runs on the human's PC (`/server` answers),
+  but `/records` is a 500 because the reader password in `read-server.ps1` is wrong (Postgres log:
+  `password authentication failed for user "qdt_reader"`); the human is fixing the script. A second start
+  while the first ran hit `only one usage of each socket address`; both now in Appendix B.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
