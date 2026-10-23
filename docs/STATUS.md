@@ -25,7 +25,7 @@ runbook as problems appeared), no bench.
     entry Finder saved (`security find-internet-password -w`; *Always Allow* once), retrying for five minutes
     while the network comes up, logging to `~/Library/Logs/mount-qdt-payloads.log`. The mount point is
     `chmod 555` so an unmounted share refuses writes instead of swallowing payloads locally (the fail-safe
-    `/Volumes` gave for free). Verified on the human's Mac through a log-out/log-in. Part 7's Mac path,
+    `/Volumes` gave for free). Verified on the human's Mac through a log-out/log-in, chmod included. Part 7's Mac path,
     the Part 10 checklist and Appendix B follow.
   - **Tailscale on the Mac** had stopped starting at login (its Login Items entry was lost while editing the
     list); the runbook now says to check it, and why.
@@ -34,10 +34,9 @@ runbook as problems appeared), no bench.
 - No code changed. `check_all` green; pytest run at session end (see the PR).
 
 ## In flight
-- This PR awaits the human. **Unverified in it:** mounting onto the `chmod 555` mount point from a fresh
-  login (the human's verified run predates the chmod; the `touch … → Permission denied` check in Part 5
-  covers it), and whether `chflags uchg` (Finder's *Locked*) on the mount point still allows the mount —
-  if yes, one line to add.
+- This PR awaits the human. The `chmod 555` mount point is verified on the human's Mac (write refused when
+  unmounted, mount still works). **Unverified:** whether `chflags uchg` (Finder's *Locked*) on the mount
+  point still allows the mount — if yes, one line to add.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
