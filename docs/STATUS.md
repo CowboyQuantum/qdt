@@ -43,6 +43,8 @@ its first run on the human's personal Windows PC. Steps 0–6 and 6b are DONE. M
   used PostgreSQL — every step says what it does, what it changes on the PC, and how to check it; complete
   sentences; terms defined on first use. That standard applies to every document a person reads from now on.
   The rewrite found that Flight Deck served by `--ui` needs `?api=&ws=` from another computer (#122).
+  A second pass gives every laptop-side step a Windows and a Mac version (the human's laptop is a Mac) and
+  marks the Tailscale alternative wherever an address, a name or a firewall rule is chosen (`100.64.0.0/10`).
 - **Docs:** ADR 0081 (what the slice settled); Step 6c L0 row reworded (replay stays), status IN PROGRESS;
   steps index; tutorials index. 476 Python tests (+6 Postgres-parametrized), 4 skipped; Flight Deck 142
   unit, 15 e2e. `check_all` green.

@@ -63,13 +63,26 @@ You need:
   needs this repository and Python; no instruments.
 - Both computers able to see each other on the network. The easiest test is to find `qdt-db`'s address
   (Part 3, step 5) and `ping` it from the laptop.
-- On both machines: this repository cloned (the instructions assume `C:\qdt\repo`), `uv` installed
-  (https://docs.astral.sh/uv/), and `uv sync --all-packages --all-extras` run once inside the clone. On
-  `qdt-db` you also need Node.js 20 or newer for Part 6, because the Flight Deck page is built there.
+- On both machines: this repository cloned (the instructions assume `C:\qdt\repo` on Windows and
+  `~/qdt/repo` on a Mac; adjust the paths if yours differ), `uv` installed (https://docs.astral.sh/uv/),
+  and `uv sync --all-packages --all-extras` run once inside the clone. On `qdt-db` you also need Node.js
+  20 or newer for Part 6, because the Flight Deck page is built there.
 
-A note on the two command-line programs Windows offers. *Command Prompt* (`cmd.exe`) and *PowerShell*
-look alike but set variables differently. This document uses **PowerShell** throughout; open it from the
-Start menu, and where a step says "as administrator", right-click it and choose *Run as administrator*.
+**Which computer, which command line.** `qdt-db` is a Windows PC in this document, and every command
+you type on it is for **PowerShell**: open it from the Start menu, and where a step says "as
+administrator", right-click it and choose *Run as administrator*. (Windows also has *Command Prompt*,
+which looks alike but sets variables differently; do not use it here.) The measurement PC may be a
+Windows laptop or a Mac. Wherever a laptop command differs, it is given twice, marked **Windows laptop**
+(PowerShell) and **Mac laptop** (the *Terminal* app, in Applications → Utilities). Commands that are the
+same on both, such as `uv run …`, are given once.
+
+**If the two machines talk over Tailscale.** Tailscale is a VPN that gives each of your devices a fixed
+address of the form `100.x.y.z` and a name, and encrypts everything between them, whether they are in the
+same room or in different cities. If both machines run it, three things in this document become simpler,
+and they are called out in boxes like this one where they occur: the address range in Part 3 is
+Tailscale's instead of your home network's, the name `qdt-db` comes free from Tailscale instead of a
+hosts file, and you never have to open anything on your home network at all. The connection is already
+encrypted, so the project's note about needing TLS once a client is off the local network is satisfied.
 
 ## Part 1 — Install PostgreSQL
 
@@ -188,6 +201,16 @@ open both to the computers on your network and no further, then open the firewal
    down; it is `<lab-subnet>` in the rest of this document. Also write down the IPv4 address itself: it is
    how the laptop will find this PC in step 5.
 
+   **Over Tailscale**, skip `ipconfig`. Every Tailscale device gets an address from one fixed block,
+   `100.64.0.0/10`, so that is your `<lab-subnet>`, and the address to write down is `qdt-db`'s Tailscale
+   address (shown in the Tailscale app, or by `tailscale ip -4`). The number after the slash counts how
+   many *bits* at the front of the address are fixed, not how many of the four numbers: each number is 8
+   bits, so `/24` fixes the first three numbers, while `/10` fixes the first number and 2 bits of the
+   second, which pins the second number to the quarter from 64 to 127. So `100.64.0.0/10` means "first
+   number 100, second number 64 to 127, the rest anything": it covers a laptop at `100.123.…` and a
+   desktop at `100.70.…` alike, and any device you add to the tailnet later. (To admit one laptop only,
+   use its own address followed by `/32`, which means "exactly this address".)
+
 2. Open the data directory's configuration files with administrator rights. Open Notepad as administrator
    (Start menu, type *Notepad*, right-click, *Run as administrator*), then File → Open, navigate to
    `C:\Program Files\PostgreSQL\17\data`, and change the file type dropdown to *All files*.
@@ -244,28 +267,59 @@ open both to the computers on your network and no further, then open the firewal
    port 5432 (`-LocalPort`) when they come from your address range (`-RemoteAddress`). You can see and
    delete it later under *Windows Defender Firewall with Advanced Security → Inbound Rules*.
 
-7. Give the PC a name the laptop can use. The project's documents call it `qdt-db`. If your network has
-   no DNS that knows the name, add a line to the laptop's *hosts* file instead: on the laptop, open Notepad
-   as administrator, open `C:\Windows\System32\drivers\etc\hosts`, and add at the end
+   **Over Tailscale**, use `-RemoteAddress 100.64.0.0/10` and add `-InterfaceAlias Tailscale`, which ties
+   the rule to the Tailscale network adapter so it can never match traffic arriving any other way (if
+   `Get-NetAdapter` shows the adapter under a different name, use that). Do the same for the rule in Part
+   6, step 4.
+
+7. Give the PC a name the laptop can use. The project's documents call it `qdt-db`.
+
+   **Over Tailscale** there is nothing to do: Tailscale's MagicDNS already lets the laptop reach the desktop
+   by its machine name (as shown in the Tailscale app, or in full as `<name>.<your tailnet>.ts.net`). Use
+   that name wherever this document says `qdt-db`. **Check it:** on the laptop, `ping <name>` answers
+   from the desktop's `100.x.y.z` address (press Ctrl-C to stop it).
+
+   Otherwise, if your network has no DNS that knows the name, add one line to the laptop's *hosts* file,
+   which maps a name to an address on that laptop only.
+
+   *Windows laptop:* open Notepad as administrator, open `C:\Windows\System32\drivers\etc\hosts` (set the
+   file-type dropdown to *All files*), add at the end, and save:
 
    ```
    <qdt-db's IPv4 address>    qdt-db
    ```
 
-   For a home network where the desktop's address may change when the router restarts, either reserve
-   the address in the router's settings (often called "DHCP reservation") or simply use the IPv4 address
-   in place of `qdt-db` everywhere below.
+   *Mac laptop:* in Terminal, `sudo nano /etc/hosts`; it asks for your Mac password and opens the file in
+   a small editor. Move to the end with the arrow keys, add the same line, press Ctrl-O then Enter to
+   save, and Ctrl-X to leave. If the name does not work straight away, clear the Mac's name cache with
+   `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
 
-**Check it from the laptop.** In PowerShell on the laptop:
+   On either, **check it** with `ping qdt-db`. For a home network where the desktop's address may change
+   when the router restarts, either reserve the address in the router's settings (often called "DHCP
+   reservation") or simply use the IPv4 address in place of `qdt-db` everywhere below.
+
+**Check it from the laptop.** Ask whether port 5432 on `qdt-db` accepts a connection.
+
+*Windows laptop:*
 
 ```powershell
 Test-NetConnection qdt-db -Port 5432
 ```
 
-The last line should read `TcpTestSucceeded : True`. If it is `False`, the firewall rule or the address
-range is wrong, or the two machines are not on the same network. Then, if the laptop has PostgreSQL's
-command-line tools installed (it does not need them otherwise), `psql -U qdt_reader -h qdt-db -d qdt -c
-"SELECT 1;"` should work as it did in step 5.
+The last line should read `TcpTestSucceeded : True`.
+
+*Mac laptop:*
+
+```
+nc -vz qdt-db 5432
+```
+
+It prints `Connection to qdt-db port 5432 [tcp/postgresql] succeeded!`.
+
+If the test fails, the firewall rule or the address range is wrong, or the two machines are not on the
+same network. If the laptop has PostgreSQL's command-line tools (it does not need them otherwise; on a
+Mac `brew install libpq` provides `psql`), `psql -U qdt_reader -h qdt-db -d qdt -c "SELECT 1;"` should
+then work as it did in step 5.
 
 ## Part 4 — Create the tables
 
@@ -348,17 +402,35 @@ share the folder on the network for that account. Windows file sharing is also c
    internet, click your connection, and make sure *Network profile type* is *Private network*. (On a
    *Public* network Windows blocks sharing regardless of the steps above.)
 
+   **Over Tailscale**, Windows usually classes the Tailscale adapter as *Public*, so file sharing over it
+   is blocked by the built-in firewall rules even though the folder is shared. Rather than reclassifying
+   the adapter, add one explicit rule for file sharing's port, 445, from Tailscale only, in PowerShell as
+   administrator:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "qdt-db share over Tailscale" -Direction Inbound -Protocol TCP -LocalPort 445 -RemoteAddress 100.64.0.0/10 -InterfaceAlias Tailscale -Action Allow
+   ```
+
 **What changed.** The PC has a new local user `qdtshare`, a folder `C:\qdt\payloads`, and a network share
 named `qdt-payloads` that only `qdtshare` can reach. Other computers see it as `\\qdt-db\qdt-payloads`.
 
-**Check it from the laptop.** Open File Explorer, type `\\qdt-db\qdt-payloads` in the address bar and
-press Enter. Windows asks for a username and password: enter `qdt-db\qdtshare` and the share password,
-and tick *Remember my credentials*. The folder opens, empty. Right-click, create a new text file, then
-delete it: both must work.
+**Check it from the laptop.**
 
-5. Store those credentials permanently on the laptop, so that the measurement PC's server, which runs
-   without a File Explorer window, can reach the share. In PowerShell on the laptop, as the user who will
-   run the server:
+*Windows laptop:* open File Explorer, type `\\qdt-db\qdt-payloads` in the address bar and press Enter.
+Windows asks for a username and password: enter `qdt-db\qdtshare` and the share password, and tick
+*Remember my credentials*. The folder opens, empty.
+
+*Mac laptop:* in Finder press Cmd-K (Go → Connect to Server), enter `smb://qdt-db/qdt-payloads` and click
+Connect. Choose *Registered User*, enter `qdtshare` and the share password, and tick *Remember this
+password in my keychain*. The folder opens, empty, and from now on it is also visible to programs at the
+path `/Volumes/qdt-payloads`.
+
+On either, create a new text file in the folder, then delete it: both must work.
+
+5. Make the share available to the measurement PC's server, which runs without a file window open, and
+   make it come back after a reboot.
+
+   *Windows laptop:* store the credentials in Windows, in PowerShell as the user who will run the server:
 
    ```powershell
    cmdkey /add:qdt-db /user:qdt-db\qdtshare /pass:<share password>
@@ -367,6 +439,15 @@ delete it: both must work.
    **Check it:** in a new PowerShell window, `dir \\qdt-db\qdt-payloads` lists the (empty) folder without
    asking for a password. You will give the measurement PC this path, `\\qdt-db\qdt-payloads`, in Part 7;
    there is no need to map it to a drive letter.
+
+   *Mac laptop:* the keychain entry from the check above is the stored credential. To have the share
+   reconnect when you log in, open System Settings → General → Login Items, click *+* under *Open at
+   Login*, and choose the `qdt-payloads` volume under *Locations* in the sidebar (or drag it from the
+   desktop into the list). **Check it:** log out and in again, then in Terminal `ls /Volumes/qdt-payloads`
+   lists the (empty) folder. You will give the measurement PC this path, `/Volumes/qdt-payloads`, in Part 7.
+   If the share is not mounted when a measurement finishes, the server cannot create that path on its own
+   (`/Volumes` belongs to the system), so the copy fails safely and the record waits in the local cache;
+   `ls /Volumes/qdt-payloads` before a session is a good habit.
 
 ## Part 6 — The read server, started with the PC
 
@@ -439,6 +520,8 @@ by hand to see it work, then make Windows start it at boot.
    New-NetFirewallRule -DisplayName "qdt-db read server" -Direction Inbound -Protocol TCP -LocalPort 8700,8765 -RemoteAddress <lab-subnet> -Action Allow
    ```
 
+   (**Over Tailscale:** `-RemoteAddress 100.64.0.0/10 -InterfaceAlias Tailscale`, as in Part 3, step 6.)
+
 5. Make Windows start the server at boot, whether or not anyone logs in. Press the Windows key, type
    `task scheduler`, open it, and click *Create Task…* (not *Create Basic Task*). Then:
    - *General* tab: name it `qdt read server`; choose *Run whether user is logged on or not*; tick *Run
@@ -476,9 +559,12 @@ Bookmark that on each desk. From `qdt-db` itself the short `http://localhost:870
 permanent settings tell it where the database and the data folder are; from then on it copies each new
 record to `qdt-db` as soon as the measurement ends.
 
-1. On the laptop, in PowerShell as the user who will run the server, set the two variables permanently.
-   `setx` writes them into your Windows account's settings; unlike `$env:`, they survive closing the
-   window, but they become visible only in windows opened afterwards.
+1. On the laptop, as the user who will run the server, set the two variables permanently. The first is
+   the database address, as `qdt_writer`; the second is the share, written the way that laptop's
+   operating system names it.
+
+   *Windows laptop*, in PowerShell. `setx` writes the values into your Windows account's settings; unlike
+   `$env:`, they survive closing the window, but they become visible only in windows opened afterwards.
 
    ```powershell
    setx QDT_REGISTRY_DSN "postgresql+psycopg://qdt_writer:<writer password>@qdt-db:5432/qdt"
@@ -487,14 +573,28 @@ record to `qdt-db` as soon as the measurement ends.
 
    Each prints `SUCCESS: Specified value was saved.` Close the window.
 
+   *Mac laptop*, in Terminal. Permanent variables live in your shell's start-up file, which every new
+   Terminal window reads. Open it with `nano ~/.zshrc` (the file is created if it does not exist), add
+   these two lines at the end, save with Ctrl-O and Enter, and leave with Ctrl-X:
+
+   ```
+   export QDT_REGISTRY_DSN="postgresql+psycopg://qdt_writer:<writer password>@qdt-db:5432/qdt"
+   export QDT_PAYLOAD_STORE="/Volumes/qdt-payloads"
+   ```
+
+   Close the window. (A program started from the Dock or Finder rather than from Terminal does not read
+   this file; start the stand server from Terminal.)
+
 **What changed.** Any program you start from now on, from a new window, sees the two settings. The
 project's stand server reads them when it starts: with them present it connects to the database as
 `qdt_writer` and copies each record's data file to the share.
 
-**Check it** in a new PowerShell window, before running any measurement:
+**Check it** in a new window, before running any measurement. First that the settings are there:
+`echo $env:QDT_PAYLOAD_STORE` on Windows or `echo $QDT_PAYLOAD_STORE` on a Mac prints the share path.
+Then that the database answers:
 
-```powershell
-cd C:\qdt\repo
+```
+cd C:\qdt\repo        # Mac: cd ~/qdt/repo
 uv run python -m qdt_registry find --remote
 ```
 
@@ -527,12 +627,14 @@ machines; the project's step file calls these checks R-1 to R-3.
    picker offers no sweep or levels widget: this server cannot operate anything.
 
 3. **See it from a script.** On `qdt-db` (or any computer with the repository), the short way is the
-   command-line tool, this time as the reader:
+   command-line tool, this time as the reader. Set the address for this window only, then ask:
 
    ```powershell
-   $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"
+   $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"   # PowerShell
    uv run python -m qdt_registry find --remote
    ```
+
+   (On a Mac the first line is `export QDT_REGISTRY_DSN="postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"`.)
 
    It prints one line per record and `1 record(s)`. The longer way, which also fetches the measured data,
    is a few lines of Python. Save this as `read_one.py` and run it with `uv run python read_one.py`:
@@ -635,8 +737,9 @@ The sessions that wrote this document cannot see your PC. After each run through
 - [ ] In *Services*, `postgresql-x64-17` is *Running* and *Automatic*, and still is after a reboot.
 - [ ] From the laptop, connecting as `qdt_writer` and as `qdt_reader` works; connecting as `qdt_admin` or
       `postgres` from the laptop is refused (there is no `pg_hba.conf` line for them).
-- [ ] From the laptop, `\\qdt-db\qdt-payloads` can be written to after the laptop reboots, without a
-      password prompt; opening it as a guest without a password is refused.
+- [ ] From the laptop, the share (`\\qdt-db\qdt-payloads` on Windows, `/Volumes/qdt-payloads` on a Mac)
+      can be written to after the laptop reboots, without a password prompt; opening it as a guest without
+      a password is refused.
 - [ ] From the laptop, `http://qdt-db:8700/server` answers after `qdt-db` reboots with nobody logged in.
 - [ ] Last night's `.dump` file exists and is not empty; the robocopy log shows no failed copies.
 - [ ] The restore drill has been done once, and its date is in the bench report.
@@ -683,5 +786,7 @@ few seconds before falling back.
 | Python | `permission denied for table records` | A write was attempted as `qdt_reader`. Scripts read; only the measurement PC writes, as `qdt_writer`. |
 | Python | `registry at … has ddl_version 2; this client expects 3` | The database's tables are from an older version of the software than the program connecting to it. Update the repository on `qdt-db` and run `python -m qdt_registry init` again as the admin; update the other machines too. |
 | stand server log | `registry sync failed; records stay in the local cache: …` | `qdt-db` or the share was unreachable when a measurement finished. Nothing is lost; the record is copied with the next successful sync. The text after the colon says which of the two it was. |
-| File Explorer | `Windows cannot access \\qdt-db\qdt-payloads` | The network profile is *Public*, the share permission is missing, or the credentials were not stored. Part 5, steps 3–5. |
+| File Explorer | `Windows cannot access \\qdt-db\qdt-payloads` | The network profile is *Public* (over Tailscale: no port-445 rule for the Tailscale adapter), the share permission is missing, or the credentials were not stored. Part 5, steps 3–5. |
+| Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
+| stand server log (Mac) | `registry sync failed … No such file or directory: '/Volumes/qdt-payloads/…'` | The share is not mounted on the Mac. Reconnect it (Finder, Cmd-K) or check the Login Item from Part 5, step 5; the waiting record is copied on the next sync. |
 | browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |
