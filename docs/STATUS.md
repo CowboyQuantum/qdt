@@ -5,67 +5,59 @@
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
 **Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS: goal 1's first
-slice is in L0 (deliverables 2 code half, 3, 4); the `qdt-db` runbook (deliverable 1) is written and awaits
-its first run on the human's personal Windows PC. Steps 0–6 and 6b are DONE. Milestone `Deployment`.
-**Branch:** `step-6c/goal-1-remote-registry` (PR against `main`; the human merges). Earlier today: #117
-(the chat instance's ADRs 0073–0079) and #118 (ADR 0080, 0074 accepted) merged.
-**Last session:** 2026-10-22 (session 27, continued), no bench.
+slice is in L0 (deliverables 2 code half, 3, 4; PR #121 merged); the `qdt-db` runbook (deliverable 1) is
+being run for the first time on the human's personal Windows PC and Mac laptop — Parts 1–5 done, Part 6
+onward not yet. Steps 0–6 and 6b are DONE. Milestone `Deployment`.
+**Branch:** `step-6c/runbook-mac-mount` (PR against `main`; the human merges). Earlier: #123 (runbook
+rewritten for a reader new to PostgreSQL) and #124 (Windows and Mac versions of every laptop-side step).
+**Last session:** 2026-10-23 (session 28: the human's first run of the runbook, with the agent fixing the
+runbook as problems appeared), no bench.
 
 ## Done this session
-- **Sync after every record and at start (ADR 0080).** `RunManager.sync`/`sync_later`: after a record is
-  ingested (after the run's state is set) and once in the lifespan, in a thread, one at a time; without
-  `QDT_REGISTRY_DSN` nothing is tried; unreachable → one warning (no DSN in it), the rows stay unsynced,
-  the next success carries everything. The registry keeps its remote engine only once `_prepare` answered,
-  so a server down at the first attempt still gets its tables and DDL check later. The server test suite
-  clears the two env vars so a developer's server never receives test records.
-- **The read server (ADR 0074, 0081).** `python -m qdt_server --read-only` / `Settings.read_only`: no
-  backends, no stand, no `RunManager`; needs `QDT_REGISTRY_DSN` (reader role) and `QDT_PAYLOAD_STORE`.
-  Every route that needs a stand or writes sits on an `APIRouter` included only on a stand server; replay
-  stays. `GET /server` → `ServerInfo`; `GET /records/{id}/payload` streams the HDF5 bytes with
-  `X-Content-SHA256` on both kinds. `openapi.json` and Flight Deck's `api.ts` regenerated.
-- **Flight Deck against a read server:** `api.server()` at boot; only plot, empty and history registered;
-  no Run cluster in the strip (absent), stand reads "registry"; the layout under `READ_ONLY_LAYOUT_KEY`.
-  `e2e/readonly.test.ts`: a stand server measures and syncs, a read server serves it to a fresh Flight Deck
-  with no command anywhere, History opens the record on the read server's stream.
-- **The script read path (ADR 0081).** `Registry.devices(remote=)`, `payload_file`/`payload`/`output(remote=)`,
-  `init_server()` and `python -m qdt_registry init`. `docs/tutorials/test_04_remote_read.py`: read A through
-  `qdt_registry` with a reader DSN (a write as the reader is refused; no bytes without the share), read B
-  over HTTP from a read server connected as the reader, hash-checked, arrays equal to the laptop's.
-  Locally the reader is a SQLite file opened `mode=ro`; in CI it is Postgres with the real role.
-- **`deploy/qdt-db/roles.sql`** (three roles, default privileges), run by CI against `qdt_test` before the
-  suite, with `QDT_TEST_PG_READER_DSN`. **Not yet run against a real Postgres by the agent** (no Docker on
-  this machine): this PR's CI run is its first; if `l0` fails there, that is where.
-- **`deploy/qdt-db/README.md`:** the Windows runbook (native service, roles, `pg_hba`/firewall on a
-  placeholder subnet, schema step, SMB share and UNC mount, the read server as a start-up task with `--ui`,
-  the measurement PC's two variables, nightly dump + mirror, restore drill, the §6 smoke test that is the
-  goal 1 demo, the human's checklist, the Postgres half of the tests without Docker). Closes #112, #114.
-  **Rewritten after the human's review** ("not very human readable"): now written for someone who has never
-  used PostgreSQL — every step says what it does, what it changes on the PC, and how to check it; complete
-  sentences; terms defined on first use. That standard applies to every document a person reads from now on.
-  The rewrite found that Flight Deck served by `--ui` needs `?api=&ws=` from another computer (#122).
-  A second pass gives every laptop-side step a Windows and a Mac version (the human's laptop is a Mac) and
-  marks the Tailscale alternative wherever an address, a name or a firewall rule is chosen (`100.64.0.0/10`).
-- **Docs:** ADR 0081 (what the slice settled); Step 6c L0 row reworded (replay stays), status IN PROGRESS;
-  steps index; tutorials index. 476 Python tests (+6 Postgres-parametrized), 4 skipped; Flight Deck 142
-  unit, 15 e2e. `check_all` green.
+- **Runbook Parts 1–5 ran on real machines** (personal PC = `qdt-db`, PostgreSQL 18; Mac laptop over
+  Tailscale). Postgres service, roles, `init` (`ddl_version 3`), the SMB share and the Mac's Cmd-K mount all
+  worked as written. What did not, and what the runbook now says instead:
+  - **Mac share at login (Part 5, step 5).** A network volume in System Settings' *Login Items* does nothing
+    at login on current macOS, and the two Finder-based alternatives tried (`osascript 'mount volume'`,
+    `open smb://…`) either fail with error -5014 at login or stop at a pre-filled password dialog. The
+    runbook now installs a Launch Agent (`~/Library/LaunchAgents/com.qdt.mount-payloads.plist`) running a
+    script that mounts with `mount_smbfs` onto `~/qdt-payloads`, reading the password from the keychain
+    entry Finder saved (`security find-internet-password -w`; *Always Allow* once), retrying for five minutes
+    while the network comes up, logging to `~/Library/Logs/mount-qdt-payloads.log`. The mount point is
+    `chmod 555` so an unmounted share refuses writes instead of swallowing payloads locally (the fail-safe
+    `/Volumes` gave for free). Verified on the human's Mac through a log-out/log-in. Part 7's Mac path,
+    the Part 10 checklist and Appendix B follow.
+  - **Tailscale on the Mac** had stopped starting at login (its Login Items entry was lost while editing the
+    list); the runbook now says to check it, and why.
+  - **Appendix B:** `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` = a typo in the DSN prefix.
+  - **PostgreSQL 18** is what the installer now gives; the service-name mentions say 17 or 18.
+- No code changed. `check_all` green; pytest run at session end (see the PR).
 
 ## In flight
-- This PR awaits the human; its CI run is the first run of `roles.sql` on Postgres.
+- This PR awaits the human. **Unverified in it:** mounting onto the `chmod 555` mount point from a fresh
+  login (the human's verified run predates the chmod; the `touch … → Permission denied` check in Part 5
+  covers it), and whether `chflags uchg` (Finder's *Locked*) on the mount point still allows the mount —
+  if yes, one line to add.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Human (the demo, deliverable 1 and 2's share):** run `deploy/qdt-db/README.md` §1–§3 on the personal PC
-and §4 on the laptop, then the §6 smoke test: a sweep on the laptop's Flight Deck, the record in the
+**Human (the demo, deliverable 1 and 2's share):** continue `deploy/qdt-db/README.md` from Part 6 (the read
+server as a start-up task) through Part 7 (the Mac's two variables; `QDT_PAYLOAD_STORE` is now
+`$HOME/qdt-payloads`) and the Part 8 smoke test: a sweep on the laptop's Flight Deck, the record in the
 desktop's Flight Deck (no Run button) and in a script (tutorial 04's pattern). Every step that needs a
-workaround becomes an issue on `Deployment` (`found-by-human` is fine; label it `blocker` if it stops the
-demo). Tick §7's checklist. **Agent, next session:** blockers from the demo first; otherwise deliverable 5
-(the command token: a stand server bound off loopback refuses `POST`/`DELETE` without a bearer token from
-its token file; loopback exempt; Flight Deck sends the token it was given), with the step file's L0 rows.
+workaround becomes an issue on `Deployment` or a runbook fix in-session, as today. Tick Part 10's
+checklist. **Agent, next session:** blockers from the demo first; otherwise deliverable 5 (the command
+token: a stand server bound off loopback refuses `POST`/`DELETE` without a bearer token from its token
+file; loopback exempt; Flight Deck sends the token it was given), with the step file's L0 rows.
 Branch `step-6c/<short-name>`.
 
 ## Direction recorded (human)
+- **2026-10-23 (session 28):** ran the runbook on the personal PC and the Mac; asked for the runbook to be
+  updated with the Mac mount method "at least for macbooks"; asked whether Windows needs the same (no: the
+  UNC path connects on demand with `cmdkey`'s credential and fails safely when the share is away) and
+  whether the mount point can be made unmovable (`chflags uchg`, pending a test that the mount still works).
 - **2026-10-22 (session 27):** the next focus is "set up the measurement database backend on my desktop PC
   and have it running … launch Flight Deck from my laptop with a simulated backend … take a measurement …
   view that measurement on my desktop computer by querying the database … with both an instance of Flight
