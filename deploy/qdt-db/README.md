@@ -430,24 +430,89 @@ On either, create a new text file in the folder, then delete it: both must work.
 5. Make the share available to the measurement PC's server, which runs without a file window open, and
    make it come back after a reboot.
 
-   *Windows laptop:* store the credentials in Windows, in PowerShell as the user who will run the server:
+   **What this does, on either system.** When you opened the share in the check above, you typed the
+   `qdtshare` password into a dialog. The stand server has no dialog: when a measurement finishes it
+   simply writes a file to the share path, and the operating system must supply the password on its
+   behalf. Both Windows and macOS keep a per-user store of saved passwords for exactly this purpose
+   (Windows calls it *Credential Manager*, macOS calls it the *keychain*). This step puts the share's
+   password in that store, for the user account that will run the stand server, keyed by the server's
+   name. Two things follow from "keyed by the server's name". First, the name you store it under must be
+   exactly the name you will put in `QDT_PAYLOAD_STORE` in Part 7: if you store it for `qdt-db` and later
+   use the Tailscale name or the address instead, the stored password is not found. Second, the store is
+   per user account on the laptop, so do this while logged in as the account that will run the server,
+   not as an administrator account you use for installing things. Everything in this step is done **on
+   the laptop**; nothing changes on `qdt-db`.
+
+   *Windows laptop.* Open an ordinary PowerShell window (from the Start menu, **not** "Run as
+   administrator": an elevated window belongs to the same account but it is easy to end up in the wrong
+   one, and the stand server will run from an ordinary window). Type, replacing the password:
 
    ```powershell
    cmdkey /add:qdt-db /user:qdt-db\qdtshare /pass:<share password>
    ```
 
-   **Check it:** in a new PowerShell window, `dir \\qdt-db\qdt-payloads` lists the (empty) folder without
-   asking for a password. You will give the measurement PC this path, `\\qdt-db\qdt-payloads`, in Part 7;
-   there is no need to map it to a drive letter.
+   `cmdkey` is Windows's command-line front to Credential Manager. `/add:qdt-db` is the server name the
+   entry is filed under; `/user:qdt-db\qdtshare` is the account on `qdt-db` to log in as (the `qdt-db\`
+   prefix says the account is local to that machine); `/pass:` is its password. It answers
+   `CMDKEY: Credential added successfully.` The password has now been typed into this window's history;
+   close the window when you are done.
 
-   *Mac laptop:* the keychain entry from the check above is the stored credential. To have the share
-   reconnect when you log in, open System Settings → General → Login Items, click *+* under *Open at
-   Login*, and choose the `qdt-payloads` volume under *Locations* in the sidebar (or drag it from the
-   desktop into the list). **Check it:** log out and in again, then in Terminal `ls /Volumes/qdt-payloads`
-   lists the (empty) folder. You will give the measurement PC this path, `/Volumes/qdt-payloads`, in Part 7.
-   If the share is not mounted when a measurement finishes, the server cannot create that path on its own
-   (`/Volumes` belongs to the system), so the copy fails safely and the record waits in the local cache;
-   `ls /Volumes/qdt-payloads` before a session is a good habit.
+   **What changed.** Credential Manager holds one new entry. You can see it under Control Panel → User
+   Accounts → Credential Manager → *Windows Credentials*, listed as `qdt-db`, or with `cmdkey /list`,
+   which shows `Target: Domain:target=qdt-db` and `User: qdt-db\qdtshare`. To remove it one day,
+   `cmdkey /delete:qdt-db`. If the check in step 4 ticked *Remember my credentials*, an entry may already
+   be there under the same name; `cmdkey /add` replaces it, which is fine.
+
+   **Check it.** Open a *new* PowerShell window and type `dir \\qdt-db\qdt-payloads`. It lists the (empty)
+   folder without asking for a password. If it asks, the entry's name does not match (`cmdkey /list` to
+   compare) or you are in a different user account. Reboot the laptop once and repeat the command: the
+   entry survives reboots, so it still works. You will give the measurement PC this path,
+   `\\qdt-db\qdt-payloads`, in Part 7; there is no need to map it to a drive letter.
+
+   *Mac laptop.* On a Mac, the password store is the keychain, and the easiest way to put the share's
+   password in it is the Finder dialog you used in the check above: ticking *Remember this password in my
+   keychain* created the entry. If you did not tick it, disconnect the share (click the eject symbol next
+   to `qdt-payloads` in a Finder sidebar) and connect again with Cmd-K, this time ticking the box. Use the
+   same server name in the Cmd-K address (`smb://qdt-db/qdt-payloads`) as you will use in Part 7.
+
+   If you prefer to do it from Terminal, as the user who will run the server, this is the same thing
+   (the `-r 'smb '` has a trailing space inside the quotes; it is how the keychain labels file-sharing
+   passwords):
+
+   ```
+   security add-internet-password -a qdtshare -s qdt-db -r 'smb ' -w '<share password>'
+   ```
+
+   `security` is the command-line front to the keychain; `-a` is the account name, `-s` the server, `-w`
+   the password. It prints nothing on success.
+
+   **What changed.** Your login keychain holds one entry for `qdt-db`. You can see it in the *Keychain
+   Access* app (Applications → Utilities; or in *Passwords* in System Settings on recent macOS) by
+   searching for `qdt-db`: it shows the kind *Internet password*, the account `qdtshare`, and *Show
+   password* reveals it after your Mac password. To remove it, delete that entry.
+
+   A saved password lets the share connect without asking, but unlike Windows, macOS does not connect to a
+   share by itself when a program touches its path: the share must be *mounted*, which is what Cmd-K does,
+   and a mount does not survive a reboot. To have it mount at login, open System Settings → General →
+   Login Items, click *+* under *Open at Login*, and choose the `qdt-payloads` volume under *Locations* in
+   the sidebar (or drag the volume from the desktop into the list). If that does not take on your macOS
+   version, the fallback is a one-line command you can run yourself or make a login item of: in Terminal,
+
+   ```
+   osascript -e 'mount volume "smb://qdtshare@qdt-db/qdt-payloads"'
+   ```
+
+   mounts the share using the keychain entry (`qdtshare@` names the account so the keychain lookup
+   matches). To run it at login, open the *Shortcuts* app, make a shortcut with one *Run Shell Script*
+   action containing that line, and add the shortcut to Login Items.
+
+   **Check it.** In Terminal, `ls /Volumes/qdt-payloads` lists the (empty) folder. Then log out and in
+   again (or reboot) and run `ls /Volumes/qdt-payloads` once more: if it says `No such file or directory`,
+   the login item is not mounting the share; run the `osascript` line by hand and it should appear. You
+   will give the measurement PC this path, `/Volumes/qdt-payloads`, in Part 7. If the share is not mounted
+   when a measurement finishes, the server cannot create that path on its own (`/Volumes` belongs to the
+   system), so the copy fails safely and the record waits in the local cache; `ls /Volumes/qdt-payloads`
+   before a session is a good habit.
 
 ## Part 6 — The read server, started with the PC
 
