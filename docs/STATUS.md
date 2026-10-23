@@ -52,17 +52,22 @@ runbook as problems appeared), no bench.
 ## In flight
 - `step-6c/runbook-paths` awaits the human. **Unverified:** `mac-payload-mount.sh` itself (merged in
   #126; the steps it automates are verified by hand). The human runs `uninstall` then `install` on the
-  Mac as the test. **Open:** Part 6 step 3 — the read server runs on the human's PC (`/server` answers),
-  but `/records` is a 500 because the reader password in `read-server.ps1` is wrong (Postgres log:
-  `password authentication failed for user "qdt_reader"`); the human is fixing the script. A second start
-  while the first ran hit `only one usage of each socket address`; both now in Appendix B.
+  Mac as the test. **Part 6 step 3 works end to end on the human's machines** (2026-10-23, ~14:40): a sweep
+  run from the Mac's Flight Deck synced to the database and the share, and the read server's Flight Deck on
+  the PC listed it in History and plotted it on *open*. Three faults on the way, all now in Appendix B:
+  reader password wrong in `read-server.ps1` (Postgres log: `password authentication failed`), a second
+  start while the first ran (`only one usage of each socket address`), and `QDT_PAYLOAD_STORE` left at the
+  example path (`FileNotFoundError` on *open*). UI finding filed: #130 (History's open/analyse buttons
+  hidden when the pane is narrow). The database also holds ~80 records dated before it existed, from a
+  development cache synced at a stand server's first start (ADR 0080); the human has not yet said whether
+  to keep them or to give the lab stand its own `--root`.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Human (the demo, deliverable 1 and 2's share):** continue `deploy/qdt-db/README.md` from Part 6 step 3
-(the read server by hand; paste its error if it still fails) through Part 7 (the Mac's two variables; `QDT_PAYLOAD_STORE` is now
+**Human (the demo, deliverable 1 and 2's share):** continue `deploy/qdt-db/README.md` from Part 6 step 4
+(firewall rule, then step 5 the scheduled task; Part 7 is effectively done on the Mac) through (the Mac's two variables; `QDT_PAYLOAD_STORE` is now
 `$HOME/qdt-payloads`) and the Part 8 smoke test: a sweep on the laptop's Flight Deck, the record in the
 desktop's Flight Deck (no Run button) and in a script (tutorial 04's pattern). Every step that needs a
 workaround becomes an issue on `Deployment` or a runbook fix in-session, as today. Tick Part 10's
