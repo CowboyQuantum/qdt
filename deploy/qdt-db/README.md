@@ -1,200 +1,687 @@
-# `qdt-db` — the registry server on a Windows PC
+# Setting up the measurement database on a Windows PC
 
-The runbook for Step 6c goal 1 (ADR 0074, 0080; Analysis 0003 §4–§8): one PC that holds the registry
-database, the payload store and the read server, readable from every computer on the lab network and
-alive when the measurement PC is off. Written for a Windows host (ADR 0080: Postgres as a native
-service, never inside WSL2; the share over SMB). It is rehearsed first on a personal PC standing in as
-`qdt-db`, then run again, unchanged, on the lab PC. A Linux section is added when there is a Linux host.
+This document walks you through turning one Windows PC into the computer that keeps every measurement:
+the database that lists them, the folder that holds their data files, and a small web server that lets
+any other computer on the network look at them. In the project's documents this PC is called `qdt-db`.
+The computer that drives the instruments and takes the measurements is called the measurement PC; in
+the first run-through it is a laptop running the simulated instruments.
 
-Names in this file are placeholders (rule 7): `qdt-db` the database PC, `<lab-subnet>` such as
-`10.0.0.0/24`, `<measurement-pc>`, `<share-user>`. Real names, addresses and passwords live on each
-machine, never in this repository or its issues.
+You do not need to have used PostgreSQL before. Each step says what you are doing, what it changes on
+the computer, and how to check that it worked. Expect the whole setup to take an afternoon, most of it
+in Parts 1–3. Nothing here touches the lab network; the first run is on your own two machines, and the
+same steps are repeated unchanged on the lab's database PC later (ADR 0080).
 
-What ends up where:
+Every name, address and password in this file is a placeholder, shown in angle brackets like
+`<admin password>`. Real ones stay on your machines and never go into this repository or into a GitHub
+issue (project rule 7). Where a placeholder is a path, you may keep the suggested one.
 
-| On `qdt-db` | On the measurement PC | On any other desk |
-|---|---|---|
-| PostgreSQL service, database `qdt`, roles `qdt_admin` / `qdt_writer` / `qdt_reader` | `QDT_REGISTRY_DSN` as `qdt_writer`, `QDT_PAYLOAD_STORE` = the mounted share | `QDT_REGISTRY_DSN` as `qdt_reader` for scripts, or nothing at all |
-| `D:\qdt\payloads`, shared read/write to `<share-user>` | `python -m qdt_server` (the stand server; syncs after every record, ADR 0080) | Flight Deck pointed at the read server; `GET /records/{id}/payload` for bytes |
-| `python -m qdt_server --read-only` as a task at start-up | | |
-| nightly `pg_dump` + payload mirror to a second disk | | |
+## What you are building
 
-## 0. Before you start
+Three pieces of software run on `qdt-db` when you are done:
 
-- Analysis 0003 §4: the PC never sleeps, restarts after power loss, has a fixed address or a DHCP
-  reservation, and the name `qdt-db` resolves from the clients (DNS, or a `hosts` line on each client).
-- Two disks, or two volumes: an SSD for Postgres (`C:` is fine), a large one for payloads and the backup
-  of Postgres (`D:` below). The backup target of the payloads is a third place (NAS or another machine).
-- This repository cloned and `uv sync --all-packages --all-extras` done, on `qdt-db` too: the read server
-  and the schema step run from it.
-- Windows: `uv` from the installer; Node through `corepack` (`corepack enable` once, then every pnpm
-  command is `corepack pnpm …`, which is how `apps/flightdeck/` is run on Windows — #114).
+1. **PostgreSQL**, a database program that runs in the background as a Windows service. It stores the
+   *catalogue* of measurements: for each one, which device and stand it was taken on, when, with what
+   settings, and the name and checksum of its data file. It does not store the measured numbers themselves.
+2. **A shared folder** that holds the data files (one HDF5 file per measurement). The measurement PC
+   writes into it over the network; the web server below reads from it; nobody else touches it.
+3. **The read server**, `python -m qdt_server --read-only`, a program from this repository. It answers
+   questions about the catalogue over HTTP, hands out data files, and serves the Flight Deck web page.
+   It connects to PostgreSQL with a read-only account, so it cannot change anything, and it does not know
+   any instrument exists.
 
-## 1. PostgreSQL as a native service
+The measurement PC keeps running exactly as before, with two extra settings that tell it where the
+database and the shared folder are. After every measurement it copies the record to `qdt-db`. If
+`qdt-db` is switched off, the record waits on the measurement PC and is copied the next time anything
+succeeds (ADR 0080).
 
-1. Install PostgreSQL 17 from the EDB installer (the standard Windows build). Take the defaults: service
-   `postgresql-x64-17` running as *Network Service*, data directory under `C:\Program Files\PostgreSQL\17\data`,
-   port 5432. Set a superuser (`postgres`) password and keep it off the network.
-2. Confirm the service starts with the machine: `services.msc` → PostgreSQL → *Automatic*. Reboot once and
-   check `pg_isready -h 127.0.0.1` from a *Command Prompt* (the installer puts `bin\` on the PATH for the
-   SQL Shell; add it to the system PATH if not).
-3. Create the database as the superuser, in the SQL Shell (psql):
-   ```sql
-   CREATE DATABASE qdt;
-   ```
-4. The three roles, with `deploy/qdt-db/roles.sql` from the clone, passwords typed on the command line
-   (they go nowhere else; the file commits no secret):
-   ```
-   psql -U postgres -d postgres -v db=qdt -v admin_pw='...' -v writer_pw='...' -v reader_pw='...' -f deploy\qdt-db\roles.sql
-   ```
-   `qdt_admin` creates the tables and nothing else uses it; `qdt_writer` is what stand servers sync as
-   (insert only — rows are never updated, ADR 0026); `qdt_reader` is what the read server and every script
-   read as.
-5. Listen on the lab network, and admit only it. In the data directory:
-   - `postgresql.conf`: `listen_addresses = '*'` (or the lab interface's address).
-   - `pg_hba.conf`, appended, one line per role, scoped to the subnet, never `0.0.0.0/0`:
-     ```
-     host    qdt    qdt_writer    <lab-subnet>    scram-sha-256
-     host    qdt    qdt_reader    <lab-subnet>    scram-sha-256
-     host    qdt    qdt_admin     127.0.0.1/32    scram-sha-256
-     ```
-   Restart the service (`services.msc`, or `net stop postgresql-x64-17 && net start postgresql-x64-17` as
-   administrator).
-6. Windows Firewall, inbound, scoped to the subnet (PowerShell as administrator):
+```
+measurement PC (laptop)                       qdt-db (desktop)
+┌───────────────────────────┐                 ┌────────────────────────────────────┐
+│ python -m qdt_server      │  SQL, port 5432 │ PostgreSQL service                 │
+│   (the stand server)      │ ──────────────▶ │   database "qdt"                   │
+│   local cache + data files│  file sharing   │ shared folder  C:\qdt\payloads     │
+│                           │ ──────────────▶ │                                    │
+│ Flight Deck in a browser  │                 │ python -m qdt_server --read-only   │
+└───────────────────────────┘                 │   http://qdt-db:8700  (+ 8765)     │
+                                              └────────────────────────────────────┘
+any other computer ──── browser or Python script ────▶ http://qdt-db:8700, or SQL as a reader
+```
+
+Three database accounts are created, each allowed to do only its job: `qdt_admin` creates the tables and
+is used once; `qdt_writer` is what the measurement PC uses to add records; `qdt_reader` is what the read
+server and your scripts use, and it can only read. This way a mistake in a script, or a browser on the
+wrong desk, cannot change or delete a measurement (ADR 0074).
+
+## Before you start
+
+You need:
+
+- The Windows PC that will be `qdt-db`, with an account that is an administrator on it. It should be
+  set never to sleep (Settings → System → Power → "Never" for sleep when plugged in), because a sleeping
+  database is an absent one.
+- A second computer on the same home or lab network to be the measurement PC. For the first run it only
+  needs this repository and Python; no instruments.
+- Both computers able to see each other on the network. The easiest test is to find `qdt-db`'s address
+  (Part 3, step 5) and `ping` it from the laptop.
+- On both machines: this repository cloned (the instructions assume `C:\qdt\repo`), `uv` installed
+  (https://docs.astral.sh/uv/), and `uv sync --all-packages --all-extras` run once inside the clone. On
+  `qdt-db` you also need Node.js 20 or newer for Part 6, because the Flight Deck page is built there.
+
+A note on the two command-line programs Windows offers. *Command Prompt* (`cmd.exe`) and *PowerShell*
+look alike but set variables differently. This document uses **PowerShell** throughout; open it from the
+Start menu, and where a step says "as administrator", right-click it and choose *Run as administrator*.
+
+## Part 1 — Install PostgreSQL
+
+**What this does.** It puts the database program on the PC and registers it as a Windows service, which is
+a program that Windows starts at boot and keeps running whether or not anyone is logged in.
+
+1. Download the Windows installer from https://www.postgresql.org/download/windows/ (the link goes to
+   EnterpriseDB, who build the official Windows package). Choose the newest version 17 release.
+
+2. Run the installer. When it asks which components to install, keep **PostgreSQL Server** and **Command
+   Line Tools** ticked. **pgAdmin 4** is a graphical administration program; it is harmless but you will not
+   need it here. Untick **Stack Builder**; it only offers downloads of extras.
+
+3. Accept the default *data directory*, `C:\Program Files\PostgreSQL\17\data`. This folder is where the
+   database keeps everything it stores, and where two configuration files you will edit in Part 3 live.
+
+4. When asked for a password, you are setting the password of the database's built-in superuser, an
+   account named `postgres` that can do anything inside the database. Choose a strong one and keep it in
+   your password manager as "postgres superuser on qdt-db". You will use it in Parts 2 and 9 only.
+
+5. Accept port **5432** (the number other computers will connect to) and the default locale.
+
+**What changed on the PC.** A Windows service named `postgresql-x64-17` now runs in the background and
+starts with the machine. The program files are in `C:\Program Files\PostgreSQL\17\bin`, including `psql`,
+the command-line tool you will use to talk to the database. The database itself contains one account
+(`postgres`) and some empty default databases, and it accepts connections only from this same PC.
+
+**Check it.** Press the Windows key, type `services`, open *Services*, and find *postgresql-x64-17*: its
+Status should be *Running* and its Startup Type *Automatic*. Then open *SQL Shell (psql)* from the Start
+menu. It asks for server, database, port and username one after another; press Enter to accept each
+default, then type the superuser password. You should see the prompt `postgres=#`. Type
+
+```sql
+SELECT version();
+```
+
+and press Enter: it prints a line beginning `PostgreSQL 17`. Type `\q` and Enter to leave.
+
+6. Make `psql` available from any PowerShell window, because the remaining parts type commands there.
+   Press the Windows key, type `environment`, open *Edit the system environment variables*, click
+   *Environment Variables…*, select *Path* under *System variables*, click *Edit…*, then *New*, and add
+   `C:\Program Files\PostgreSQL\17\bin`. Click OK in every dialog. **Check it:** open a *new* PowerShell
+   window (existing ones do not see the change) and type `psql --version`; it prints `psql (PostgreSQL) 17.x`.
+
+## Part 2 — Create the database and its three accounts
+
+**What this does.** A PostgreSQL server can hold several independent databases. You create one, named
+`qdt`, for the measurements, and three accounts (PostgreSQL calls them *roles*) that may connect to it,
+each with its own permissions. The permissions are written in the file `deploy\qdt-db\roles.sql` in this
+repository, so you do not have to type them.
+
+1. Choose three passwords, one per account, and store them in your password manager as
+   "qdt_admin", "qdt_writer" and "qdt_reader" on qdt-db. Use letters and digits only: these passwords
+   will later be written inside a connection address, where characters such as `@`, `:`, `/` and `%` have
+   meanings of their own and would have to be escaped.
+
+2. Open PowerShell and create the database. The command connects to the server as the superuser (`-U
+   postgres`), to the default database that always exists (`-d postgres`), and runs one SQL statement
+   (`-c`). It asks for the superuser password.
+
    ```powershell
-   New-NetFirewallRule -DisplayName "qdt-db Postgres" -Direction Inbound -Protocol TCP -LocalPort 5432 -RemoteAddress <lab-subnet> -Action Allow
+   psql -U postgres -d postgres -c "CREATE DATABASE qdt;"
    ```
-7. The schema, once, as the admin role, from the clone on `qdt-db` (this creates the tables as `qdt_admin`,
-   which is what makes the writer's and reader's default privileges in `roles.sql` apply):
+
+   It answers `CREATE DATABASE`.
+
+3. Create the three accounts by running the project's SQL file. In the command below, `-v` passes a value
+   into the file (the file refers to them as `:db`, `:'admin_pw'` and so on), and `-f` names the file to
+   run. Replace the three placeholders with the passwords you chose, keeping the single quotes. If you
+   cloned the repository elsewhere, adjust the path.
+
+   ```powershell
+   cd C:\qdt\repo
+   psql -U postgres -d postgres -v db=qdt -v admin_pw='<admin password>' -v writer_pw='<writer password>' -v reader_pw='<reader password>' -f deploy\qdt-db\roles.sql
    ```
-   set QDT_REGISTRY_DSN=postgresql+psycopg://qdt_admin:<admin_pw>@127.0.0.1:5432/qdt
+
+   It asks for the superuser password, possibly twice (the file reconnects to the new database halfway
+   through), and prints a line for each statement: `CREATE ROLE` three times, then `GRANT` and `ALTER
+   DEFAULT PRIVILEGES` lines. Any line beginning `ERROR` means the step did not complete; the most likely
+   cause is running the file a second time, because the accounts then already exist.
+
+**What changed.** The server now has a database named `qdt` (still empty: no tables yet) and three
+accounts. `qdt_admin` may create tables in it. `qdt_writer` may read and add rows to any table the admin
+creates, but never change or delete a row, which matches how the project treats measurements: they are
+only ever added (ADR 0026). `qdt_reader` may only read.
+
+**Check it.** List the databases and the accounts:
+
+```powershell
+psql -U postgres -d postgres -c "\l"
+psql -U postgres -d postgres -c "\du"
+```
+
+The first shows `qdt` in the list; the second shows `qdt_admin`, `qdt_writer` and `qdt_reader`. Now connect
+as the reader to prove the account works. `-h 127.0.0.1` means "over the network, to this same machine",
+which is how every other program will connect:
+
+```powershell
+psql -U qdt_reader -h 127.0.0.1 -d qdt -c "SELECT current_user;"
+```
+
+It asks for the reader password and prints `qdt_reader`.
+
+## Part 3 — Let other computers connect
+
+**What this does.** Out of the box PostgreSQL listens only on the PC it runs on, and Windows Firewall
+blocks incoming connections. Two configuration files decide who may connect: `postgresql.conf` says which
+network interfaces the server listens on, and `pg_hba.conf` ("host-based authentication") says which
+accounts may connect to which database from which addresses, and how they must prove who they are. You
+open both to the computers on your network and no further, then open the firewall for the same.
+
+1. Find your network's address range, so the rules admit only it. Run `ipconfig` in PowerShell and look at
+   the adapter you use (Ethernet or Wi-Fi): note the *IPv4 Address*, for example `192.168.1.23`, and the
+   *Subnet Mask*, for example `255.255.255.0`. A mask of `255.255.255.0` means every computer on your
+   network shares the first three numbers; the range is then written `192.168.1.0/24`. Write your range
+   down; it is `<lab-subnet>` in the rest of this document. Also write down the IPv4 address itself: it is
+   how the laptop will find this PC in step 5.
+
+2. Open the data directory's configuration files with administrator rights. Open Notepad as administrator
+   (Start menu, type *Notepad*, right-click, *Run as administrator*), then File → Open, navigate to
+   `C:\Program Files\PostgreSQL\17\data`, and change the file type dropdown to *All files*.
+
+3. In `postgresql.conf`, use Ctrl-F to find the line
+
+   ```
+   #listen_addresses = 'localhost'
+   ```
+
+   The `#` at the start marks the line as a comment, meaning the setting is at its default. Change it to
+
+   ```
+   listen_addresses = '*'
+   ```
+
+   which means "listen on every network interface this PC has". Save the file. (Who may actually connect is
+   decided by the next file and the firewall; this line alone opens nothing to anyone.)
+
+4. In `pg_hba.conf`, scroll to the bottom. Each line is a rule with five columns: the connection type,
+   the database, the account, the address range it applies to, and the authentication method. The
+   existing rules already allow connections from this PC itself, which is why Part 2's checks worked. Add
+   two lines, with your range in place of the placeholder:
+
+   ```
+   host    qdt    qdt_writer    <lab-subnet>    scram-sha-256
+   host    qdt    qdt_reader    <lab-subnet>    scram-sha-256
+   ```
+
+   They read: "a network connection to database `qdt` as `qdt_writer` (or `qdt_reader`) from any address
+   in this range is allowed if it presents the right password" (`scram-sha-256` is the password method).
+   There is deliberately no line for `qdt_admin` or `postgres` from the network: those accounts are used
+   only at this PC. Never write `0.0.0.0/0` here; it would mean "from anywhere". Save the file.
+
+5. Restart the service so it reads the two files: in *Services*, right-click *postgresql-x64-17* and
+   choose *Restart*. **Check it** from this PC, connecting to its own network address instead of
+   `127.0.0.1` (use the IPv4 address from step 1):
+
+   ```powershell
+   psql -U qdt_reader -h <qdt-db's IPv4 address> -d qdt -c "SELECT 1;"
+   ```
+
+   It asks for the reader password and prints a small table containing `1`. If instead it says `no
+   pg_hba.conf entry for host`, the address range in step 4 does not include this address; if it says
+   `could not connect`, step 3 did not take effect or the service was not restarted.
+
+6. Open Windows Firewall for port 5432, from your network only. In PowerShell **as administrator**:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "qdt-db PostgreSQL" -Direction Inbound -Protocol TCP -LocalPort 5432 -RemoteAddress <lab-subnet> -Action Allow
+   ```
+
+   This creates one inbound rule (`-Direction Inbound`) that allows (`-Action Allow`) TCP connections to
+   port 5432 (`-LocalPort`) when they come from your address range (`-RemoteAddress`). You can see and
+   delete it later under *Windows Defender Firewall with Advanced Security → Inbound Rules*.
+
+7. Give the PC a name the laptop can use. The project's documents call it `qdt-db`. If your network has
+   no DNS that knows the name, add a line to the laptop's *hosts* file instead: on the laptop, open Notepad
+   as administrator, open `C:\Windows\System32\drivers\etc\hosts`, and add at the end
+
+   ```
+   <qdt-db's IPv4 address>    qdt-db
+   ```
+
+   For a home network where the desktop's address may change when the router restarts, either reserve
+   the address in the router's settings (often called "DHCP reservation") or simply use the IPv4 address
+   in place of `qdt-db` everywhere below.
+
+**Check it from the laptop.** In PowerShell on the laptop:
+
+```powershell
+Test-NetConnection qdt-db -Port 5432
+```
+
+The last line should read `TcpTestSucceeded : True`. If it is `False`, the firewall rule or the address
+range is wrong, or the two machines are not on the same network. Then, if the laptop has PostgreSQL's
+command-line tools installed (it does not need them otherwise), `psql -U qdt_reader -h qdt-db -d qdt -c
+"SELECT 1;"` should work as it did in step 5.
+
+## Part 4 — Create the tables
+
+**What this does.** The database `qdt` is still an empty container. The project creates its own tables
+(records, devices, analysis results and so on) with one command, run as `qdt_admin`, so that the tables
+belong to the admin account and the permissions from Part 2 apply to them. The same command checks that
+the tables match the version of the software, and refuses to continue if an older server meets a newer
+client, which protects you from silent mismatches (ADR 0026).
+
+1. The project's programs find the database through one setting, an environment variable named
+   `QDT_REGISTRY_DSN`. Its value is a connection address in this shape:
+
+   ```
+   postgresql+psycopg://<account>:<password>@<host>:5432/qdt
+   ```
+
+   `postgresql+psycopg` says which database driver to use, then the account and its password, then the
+   machine and port, then the database name. For this one-time step the account is `qdt_admin` and the
+   host is `127.0.0.1`, this PC itself. In PowerShell a variable set with `$env:` lasts until that window
+   is closed, which is what you want for a one-time command:
+
+   ```powershell
+   cd C:\qdt\repo
+   $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_admin:<admin password>@127.0.0.1:5432/qdt"
    uv run python -m qdt_registry init
    ```
-   It prints `server ready, ddl_version N`. A client with another DDL version refuses the server (ADR 0026),
-   so upgrade clients and server together.
 
-## 2. The payload store and its share
+   It prints `server ready, ddl_version 3` (the number is the current table-layout version). Close the
+   PowerShell window afterwards so the admin password is not left in a live variable.
 
-Envelopes go in Postgres; payload bytes are files (ADR 0026). Stand servers write them to the store over a
-share; the read server reads them from the local disk; every other reader gets them over HTTP (ADR 0074).
+**What changed.** The database `qdt` now contains the project's tables, all empty.
 
-1. The directory: `D:\qdt\payloads`. Give the read server's account (the user that runs the task in §3)
-   read access; give `<share-user>` (a local account made for the stand servers, no other rights) modify
-   access.
-2. Share it (PowerShell as administrator):
+**Check it.** `psql -U postgres -d qdt -c "\dt"` lists the tables; you should see names such as `devices`,
+`objects`, `records`, `analysis_results`, `tuning_outcomes` and `registry_meta`. Running the `init`
+command a second time is harmless: it finds the tables already there and prints the same line.
+
+## Part 5 — The folder for the data files, shared with the measurement PC
+
+**What this does.** The numbers a measurement produces live in a file, not in the database (the database
+row holds the file's name and checksum). The measurement PC must be able to put files into a folder on
+`qdt-db`, so you create the folder, create a Windows account whose only purpose is to write into it, and
+share the folder on the network for that account. Windows file sharing is also called SMB.
+
+1. Create the folder. If this PC has a second, larger disk, put the folder there instead of on `C:`, and
+   use that path wherever `C:\qdt\payloads` appears below.
+
    ```powershell
-   New-SmbShare -Name qdt-payloads -Path D:\qdt\payloads -FullAccess <share-user>
+   New-Item -ItemType Directory -Path C:\qdt\payloads
    ```
-   SMB uses TCP 445, which Windows opens for the *Private* profile; scope it to the subnet as for 5432 if
-   the firewall is stricter.
-3. On the measurement PC, mount it so it survives a reboot, as the user that runs the stand server:
-   ```
-   net use Z: \\qdt-db\qdt-payloads /user:qdt-db\<share-user> * /persistent:yes
-   ```
-   `QDT_PAYLOAD_STORE` may name the drive (`Z:\`) or the UNC path (`\\qdt-db\qdt-payloads`); the UNC path
-   needs no drive letter and does not depend on the mount being re-established at logon, so prefer it.
-   The stand server writes through a temp file and a rename (`qdt_registry` `_place`), so a copy that is
-   cut off never leaves a half file under its final name.
 
-## 3. The read server as a task at start-up
+2. Create a local Windows user for the measurement PC to connect as, in PowerShell **as administrator**.
+   Using a separate account, rather than your own, means the laptop never holds your login, and you can
+   change this one password without touching anything else. Choose a password and store it as
+   "qdtshare on qdt-db".
 
-`python -m qdt_server --read-only` holds no instrument and accepts no command (ADR 0074): Flight Deck
-against it shows the records and the plots and nothing that would run a stand.
-
-1. A `.cmd` beside the clone, e.g. `D:\qdt\read-server.cmd`:
-   ```
-   @echo off
-   set QDT_REGISTRY_DSN=postgresql+psycopg://qdt_reader:<reader_pw>@127.0.0.1:5432/qdt
-   set QDT_PAYLOAD_STORE=D:\qdt\payloads
-   cd /d D:\qdt\repo
-   uv run python -m qdt_server --read-only --host 0.0.0.0 --port 8700 --stream-port 8765 --ui apps\flightdeck\dist --root D:\qdt\read-server
-   ```
-   `--ui` serves the built Flight Deck at `http://qdt-db:8700/` (build it once: `corepack pnpm install
-   --frozen-lockfile && corepack pnpm build` in `apps\flightdeck`). Without `--ui`, open the dev server's
-   Flight Deck with `?api=http://qdt-db:8700&ws=ws://qdt-db:8765`.
-2. Task Scheduler → *Create Task*: run whether the user is logged on or not, as the account from §2.1;
-   trigger *At startup*; action: that `.cmd`; settings: restart every minute if it fails, do not stop it
-   when it runs long.
-3. Firewall, inbound, 8700 and 8765, scoped to the subnets that may read (the lab subnet; the office subnet
-   too if desks there are to see records — deliverable 6 asks IT for that):
    ```powershell
-   New-NetFirewallRule -DisplayName "qdt read server" -Direction Inbound -Protocol TCP -LocalPort 8700,8765 -RemoteAddress <lab-subnet> -Action Allow
+   New-LocalUser -Name qdtshare -Password (Read-Host -AsSecureString "Password for qdtshare") -PasswordNeverExpires -UserMayNotChangePassword
    ```
-4. From another computer: `http://qdt-db:8700/server` answers `{"read_only": true, ...}`, `/docs` is the
-   read contract (the OpenAPI document of this server: GET routes and replay, no command), `/records` lists
-   what has been synced.
 
-## 4. The measurement PC
+   It prompts for the password rather than taking it on the command line, so it is not left in the
+   window's history. `-PasswordNeverExpires` matters: an expired password would stop the laptop's copies
+   silently one day.
 
-The stand server is unchanged except for two environment variables, set for the account that runs it
-(System Properties → Environment Variables, or `setx` once):
-```
-setx QDT_REGISTRY_DSN postgresql+psycopg://qdt_writer:<writer_pw>@qdt-db:5432/qdt
-setx QDT_PAYLOAD_STORE \\qdt-db\qdt-payloads
-```
-Then `uv run python -m qdt_server …` as before. It syncs after every record it ingests and once at start
-(ADR 0080): with `qdt-db` reachable a record is on the server seconds after the run ends; unreachable, the
-record waits in the local cache and the next sync carries everything. `uv run python -m qdt_registry sync`
-does the same by hand, and `find --remote` shows what the server holds.
+3. Share the folder for that account, still as administrator. Sharing has two gates: the *share
+   permission* (who may reach the folder over the network) and the *folder permission* (who may write in
+   it). The first command sets both for `qdtshare`; the second gives the folder permission explicitly,
+   because `New-SmbShare` does not always add it.
 
-## 5. Backup and the restore drill
+   ```powershell
+   New-SmbShare -Name qdt-payloads -Path C:\qdt\payloads -FullAccess qdtshare
+   icacls C:\qdt\payloads /grant "qdtshare:(OI)(CI)M"
+   ```
 
-Nightly, as a second scheduled task on `qdt-db` (02:00, as the §2.1 account, `.pgpass` for the admin
-password in that account's profile, mode owner-only):
-```
-pg_dump -U qdt_admin -h 127.0.0.1 -Fc qdt > D:\qdt\backup\qdt-%date:~-4%%date:~-7,2%%date:~-10,2%.dump
-robocopy D:\qdt\payloads \\<backup-host>\qdt-payloads /MIR /R:2 /W:5 /LOG:D:\qdt\backup\payloads.log
-```
-Keep thirty dumps. **The drill, once now and in the calendar:** restore last night's dump into a scratch
-database and read it from another computer —
-```
-createdb -U postgres qdt_drill
-pg_restore -U postgres -d qdt_drill D:\qdt\backup\qdt-<date>.dump
-```
-then, from a desk, `QDT_REGISTRY_DSN=postgresql+psycopg://qdt_reader:<reader_pw>@qdt-db:5432/qdt_drill uv run python -m qdt_registry find --remote`
-lists the records; `dropdb -U postgres qdt_drill` afterwards. (`roles.sql` granted `qdt_reader` CONNECT on
-`qdt` only; grant it on `qdt_drill` for the drill, or run the find as `qdt_admin`.)
+   `(OI)(CI)` means the permission applies to files and subfolders created later too, and `M` is "modify":
+   create, write and rename, which is what the measurement PC needs. It writes each file under a temporary
+   name and renames it when complete, so a copy that is interrupted never leaves a half file under its
+   final name.
 
-## 6. The smoke test (Analysis 0003 §8 step 8) — the goal 1 demo
+4. Windows allows file sharing only when the network is classed as *Private*. Open Settings → Network &
+   internet, click your connection, and make sure *Network profile type* is *Private network*. (On a
+   *Public* network Windows blocks sharing regardless of the steps above.)
 
-1. On the measurement PC, start the stand server and Flight Deck; run one sweep. The server's log says
-   nothing about sync (it succeeded) or warns `registry sync failed; records stay in the local cache`.
-2. On `qdt-db`, open `http://qdt-db:8700/`: History lists the record; *open* shows it. There is no Run.
-3. From any desk, as a script — `docs/tutorials/test_04_remote_read.py` is the pattern, both reads:
+**What changed.** The PC has a new local user `qdtshare`, a folder `C:\qdt\payloads`, and a network share
+named `qdt-payloads` that only `qdtshare` can reach. Other computers see it as `\\qdt-db\qdt-payloads`.
+
+**Check it from the laptop.** Open File Explorer, type `\\qdt-db\qdt-payloads` in the address bar and
+press Enter. Windows asks for a username and password: enter `qdt-db\qdtshare` and the share password,
+and tick *Remember my credentials*. The folder opens, empty. Right-click, create a new text file, then
+delete it: both must work.
+
+5. Store those credentials permanently on the laptop, so that the measurement PC's server, which runs
+   without a File Explorer window, can reach the share. In PowerShell on the laptop, as the user who will
+   run the server:
+
+   ```powershell
+   cmdkey /add:qdt-db /user:qdt-db\qdtshare /pass:<share password>
+   ```
+
+   **Check it:** in a new PowerShell window, `dir \\qdt-db\qdt-payloads` lists the (empty) folder without
+   asking for a password. You will give the measurement PC this path, `\\qdt-db\qdt-payloads`, in Part 7;
+   there is no need to map it to a drive letter.
+
+## Part 6 — The read server, started with the PC
+
+**What this does.** The read server is a program from this repository that other computers talk to over
+the network. It does three things: it answers questions about the catalogue (for example "list the
+records"), it hands out a measurement's data file on request, and it serves the Flight Deck web page so
+that a browser on any desk can look at measurements. It connects to the database as `qdt_reader`, so it
+cannot change anything, and it holds no instrument. You first build the web page, then run the server
+by hand to see it work, then make Windows start it at boot.
+
+1. Build the Flight Deck web page once. Node.js must be installed (https://nodejs.org, version 20 or
+   newer). `corepack` comes with Node.js and provides the exact version of the `pnpm` package manager the
+   project pins; on Windows it is always called as `corepack pnpm` (issue #114). In PowerShell:
+
+   ```powershell
+   corepack enable
+   cd C:\qdt\repo\apps\flightdeck
+   corepack pnpm install --frozen-lockfile
+   corepack pnpm build
+   ```
+
+   The last command ends with `✓ built in …` and creates the folder `apps\flightdeck\dist`, which is the
+   finished web page. Rebuild it the same way whenever you update the repository.
+
+2. Write the script that starts the read server. Create the file `C:\qdt\read-server.ps1` with this
+   content, replacing the reader password:
+
+   ```powershell
+   $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@127.0.0.1:5432/qdt"
+   $env:QDT_PAYLOAD_STORE = "C:\qdt\payloads"
+   Set-Location C:\qdt\repo
+   uv run python -m qdt_server --read-only --host 0.0.0.0 --port 8700 --stream-port 8765 --ui apps\flightdeck\dist --root C:\qdt\read-server
+   ```
+
+   Line by line: the first tells the server where the database is and which account to use; the second
+   tells it where the data files are (the folder from Part 5, reached locally, not through the share);
+   the third moves into the repository so the program and the web page are found. The last line starts
+   the server. `--read-only` makes it the kind that drives no instrument. `--host 0.0.0.0` makes it
+   listen on every network interface, so that other computers can reach it (the default would be this PC
+   only). `--port 8700` is where the catalogue and the web page are served, and `--stream-port 8765` is a
+   second connection the web page uses to receive the measurement data it draws. `--ui` names the built
+   web page, and `--root` names a folder for the server's own small bookkeeping, which it creates.
+
+   The file contains the reader password, so restrict who can read it: right-click the file → Properties →
+   Security, and remove every entry except *SYSTEM*, *Administrators* and your own account.
+
+3. Run it by hand first. In PowerShell:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File C:\qdt\read-server.ps1
+   ```
+
+   (`-ExecutionPolicy Bypass` lets this one script run even if Windows is set to refuse unsigned scripts.)
+   It prints a few lines ending with `Uvicorn running on http://0.0.0.0:8700`. Leave it running.
+
+   **Check it** on this PC, in a browser:
+   - `http://localhost:8700/server` shows a line of text beginning `{"read_only":true`. This is the server
+     describing itself.
+   - `http://localhost:8700/records` shows `[]`: an empty list, because nothing has been measured yet.
+   - `http://localhost:8700/docs` shows the full list of questions the server answers. There is no way to
+     start a measurement in it, by design.
+   - `http://localhost:8700/` shows Flight Deck: a *History* pane on the left, a plot in the middle, and no
+     *Run* button in the top strip.
+
+   Press Ctrl-C in the PowerShell window to stop it before the next step.
+
+4. Open the firewall for the two ports, as in Part 3, in PowerShell **as administrator**:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "qdt-db read server" -Direction Inbound -Protocol TCP -LocalPort 8700,8765 -RemoteAddress <lab-subnet> -Action Allow
+   ```
+
+5. Make Windows start the server at boot, whether or not anyone logs in. Press the Windows key, type
+   `task scheduler`, open it, and click *Create Task…* (not *Create Basic Task*). Then:
+   - *General* tab: name it `qdt read server`; choose *Run whether user is logged on or not*; tick *Run
+     with highest privileges*. The task runs as your account; Windows will ask for your password when you
+     save, and stores it so the task can run with nobody logged in.
+   - *Triggers* tab: *New…*, begin the task *At startup*, OK.
+   - *Actions* tab: *New…*, action *Start a program*, program `powershell.exe`, arguments
+     `-ExecutionPolicy Bypass -File C:\qdt\read-server.ps1`, OK.
+   - *Conditions* tab: untick *Start the task only if the computer is on AC power* if it is a laptop.
+   - *Settings* tab: tick *If the task fails, restart every* 1 minute, up to 3 times; set *Stop the task if
+     it runs longer than* to *disabled* (clear the tick), because this task is meant to run forever.
+   Click OK and enter your password.
+
+**What changed.** The PC now has a scheduled task that starts the read server at every boot, and a firewall
+rule that lets other computers reach it.
+
+**Check it.** Restart the PC and do not log in. From the laptop, open a browser at
+`http://qdt-db:8700/server`: it shows the `{"read_only":true` line. If it does not, log in to `qdt-db`,
+open Task Scheduler, select the task, and read the *History* tab (if it says history is disabled, enable
+it from the right-hand *Actions* panel and restart the task with *Run*). The most common cause is a typo
+in the script path or a password that was not accepted.
+
+Flight Deck itself must be opened with a longer address from another computer, because the page needs
+to be told where its server is (issue #122 is about making this unnecessary):
+
+```
+http://qdt-db:8700/?api=http://qdt-db:8700&ws=ws://qdt-db:8765
+```
+
+Bookmark that on each desk. From `qdt-db` itself the short `http://localhost:8700/` is enough.
+
+## Part 7 — The measurement PC
+
+**What this does.** The program that drives the instruments and records measurements does not change. Two
+permanent settings tell it where the database and the data folder are; from then on it copies each new
+record to `qdt-db` as soon as the measurement ends.
+
+1. On the laptop, in PowerShell as the user who will run the server, set the two variables permanently.
+   `setx` writes them into your Windows account's settings; unlike `$env:`, they survive closing the
+   window, but they become visible only in windows opened afterwards.
+
+   ```powershell
+   setx QDT_REGISTRY_DSN "postgresql+psycopg://qdt_writer:<writer password>@qdt-db:5432/qdt"
+   setx QDT_PAYLOAD_STORE "\\qdt-db\qdt-payloads"
+   ```
+
+   Each prints `SUCCESS: Specified value was saved.` Close the window.
+
+**What changed.** Any program you start from now on, from a new window, sees the two settings. The
+project's stand server reads them when it starts: with them present it connects to the database as
+`qdt_writer` and copies each record's data file to the share.
+
+**Check it** in a new PowerShell window, before running any measurement:
+
+```powershell
+cd C:\qdt\repo
+uv run python -m qdt_registry find --remote
+```
+
+This asks the database on `qdt-db`, as the writer, for the list of records and prints `0 record(s)`. That
+one line proves the address, the password, the firewall and the `pg_hba.conf` rule are all right. If it
+prints a long error ending in `password authentication failed`, the password or account name in the
+variable is wrong; if it ends in `no pg_hba.conf entry`, the laptop's address is outside the range from
+Part 3; if it hangs for a long time and ends in `timeout expired`, the firewall or the name `qdt-db` is
+the problem (issue #119 explains why the wait is long).
+
+2. Start the stand server and Flight Deck as you always have, for example `uv run python -m qdt_server`
+   and `corepack pnpm dev` in `apps\flightdeck`, and run one sweep. In the server's output, a successful
+   copy prints nothing. If `qdt-db` cannot be reached you see one line, `registry sync failed; records stay
+   in the local cache: …`, and the measurement is still complete and kept on the laptop; it is copied the
+   next time a sync succeeds, together with anything else that is waiting. To copy by hand at any time,
+   run `uv run python -m qdt_registry sync`.
+
+## Part 8 — The demonstration
+
+This is the smoke test the setup exists for: a measurement taken on the laptop, read on the desktop in
+two different ways, with the laptop then switched off. Do it once now and again after any change to the
+machines; the project's step file calls these checks R-1 to R-3.
+
+1. **Measure on the laptop.** With the stand server and Flight Deck running on the laptop, set up a sweep
+   and press *Run*. Wait for the strip to show `completed → record`.
+
+2. **See it in Flight Deck on the desktop.** On `qdt-db`, open `http://localhost:8700/`. In the *History*
+   pane press the refresh button; the sweep appears with its time, name and device. Press *open*: the
+   measurement is drawn in the plot pane. Notice that the top strip has no *Run* button and the pane
+   picker offers no sweep or levels widget: this server cannot operate anything.
+
+3. **See it from a script.** On `qdt-db` (or any computer with the repository), the short way is the
+   command-line tool, this time as the reader:
+
+   ```powershell
+   $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"
+   uv run python -m qdt_registry find --remote
+   ```
+
+   It prints one line per record and `1 record(s)`. The longer way, which also fetches the measured data,
+   is a few lines of Python. Save this as `read_one.py` and run it with `uv run python read_one.py`:
+
    ```python
+   import hashlib, urllib.request
    from qdt_registry import Registry
-   reg = Registry("~/.qdt/registry", remote_dsn="postgresql+psycopg://qdt_reader:<reader_pw>@qdt-db:5432/qdt")
-   for r in reg.find(remote=True): print(r.started_at, r.definition_name, r.record_id)
+   from qdt_schemas.payload_hdf5 import read_payload
+
+   READER = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"
+   READ_SERVER = "http://qdt-db:8700"
+
+   # 1. The catalogue, through the project's own client, as the read-only account.
+   registry = Registry("my-cache", remote_dsn=READER)        # "my-cache" is a folder it makes for itself
+   for r in registry.find(remote=True):
+       print(r.started_at, r.definition_name, r.record_id)
+   record = registry.find(remote=True)[-1]                     # the newest
+
+   # 2. The measured data, as a file, from the read server, with its checksum verified.
+   with urllib.request.urlopen(f"{READ_SERVER}/records/{record.record_id}/payload") as reply:
+       data = reply.read()
+       assert hashlib.sha256(data).hexdigest() == reply.headers["X-Content-SHA256"] == record.payload.sha256
+   open("measurement.h5", "wb").write(data)
+
+   # 3. The arrays themselves.
+   payload = read_payload("measurement.h5")
+   for name, array in payload.arrays.items():
+       print(name, array.shape)
    ```
-   and the bytes over HTTP: `GET http://qdt-db:8700/records/<record_id>/payload`, whose `X-Content-SHA256`
-   header must equal the record's `payload.sha256`; `qdt_schemas.payload_hdf5.read_payload` opens the file.
-4. Stop the stand server. Steps 2 and 3 still pass (row R-2). Reboot `qdt-db` and leave it alone; they pass
-   again (row R-3).
 
-## 7. What only a person at the machine can check
+   The checksum line matters: it proves the bytes you received are the bytes the measurement PC wrote.
+   `docs\tutorials\test_04_remote_read.py` in the repository is the same pattern, run automatically as
+   a test.
 
-The agent sessions that wrote this cannot see `qdt-db`. After each run of this file, tick these:
+4. **With the laptop off.** Shut the stand server down (or the whole laptop). Repeat steps 2 and 3: they
+   must still work, because everything they need is on `qdt-db`. This is the point of having a separate
+   database PC.
 
-- [ ] PostgreSQL service *Automatic*, running after a reboot; `pg_isready` from a client on the lab subnet.
-- [ ] `psql` as `qdt_writer` and as `qdt_reader` from a client connects; as either from outside the subnet,
-      or as `qdt_admin` from any other machine, is refused.
-- [ ] `\\qdt-db\qdt-payloads` writable by `<share-user>` from the measurement PC after that PC reboots;
-      not readable anonymously.
-- [ ] `http://qdt-db:8700/server` from a desk after `qdt-db` reboots with nobody logged on.
-- [ ] Last night's dump exists and is not zero bytes; the payload mirror's log has no failed copies.
-- [ ] The restore drill done once, with the date noted in `bench/reports/<date>-step6c.md`.
-- [ ] Windows Update's restart policy agreed with whoever administers the machine (plan §9).
+5. **After a reboot.** Restart `qdt-db` and leave it alone, without logging in. Repeat steps 2 (from the
+   laptop, with the long address from Part 6) and 3. If they pass, the services really do start on their
+   own.
 
-## 8. The Postgres half of the test suite without Docker (#112)
+## Part 9 — Backups, and proving they restore
 
-The same native PostgreSQL serves a developer: create `qdt_test` owned by a role `qdt` with password `qdt`
-(`CREATE ROLE qdt LOGIN PASSWORD 'qdt' CREATEDB; CREATE DATABASE qdt_test OWNER qdt;`), run `roles.sql`
-against it with `-v db=qdt_test` and any passwords, then
+**What this does.** Every night the database is written out to a single file, and the data folder is
+mirrored to a second place. A backup you have never restored is a hope rather than a backup, so you
+restore one into a scratch database once, now, and again on a date you put in the calendar.
+
+1. Let the backup program log in without a password prompt. PostgreSQL's tools read passwords from a
+   file at `%APPDATA%\postgresql\pgpass.conf` (create the folder and the file; `%APPDATA%` is usually
+   `C:\Users\<you>\AppData\Roaming`). Put one line in it:
+
+   ```
+   127.0.0.1:5432:qdt:qdt_admin:<admin password>
+   ```
+
+   The format is host, port, database, account, password. Restrict the file's permissions to your own
+   account as you did for the script in Part 6.
+
+2. Create the backup folder and script. Make `C:\qdt\backup`, and save this as `C:\qdt\backup.ps1`,
+   replacing `<backup host>` with the machine or NAS that holds the copy of the data files (it must not be
+   `qdt-db` itself, and it must have a share you can write to):
+
+   ```powershell
+   $stamp = Get-Date -Format yyyyMMdd
+   pg_dump -U qdt_admin -h 127.0.0.1 -Fc -f "C:\qdt\backup\qdt-$stamp.dump" qdt
+   Get-ChildItem C:\qdt\backup\qdt-*.dump | Sort-Object Name -Descending | Select-Object -Skip 30 | Remove-Item
+   robocopy C:\qdt\payloads \\<backup host>\qdt-payloads /MIR /R:2 /W:5 /LOG:C:\qdt\backup\payloads.log
+   ```
+
+   The first line makes a date such as `20261022`. `pg_dump` writes the whole database into one compressed
+   file (`-Fc`) named with the date. The third line keeps the newest thirty dumps and deletes older ones.
+   `robocopy … /MIR` mirrors the data folder to the backup share, copying only what changed, and writes a
+   log; `/R:2 /W:5` means retry a failing file twice, five seconds apart, rather than for ever.
+
+3. Schedule it as in Part 6, step 5, named `qdt backup`, triggered *Daily* at 02:00, with the action
+   `powershell.exe -ExecutionPolicy Bypass -File C:\qdt\backup.ps1`. Run it once by hand from Task
+   Scheduler (*Run* in the right-hand panel). **Check it:** `C:\qdt\backup` contains a file
+   `qdt-<today>.dump` larger than zero bytes, and `payloads.log` ends with a summary whose *FAILED*
+   column is 0.
+
+4. **The restore drill.** This creates a scratch database from last night's file, counts the records in
+   it, and throws it away. Run it in PowerShell; it asks for the superuser password a few times.
+
+   ```powershell
+   psql -U postgres -d postgres -c "CREATE DATABASE qdt_drill;"
+   pg_restore -U postgres -d qdt_drill C:\qdt\backup\qdt-<date>.dump
+   psql -U postgres -d qdt_drill -c "SELECT count(*) FROM records;"
+   psql -U postgres -d postgres -c "DROP DATABASE qdt_drill;"
+   ```
+
+   The count must equal what `http://localhost:8700/records` lists. `pg_restore` may print warnings about
+   roles it could not find; they are harmless here. Write the date of the drill into the step's bench
+   report, `bench\reports\<date>-step6c.md`, and put the next one in the calendar.
+
+## Part 10 — What only a person at the machine can confirm
+
+The sessions that wrote this document cannot see your PC. After each run through this file, confirm:
+
+- [ ] In *Services*, `postgresql-x64-17` is *Running* and *Automatic*, and still is after a reboot.
+- [ ] From the laptop, connecting as `qdt_writer` and as `qdt_reader` works; connecting as `qdt_admin` or
+      `postgres` from the laptop is refused (there is no `pg_hba.conf` line for them).
+- [ ] From the laptop, `\\qdt-db\qdt-payloads` can be written to after the laptop reboots, without a
+      password prompt; opening it as a guest without a password is refused.
+- [ ] From the laptop, `http://qdt-db:8700/server` answers after `qdt-db` reboots with nobody logged in.
+- [ ] Last night's `.dump` file exists and is not empty; the robocopy log shows no failed copies.
+- [ ] The restore drill has been done once, and its date is in the bench report.
+- [ ] Windows Update's automatic-restart behaviour is agreed with whoever administers the machine, so the
+      PC does not restart in the middle of a measurement (plan §9).
+
+## Appendix A — Running the project's Postgres tests without Docker (issue #112)
+
+The repository's test suite has a handful of tests that need a real PostgreSQL. Developers usually
+provide one with Docker; the PostgreSQL you installed above serves just as well. Create a scratch
+database for the tests, owned by an account named `qdt` with password `qdt` (the names the tests
+expect), and give the three roles the same permissions on it:
+
+```powershell
+psql -U postgres -d postgres -c "CREATE ROLE qdt LOGIN PASSWORD 'qdt' CREATEDB;"
+psql -U postgres -d postgres -c "CREATE DATABASE qdt_test OWNER qdt;"
+psql -U postgres -d postgres -v db=qdt_test -v admin_pw='x' -v writer_pw='x' -v reader_pw='x' -f deploy\qdt-db\roles.sql
+psql -U qdt -d qdt_test -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO qdt_reader;"
 ```
-set QDT_TEST_PG_DSN=postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt_test
-set QDT_TEST_PG_READER_DSN=postgresql+psycopg://qdt_reader:<reader_pw>@127.0.0.1:5432/qdt_test
+
+(If the three roles already exist from Part 2, the `CREATE ROLE` lines in the file fail and the rest
+still runs; that is fine. The last line is needed because the tests create their tables as `qdt`, not as
+`qdt_admin`.) Then, in the window where you run the tests:
+
+```powershell
+$env:QDT_TEST_PG_DSN = "postgresql+psycopg://qdt:qdt@127.0.0.1:5432/qdt_test"
+$env:QDT_TEST_PG_READER_DSN = "postgresql+psycopg://qdt_reader:<reader password>@127.0.0.1:5432/qdt_test"
 uv run pytest packages/qdt-registry docs/tutorials
 ```
-runs the five Postgres-parametrized registry tests and tutorial 04 against it, as CI does. The tests drop
-and recreate the tables in `qdt_test`; never point them at `qdt`. Use `127.0.0.1`, not `localhost`: on
-Windows `localhost` tries IPv6 first and each connection stalls.
+
+The tests that were reported as *skipped* before now run. They drop and recreate the tables in
+`qdt_test` every time, so never point these two variables at the real `qdt` database. Use `127.0.0.1`
+rather than `localhost`: on Windows, `localhost` is tried over IPv6 first and every connection waits a
+few seconds before falling back.
+
+## Appendix B — Messages you may see, and what they mean
+
+| Where | Message | Meaning and fix |
+|---|---|---|
+| `psql`, Python | `password authentication failed for user "…"` | The password in the command or in `QDT_REGISTRY_DSN` is wrong for that account. Check the password manager; check the account name. |
+| `psql`, Python | `no pg_hba.conf entry for host "…", user "…", database "qdt"` | The connecting computer's address is not covered by the lines you added in Part 3, or the account has no line. Check the range; restart the service after editing. |
+| `psql`, Python | `connection refused` | The server is not listening on that address: `listen_addresses` not changed, service not restarted, or the wrong host name. |
+| `psql`, Python | `timeout expired` / a long wait then an error | The firewall is blocking the port, or `qdt-db` does not resolve to the right address. Use `Test-NetConnection qdt-db -Port 5432` from the laptop. |
+| Python | `permission denied for table records` | A write was attempted as `qdt_reader`. Scripts read; only the measurement PC writes, as `qdt_writer`. |
+| Python | `registry at … has ddl_version 2; this client expects 3` | The database's tables are from an older version of the software than the program connecting to it. Update the repository on `qdt-db` and run `python -m qdt_registry init` again as the admin; update the other machines too. |
+| stand server log | `registry sync failed; records stay in the local cache: …` | `qdt-db` or the share was unreachable when a measurement finished. Nothing is lost; the record is copied with the next successful sync. The text after the colon says which of the two it was. |
+| File Explorer | `Windows cannot access \\qdt-db\qdt-payloads` | The network profile is *Public*, the share permission is missing, or the credentials were not stored. Part 5, steps 3–5. |
+| browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |

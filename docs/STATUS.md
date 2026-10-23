@@ -39,6 +39,10 @@ its first run on the human's personal Windows PC. Steps 0–6 and 6b are DONE. M
   placeholder subnet, schema step, SMB share and UNC mount, the read server as a start-up task with `--ui`,
   the measurement PC's two variables, nightly dump + mirror, restore drill, the §6 smoke test that is the
   goal 1 demo, the human's checklist, the Postgres half of the tests without Docker). Closes #112, #114.
+  **Rewritten after the human's review** ("not very human readable"): now written for someone who has never
+  used PostgreSQL — every step says what it does, what it changes on the PC, and how to check it; complete
+  sentences; terms defined on first use. That standard applies to every document a person reads from now on.
+  The rewrite found that Flight Deck served by `--ui` needs `?api=&ws=` from another computer (#122).
 - **Docs:** ADR 0081 (what the slice settled); Step 6c L0 row reworded (replay stays), status IN PROGRESS;
   steps index; tutorials index. 476 Python tests (+6 Postgres-parametrized), 4 skipped; Flight Deck 142
   unit, 15 e2e. `check_all` green.
