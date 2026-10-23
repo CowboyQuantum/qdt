@@ -106,11 +106,13 @@ a program that Windows starts at boot and keeps running whether or not anyone is
 5. Accept port **5432** (the number other computers will connect to) and the default locale.
 
 **What changed on the PC.** A Windows service named `postgresql-x64-17` now runs in the background and
-starts with the machine. The program files are in `C:\Program Files\PostgreSQL\17\bin`, including `psql`,
+starts with the machine. (The number is the PostgreSQL version you installed; 17 and 18 are both current,
+and whichever you have appears in the service name and the program folder wherever this document says 17.)
+The program files are in `C:\Program Files\PostgreSQL\17\bin`, including `psql`,
 the command-line tool you will use to talk to the database. The database itself contains one account
 (`postgres`) and some empty default databases, and it accepts connections only from this same PC.
 
-**Check it.** Press the Windows key, type `services`, open *Services*, and find *postgresql-x64-17*: its
+**Check it.** Press the Windows key, type `services`, open *Services*, and find *postgresql-x64-17* (or *-18*): its
 Status should be *Running* and its Startup Type *Automatic*. Then open *SQL Shell (psql)* from the Start
 menu. It asks for server, database, port and username one after another; press Enter to accept each
 default, then type the superuser password. You should see the prompt `postgres=#`. Type
@@ -245,7 +247,7 @@ open both to the computers on your network and no further, then open the firewal
    There is deliberately no line for `qdt_admin` or `postgres` from the network: those accounts are used
    only at this PC. Never write `0.0.0.0/0` here; it would mean "from anywhere". Save the file.
 
-5. Restart the service so it reads the two files: in *Services*, right-click *postgresql-x64-17* and
+5. Restart the service so it reads the two files: in *Services*, right-click *postgresql-x64-17* (or *-18*) and
    choose *Restart*. **Check it** from this PC, connecting to its own network address instead of
    `127.0.0.1` (use the IPv4 address from step 1):
 
@@ -422,8 +424,9 @@ Windows asks for a username and password: enter `qdt-db\qdtshare` and the share 
 
 *Mac laptop:* in Finder press Cmd-K (Go → Connect to Server), enter `smb://qdt-db/qdt-payloads` and click
 Connect. Choose *Registered User*, enter `qdtshare` and the share password, and tick *Remember this
-password in my keychain*. The folder opens, empty, and from now on it is also visible to programs at the
-path `/Volumes/qdt-payloads`.
+password in my keychain*. The folder opens, empty. Finder has also stored the share password in your
+keychain, which step 5 relies on; the folder it opened is temporary (it disappears at logout) and step 5
+gives the share a permanent place.
 
 On either, create a new text file in the folder, then delete it: both must work.
 
@@ -440,14 +443,58 @@ On either, create a new text file in the folder, then delete it: both must work.
    asking for a password. You will give the measurement PC this path, `\\qdt-db\qdt-payloads`, in Part 7;
    there is no need to map it to a drive letter.
 
-   *Mac laptop:* the keychain entry from the check above is the stored credential. To have the share
-   reconnect when you log in, open System Settings → General → Login Items, click *+* under *Open at
-   Login*, and choose the `qdt-payloads` volume under *Locations* in the sidebar (or drag it from the
-   desktop into the list). **Check it:** log out and in again, then in Terminal `ls /Volumes/qdt-payloads`
-   lists the (empty) folder. You will give the measurement PC this path, `/Volumes/qdt-payloads`, in Part 7.
-   If the share is not mounted when a measurement finishes, the server cannot create that path on its own
-   (`/Volumes` belongs to the system), so the copy fails safely and the record waits in the local cache;
-   `ls /Volumes/qdt-payloads` before a session is a good habit.
+   *Mac laptop:* the keychain entry from the check above is the stored credential. Do **not** add the share
+   to System Settings' *Login Items*: on current macOS a network folder there either does nothing at login
+   or stops at a password dialog that nobody is there to confirm. Instead, a small script mounts the share
+   when you log in, without Finder, and keeps trying for five minutes while the network (or Tailscale)
+   comes up. It attaches the share to an empty folder in your home directory, `~/qdt-payloads` (a *mount
+   point*; `~` is your home folder, and a mount point under `/Volumes` would need administrator rights),
+   and takes the password from the keychain entry Finder saved, so the password is written in no file.
+
+   The project's script `deploy/qdt-db/mac-payload-mount.sh` sets all of this up. First eject the folder
+   Finder opened in the check above (click ⏏ next to `qdt-payloads` in Finder's sidebar), so that the test
+   at the end is real. Then, in Terminal:
+
+   ```sh
+   cd ~/qdt/repo
+   bash deploy/qdt-db/mac-payload-mount.sh
+   ```
+
+   It prints one line per step. Partway through, a dialog asks whether `security` may read the share
+   password from the keychain: click **Always Allow**, not *Allow*, which would ask again at every login
+   with nobody there to answer. The script is safe to run again at any time; every step checks before it
+   changes anything. What it does:
+
+   1. Checks that the keychain entry from the Finder check exists, and stops with instructions if not.
+   2. Creates the mount point `~/qdt-payloads`. It stays empty; while the share is mounted, looking inside
+      shows the share. The folder is made read-only, which matters: if the share were ever not mounted, the
+      measurement PC would otherwise write its files into this local folder and believe they had arrived.
+      Read-only, the copy fails instead and the record waits in the local cache, as it should (while the
+      share is mounted, the share's own permissions apply and writing works). The folder is also *locked*,
+      the flag Finder shows as a padlock, so it cannot be moved, renamed or deleted by accident.
+   3. Writes the mount script, `~/Library/Scripts/mount-qdt-payloads.sh`, which mounts the share and keeps
+      trying for five minutes, and records what it did in `~/Library/Logs/mount-qdt-payloads.log`.
+   4. Writes and loads a *Launch Agent*, `~/Library/LaunchAgents/com.qdt.mount-payloads.plist`: a small
+      file that tells macOS to run the mount script when you log in.
+   5. Runs the mount script once now, and prints the path to give the measurement PC in Part 7.
+
+   If you reach `qdt-db` over Tailscale and the short name does not work on the Mac, run it with the name
+   Finder used instead: `QDT_DB_HOST=<Tailscale address or full ….ts.net name> bash deploy/qdt-db/mac-payload-mount.sh`.
+
+   **Check it:** `bash deploy/qdt-db/mac-payload-mount.sh check` says whether the share is mounted, whether
+   the Launch Agent is loaded, what the last mount attempt logged, and (when unmounted) whether the folder
+   refuses writes. Run it now; then the test that counts: log out and in again, wait a minute, and run it
+   again. No dialog should have appeared. To undo everything the script did,
+   `bash deploy/qdt-db/mac-payload-mount.sh uninstall`.
+
+   **Over Tailscale**, Tailscale itself must start at login, or the Mac cannot find `qdt-db`: tick *Start at
+   login* in the Tailscale menu-bar icon's settings, and in System Settings → General → Login Items make
+   sure Tailscale is listed and its *Allow in the Background* toggle is on. (If you remove or change entries
+   in that list while setting up, check Tailscale's is still there.)
+
+   You will give the measurement PC this path, `/Users/<your Mac username>/qdt-payloads`, in Part 7
+   (`whoami` prints the username; the script prints the full path). `bash deploy/qdt-db/mac-payload-mount.sh check`
+   before a session is a good habit.
 
 ## Part 6 — The read server, started with the PC
 
@@ -579,11 +626,12 @@ record to `qdt-db` as soon as the measurement ends.
 
    ```
    export QDT_REGISTRY_DSN="postgresql+psycopg://qdt_writer:<writer password>@qdt-db:5432/qdt"
-   export QDT_PAYLOAD_STORE="/Volumes/qdt-payloads"
+   export QDT_PAYLOAD_STORE="$HOME/qdt-payloads"
    ```
 
-   Close the window. (A program started from the Dock or Finder rather than from Terminal does not read
-   this file; start the stand server from Terminal.)
+   The second is the mount point from Part 5, step 5; `$HOME` is filled in with your home folder when a
+   window opens. Close the window. (A program started from the Dock or Finder rather than from Terminal does
+   not read this file; start the stand server from Terminal.)
 
 **What changed.** Any program you start from now on, from a new window, sees the two settings. The
 project's stand server reads them when it starts: with them present it connects to the database as
@@ -734,12 +782,12 @@ restore one into a scratch database once, now, and again on a date you put in th
 
 The sessions that wrote this document cannot see your PC. After each run through this file, confirm:
 
-- [ ] In *Services*, `postgresql-x64-17` is *Running* and *Automatic*, and still is after a reboot.
+- [ ] In *Services*, `postgresql-x64-17` (or `-18`) is *Running* and *Automatic*, and still is after a reboot.
 - [ ] From the laptop, connecting as `qdt_writer` and as `qdt_reader` works; connecting as `qdt_admin` or
       `postgres` from the laptop is refused (there is no `pg_hba.conf` line for them).
-- [ ] From the laptop, the share (`\\qdt-db\qdt-payloads` on Windows, `/Volumes/qdt-payloads` on a Mac)
+- [ ] From the laptop, the share (`\\qdt-db\qdt-payloads` on Windows, `~/qdt-payloads` on a Mac)
       can be written to after the laptop reboots, without a password prompt; opening it as a guest without
-      a password is refused.
+      a password is refused. On a Mac, with the share unmounted, writing into `~/qdt-payloads` is refused.
 - [ ] From the laptop, `http://qdt-db:8700/server` answers after `qdt-db` reboots with nobody logged in.
 - [ ] Last night's `.dump` file exists and is not empty; the robocopy log shows no failed copies.
 - [ ] The restore drill has been done once, and its date is in the bench report.
@@ -788,5 +836,6 @@ few seconds before falling back.
 | stand server log | `registry sync failed; records stay in the local cache: …` | `qdt-db` or the share was unreachable when a measurement finished. Nothing is lost; the record is copied with the next successful sync. The text after the colon says which of the two it was. |
 | File Explorer | `Windows cannot access \\qdt-db\qdt-payloads` | The network profile is *Public* (over Tailscale: no port-445 rule for the Tailscale adapter), the share permission is missing, or the credentials were not stored. Part 5, steps 3–5. |
 | Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
-| stand server log (Mac) | `registry sync failed … No such file or directory: '/Volumes/qdt-payloads/…'` | The share is not mounted on the Mac. Reconnect it (Finder, Cmd-K) or check the Login Item from Part 5, step 5; the waiting record is copied on the next sync. |
+| stand server log (Mac) | `registry sync failed … Permission denied: '/Users/…/qdt-payloads/…'` | The share is not mounted on the Mac (the read-only mount point refused the write, as intended). `bash deploy/qdt-db/mac-payload-mount.sh check` shows what the last attempt logged; running it without `check` mounts again. The waiting record is copied on the next sync. |
+| Python | `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` (or any spelling other than `postgresql.psycopg`) | A typo in the first word of `QDT_REGISTRY_DSN`. It must begin exactly `postgresql+psycopg://`. |
 | browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |
