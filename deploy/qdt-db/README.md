@@ -591,10 +591,7 @@ by hand to see it work, then make Windows start it at boot.
    - `http://localhost:8700/docs` shows the full list of questions the server answers. There is no way to
      start a measurement in it, by design.
    - `http://localhost:8700/` shows Flight Deck: a *History* pane on the left, a plot in the middle, and no
-     *Run* button in the top strip. The strip says `connecting…` and keeps saying it: that label reports
-     the data stream, and nothing flows on it until you open a record, so it is not an error. If History
-     lists records (it will once the laptop has measured something, Part 7), click the open control on a
-     row: the message line says `replaying…` and the plot fills.
+     *Run* button in the top strip.
 
    If `/server` answers but `/records` shows `Internal Server Error`, the server is running but cannot
    log in to the database: the password or account in the script is wrong. The PowerShell window shows
