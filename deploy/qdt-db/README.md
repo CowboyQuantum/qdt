@@ -535,11 +535,11 @@ by hand to see it work, then make Windows start it at boot.
    The last command ends with `✓ built in …` and creates the folder `apps\flightdeck\dist`, which is the
    finished web page. Rebuild it the same way whenever you update the repository.
 
-2. Write the script that starts the read server. This is a file you create, anywhere outside the
-   repository (it will hold the reader password); the examples call it `C:\qdt\read-server.ps1`, and
-   steps 3 and 5 refer to it by that full path, so use yours there too. Create it from PowerShell, so that
-   the file gets exactly that name (Notepad started from the Start menu silently adds `.txt`, which File
-   Explorer then hides):
+2. Write the script that starts the read server. Nothing generates this file: you type it, now, as a new
+   text file of four lines. It can live anywhere outside the repository (it will hold the reader password);
+   the examples call it `C:\qdt\read-server.ps1`, and steps 3 and 5 refer to it by that full path, so use
+   yours there too. Create it from PowerShell, so that the file gets exactly that name (Notepad started
+   from the Start menu silently adds `.txt`, which File Explorer then hides):
 
    ```powershell
    notepad C:\qdt\read-server.ps1
