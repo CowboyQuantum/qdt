@@ -8,8 +8,9 @@
 slice is in L0 (deliverables 2 code half, 3, 4; PR #121 merged); the `qdt-db` runbook (deliverable 1) is
 being run for the first time on the human's personal Windows PC and Mac laptop — Parts 1–5 done, Part 6
 onward not yet. Steps 0–6 and 6b are DONE. Milestone `Deployment`.
-**Branch:** `step-6c/runbook-mac-mount` (PR against `main`; the human merges). Earlier: #123 (runbook
-rewritten for a reader new to PostgreSQL) and #124 (Windows and Mac versions of every laptop-side step).
+**Branch:** `step-6c/runbook-paths` (PR against `main`; the human merges). Merged today: #126 (Mac mount
++ `mac-payload-mount.sh`). Earlier: #123 (runbook rewritten for a reader new to PostgreSQL) and #124
+(Windows and Mac versions of every laptop-side step).
 **Last session:** 2026-10-23 (session 28: the human's first run of the runbook, with the agent fixing the
 runbook as problems appeared), no bench.
 
@@ -35,18 +36,30 @@ runbook as problems appeared), no bench.
     list); the runbook now says to check it, and why.
   - **Appendix B:** `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` = a typo in the DSN prefix.
   - **PostgreSQL 18** is what the installer now gives; the service-name mentions say 17 or 18.
-- No code changed. `check_all` green; pytest run at session end (see the PR).
+- **Part 6 feedback (second PR, `step-6c/runbook-paths`):** the human did not know where
+  `read-server.ps1` or `--root` should live ("the paths for these shouldn't be assumed in the guide") and
+  read the last line of the script as "launching Flight Deck". *Before you start* gains a **Where things
+  live** table: every folder and file the document names, what it is, and the rule that constrains the
+  choice (outside the repo if it holds a password; `--root` not inside the payload folder because it makes
+  its own `payloads` subfolder; backups on another disk). Part 6 step 2 says which paths are the reader's
+  to choose, what `--root` holds (`cache.sqlite` + `payloads/`, the client cache every qdt program keeps)
+  and that the last line starts the read server, of which Flight Deck is one of three services.
+  Part 6 step 3 failed on the human's PC with `The argument '…\read-server.ps1' to the -File parameter
+  does not exist`: no file of exactly that name (Notepad's silent `.txt`, or saved elsewhere). Step 2 now
+  creates the file from PowerShell (`notepad <path>`) and Appendix B has the message.
+- No code changed. `check_all` green (except the pre-existing #125); pytest 476 passed, 4 skipped.
 
 ## In flight
-- This PR awaits the human. **Unverified:** `mac-payload-mount.sh` itself (the steps it automates are
-  verified by hand). The human runs `uninstall` then `install` on the Mac as the test.
+- `step-6c/runbook-paths` awaits the human. **Unverified:** `mac-payload-mount.sh` itself (merged in
+  #126; the steps it automates are verified by hand). The human runs `uninstall` then `install` on the
+  Mac as the test. **Open:** whether Part 6 step 3 runs once the file exists under its right name.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Human (the demo, deliverable 1 and 2's share):** continue `deploy/qdt-db/README.md` from Part 6 (the read
-server as a start-up task) through Part 7 (the Mac's two variables; `QDT_PAYLOAD_STORE` is now
+**Human (the demo, deliverable 1 and 2's share):** continue `deploy/qdt-db/README.md` from Part 6 step 3
+(the read server by hand; paste its error if it still fails) through Part 7 (the Mac's two variables; `QDT_PAYLOAD_STORE` is now
 `$HOME/qdt-payloads`) and the Part 8 smoke test: a sweep on the laptop's Flight Deck, the record in the
 desktop's Flight Deck (no Run button) and in a script (tutorial 04's pattern). Every step that needs a
 workaround becomes an issue on `Deployment` or a runbook fix in-session, as today. Tick Part 10's
