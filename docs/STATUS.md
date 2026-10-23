@@ -25,8 +25,12 @@ runbook as problems appeared), no bench.
     entry Finder saved (`security find-internet-password -w`; *Always Allow* once), retrying for five minutes
     while the network comes up, logging to `~/Library/Logs/mount-qdt-payloads.log`. The mount point is
     `chmod 555` so an unmounted share refuses writes instead of swallowing payloads locally (the fail-safe
-    `/Volumes` gave for free). Verified on the human's Mac through a log-out/log-in, chmod included. Part 7's Mac path,
-    the Part 10 checklist and Appendix B follow.
+    `/Volumes` gave for free) and `chflags uchg` (locked: no accidental move or delete). Verified on the
+    human's Mac through a log-out/log-in, chmod and chflags included. Part 7's Mac path, the Part 10
+    checklist and Appendix B follow. At the human's request the steps then became
+    **`deploy/qdt-db/mac-payload-mount.sh`** (`install` default, `check`, `uninstall`; idempotent; names
+    overridable by env vars), and Part 5 step 5 (Mac) now runs it and explains what it does. **Written on
+    Windows, syntax-checked only; the human's next run is its first execution.**
   - **Tailscale on the Mac** had stopped starting at login (its Login Items entry was lost while editing the
     list); the runbook now says to check it, and why.
   - **Appendix B:** `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` = a typo in the DSN prefix.
@@ -34,9 +38,8 @@ runbook as problems appeared), no bench.
 - No code changed. `check_all` green; pytest run at session end (see the PR).
 
 ## In flight
-- This PR awaits the human. The `chmod 555` mount point is verified on the human's Mac (write refused when
-  unmounted, mount still works). **Unverified:** whether `chflags uchg` (Finder's *Locked*) on the mount
-  point still allows the mount — if yes, one line to add.
+- This PR awaits the human. **Unverified:** `mac-payload-mount.sh` itself (the steps it automates are
+  verified by hand). The human runs `uninstall` then `install` on the Mac as the test.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
@@ -56,7 +59,10 @@ Branch `step-6c/<short-name>`.
 - **2026-10-23 (session 28):** ran the runbook on the personal PC and the Mac; asked for the runbook to be
   updated with the Mac mount method "at least for macbooks"; asked whether Windows needs the same (no: the
   UNC path connects on demand with `cmdkey`'s credential and fails safely when the share is away) and
-  whether the mount point can be made unmovable (`chflags uchg`, pending a test that the mount still works).
+  whether the mount point can be made unmovable (`chflags uchg`; confirmed the mount still works). Then: "Is
+  there any way to create a script to generate this folder and all of these things we did today … so that
+  a user doesn't screw it up? … we can just create a separate script for [Windows] when we debug in the
+  future" (Windows needs no mount; a `check` script is the likely shape if one is ever needed).
 - **2026-10-22 (session 27):** the next focus is "set up the measurement database backend on my desktop PC
   and have it running … launch Flight Deck from my laptop with a simulated backend … take a measurement …
   view that measurement on my desktop computer by querying the database … with both an instance of Flight

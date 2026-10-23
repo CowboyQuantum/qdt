@@ -451,92 +451,41 @@ On either, create a new text file in the folder, then delete it: both must work.
    point*; `~` is your home folder, and a mount point under `/Volumes` would need administrator rights),
    and takes the password from the keychain entry Finder saved, so the password is written in no file.
 
-   Everything below is typed in Terminal, one block at a time, pasted whole. `cat > file <<'EOF'` followed
-   by lines and then `EOF` writes those lines into the file, creating it if needed. First eject the folder
-   Finder opened in the check above (click ⏏ next to `qdt-payloads` in Finder's sidebar), so that the tests
-   below are real.
+   The project's script `deploy/qdt-db/mac-payload-mount.sh` sets all of this up. First eject the folder
+   Finder opened in the check above (click ⏏ next to `qdt-payloads` in Finder's sidebar), so that the test
+   at the end is real. Then, in Terminal:
 
-   1. The mount point. It stays empty; while the share is mounted, looking inside shows the share. The
-      second command makes the folder read-only, which matters: if the share were ever not mounted, the
+   ```sh
+   cd ~/qdt/repo
+   bash deploy/qdt-db/mac-payload-mount.sh
+   ```
+
+   It prints one line per step. Partway through, a dialog asks whether `security` may read the share
+   password from the keychain: click **Always Allow**, not *Allow*, which would ask again at every login
+   with nobody there to answer. The script is safe to run again at any time; every step checks before it
+   changes anything. What it does:
+
+   1. Checks that the keychain entry from the Finder check exists, and stops with instructions if not.
+   2. Creates the mount point `~/qdt-payloads`. It stays empty; while the share is mounted, looking inside
+      shows the share. The folder is made read-only, which matters: if the share were ever not mounted, the
       measurement PC would otherwise write its files into this local folder and believe they had arrived.
-      Read-only, the copy fails instead and the record waits in the local cache, as it should. (While the
-      share is mounted, the share's own permissions apply and writing works.)
+      Read-only, the copy fails instead and the record waits in the local cache, as it should (while the
+      share is mounted, the share's own permissions apply and writing works). The folder is also *locked*,
+      the flag Finder shows as a padlock, so it cannot be moved, renamed or deleted by accident.
+   3. Writes the mount script, `~/Library/Scripts/mount-qdt-payloads.sh`, which mounts the share and keeps
+      trying for five minutes, and records what it did in `~/Library/Logs/mount-qdt-payloads.log`.
+   4. Writes and loads a *Launch Agent*, `~/Library/LaunchAgents/com.qdt.mount-payloads.plist`: a small
+      file that tells macOS to run the mount script when you log in.
+   5. Runs the mount script once now, and prints the path to give the measurement PC in Part 7.
 
-      ```sh
-      mkdir -p ~/qdt-payloads
-      chmod 555 ~/qdt-payloads
-      ```
+   If you reach `qdt-db` over Tailscale and the short name does not work on the Mac, run it with the name
+   Finder used instead: `QDT_DB_HOST=<Tailscale address or full ….ts.net name> bash deploy/qdt-db/mac-payload-mount.sh`.
 
-   2. The script:
-
-      ```sh
-      mkdir -p ~/Library/Scripts
-      cat > ~/Library/Scripts/mount-qdt-payloads.sh <<'EOF'
-      #!/bin/sh
-      # Mount the qdt-payloads share at login, bypassing Finder; retry for ~5 min while the network comes up.
-      # The share password comes from the keychain entry Finder saved (server qdt-db, account qdtshare).
-      MP="$HOME/qdt-payloads"
-      LOG="$HOME/Library/Logs/mount-qdt-payloads.log"
-      echo "$(date) start" >> "$LOG"
-      PW=$(security find-internet-password -s qdt-db -a qdtshare -w) || { echo "$(date) no keychain entry" >> "$LOG"; exit 1; }
-      for i in $(seq 1 30); do
-        if mount | grep -q " $MP "; then echo "$(date) mounted" >> "$LOG"; exit 0; fi
-        mount_smbfs -N "//qdtshare:$PW@qdt-db/qdt-payloads" "$MP" >> "$LOG" 2>&1 && { echo "$(date) mounted" >> "$LOG"; exit 0; }
-        sleep 10
-      done
-      echo "$(date) gave up" >> "$LOG"
-      exit 1
-      EOF
-      chmod +x ~/Library/Scripts/mount-qdt-payloads.sh
-      ```
-
-      (If you reach `qdt-db` over Tailscale and the short name does not work on the Mac, put the Tailscale
-      address or the full `….ts.net` name in place of `qdt-db` on the `mount_smbfs` line, and in the
-      `security` line only if Finder stored the entry under that name.)
-
-   3. Run it once by hand. The first run opens a dialog asking whether `security` may read the share
-      password from the keychain: click **Always Allow**, not *Allow*, which would ask again at every login
-      with nobody there to answer.
-
-      ```sh
-      ~/Library/Scripts/mount-qdt-payloads.sh; mount | grep qdt-payloads
-      ```
-
-      The second command prints one line naming `//qdtshare@qdt-db/qdt-payloads` and your mount point: the
-      share is mounted. (`ls ~/qdt-payloads` prints nothing either way, because the share is still empty,
-      so `mount | grep` is the check to use.)
-
-   4. Have it run at every login. A *Launch Agent* is a small file that tells macOS to run a program when
-      you log in; this one points at the script. `$HOME` in the block is filled in with your home folder's
-      path as the file is written.
-
-      ```sh
-      mkdir -p ~/Library/LaunchAgents
-      cat > ~/Library/LaunchAgents/com.qdt.mount-payloads.plist <<EOF
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-      <dict>
-        <key>Label</key><string>com.qdt.mount-payloads</string>
-        <key>ProgramArguments</key>
-        <array>
-          <string>/bin/sh</string>
-          <string>$HOME/Library/Scripts/mount-qdt-payloads.sh</string>
-        </array>
-        <key>RunAtLoad</key><true/>
-      </dict>
-      </plist>
-      EOF
-      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.qdt.mount-payloads.plist
-      ```
-
-   **Check it** without logging out first: `umount ~/qdt-payloads`, then
-   `launchctl kickstart -k gui/$(id -u)/com.qdt.mount-payloads`, wait fifteen seconds, and `mount | grep
-   qdt-payloads` prints the line again. Then the test that counts: log out and in again, wait a minute, and
-   run `mount | grep qdt-payloads` in Terminal. No dialog should have appeared. The script writes what it did
-   to `~/Library/Logs/mount-qdt-payloads.log`; if the share is missing after a login, read that file first.
-   Also confirm the read-only safeguard once: with the share unmounted, `touch ~/qdt-payloads/x` must answer
-   `Permission denied`.
+   **Check it:** `bash deploy/qdt-db/mac-payload-mount.sh check` says whether the share is mounted, whether
+   the Launch Agent is loaded, what the last mount attempt logged, and (when unmounted) whether the folder
+   refuses writes. Run it now; then the test that counts: log out and in again, wait a minute, and run it
+   again. No dialog should have appeared. To undo everything the script did,
+   `bash deploy/qdt-db/mac-payload-mount.sh uninstall`.
 
    **Over Tailscale**, Tailscale itself must start at login, or the Mac cannot find `qdt-db`: tick *Start at
    login* in the Tailscale menu-bar icon's settings, and in System Settings → General → Login Items make
@@ -544,7 +493,8 @@ On either, create a new text file in the folder, then delete it: both must work.
    in that list while setting up, check Tailscale's is still there.)
 
    You will give the measurement PC this path, `/Users/<your Mac username>/qdt-payloads`, in Part 7
-   (`whoami` prints the username). `mount | grep qdt-payloads` before a session is a good habit.
+   (`whoami` prints the username; the script prints the full path). `bash deploy/qdt-db/mac-payload-mount.sh check`
+   before a session is a good habit.
 
 ## Part 6 — The read server, started with the PC
 
@@ -886,6 +836,6 @@ few seconds before falling back.
 | stand server log | `registry sync failed; records stay in the local cache: …` | `qdt-db` or the share was unreachable when a measurement finished. Nothing is lost; the record is copied with the next successful sync. The text after the colon says which of the two it was. |
 | File Explorer | `Windows cannot access \\qdt-db\qdt-payloads` | The network profile is *Public* (over Tailscale: no port-445 rule for the Tailscale adapter), the share permission is missing, or the credentials were not stored. Part 5, steps 3–5. |
 | Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
-| stand server log (Mac) | `registry sync failed … Permission denied: '/Users/…/qdt-payloads/…'` | The share is not mounted on the Mac (the read-only mount point refused the write, as intended). Run `~/Library/Scripts/mount-qdt-payloads.sh` and read `~/Library/Logs/mount-qdt-payloads.log` if it fails; the waiting record is copied on the next sync. |
+| stand server log (Mac) | `registry sync failed … Permission denied: '/Users/…/qdt-payloads/…'` | The share is not mounted on the Mac (the read-only mount point refused the write, as intended). `bash deploy/qdt-db/mac-payload-mount.sh check` shows what the last attempt logged; running it without `check` mounts again. The waiting record is copied on the next sync. |
 | Python | `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` (or any spelling other than `postgresql.psycopg`) | A typo in the first word of `QDT_REGISTRY_DSN`. It must begin exactly `postgresql+psycopg://`. |
 | browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |
