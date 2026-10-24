@@ -718,11 +718,13 @@ machines; the project's step file calls these checks R-1 to R-3.
    picker offers no sweep or levels widget: this server cannot operate anything.
 
 3. **See it from a script.** On `qdt-db` (or any computer with the repository), the short way is the
-   command-line tool, this time as the reader. Two things about the addresses below: they name the
-   database PC as `qdt-db`, which is how the laptop knows it, but the PC does not necessarily know itself
-   by that name, so **on `qdt-db` itself write `127.0.0.1` in place of `qdt-db`** in every address in
-   this step; and `uv run` must be started inside the repository folder (`cd` there first), or it cannot
-   find the project's packages. Set the address for this window only, then ask:
+   command-line tool, this time as the reader. The addresses below name the database PC as `qdt-db`.
+   Whether that works depends on whether the computer you run this on knows that name: the laptop does,
+   because you gave it the name in Part 3 (hosts file or Tailscale); the database PC itself usually does
+   not, unless you added the name there as well. `ping qdt-db` tells you in one line. Where the name is not
+   known, write the address instead: `127.0.0.1` on the database PC itself, or its network address from
+   Part 3, step 1 on any other machine. Also, `uv run` must be started inside the repository folder (`cd`
+   there first), or it cannot find the project's packages. Set the address for this window only, then ask:
 
    ```powershell
    $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"   # PowerShell
@@ -733,7 +735,8 @@ machines; the project's step file calls these checks R-1 to R-3.
 
    It prints one line per record and `1 record(s)`. The longer way, which also fetches the measured data,
    is a few lines of Python. Save this as `read_one.py` inside the repository folder and run it there with
-   `uv run python read_one.py` (on `qdt-db` itself, with `127.0.0.1` for `qdt-db` in both addresses):
+   `uv run python read_one.py`. The two addresses at the top follow the same rule as above: `qdt-db` where
+   this computer knows the name, the address where it does not:
 
    ```python
    import hashlib, urllib.request
