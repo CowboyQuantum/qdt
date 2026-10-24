@@ -718,7 +718,11 @@ machines; the project's step file calls these checks R-1 to R-3.
    picker offers no sweep or levels widget: this server cannot operate anything.
 
 3. **See it from a script.** On `qdt-db` (or any computer with the repository), the short way is the
-   command-line tool, this time as the reader. Set the address for this window only, then ask:
+   command-line tool, this time as the reader. Two things about the addresses below: they name the
+   database PC as `qdt-db`, which is how the laptop knows it, but the PC does not necessarily know itself
+   by that name, so **on `qdt-db` itself write `127.0.0.1` in place of `qdt-db`** in every address in
+   this step; and `uv run` must be started inside the repository folder (`cd` there first), or it cannot
+   find the project's packages. Set the address for this window only, then ask:
 
    ```powershell
    $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"   # PowerShell
@@ -728,7 +732,8 @@ machines; the project's step file calls these checks R-1 to R-3.
    (On a Mac the first line is `export QDT_REGISTRY_DSN="postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"`.)
 
    It prints one line per record and `1 record(s)`. The longer way, which also fetches the measured data,
-   is a few lines of Python. Save this as `read_one.py` and run it with `uv run python read_one.py`:
+   is a few lines of Python. Save this as `read_one.py` inside the repository folder and run it there with
+   `uv run python read_one.py` (on `qdt-db` itself, with `127.0.0.1` for `qdt-db` in both addresses):
 
    ```python
    import hashlib, urllib.request
@@ -884,5 +889,6 @@ few seconds before falling back.
 | read server window | `error while attempting to bind on address ('0.0.0.0', 8765) … only one usage of each socket address` | A read server is already running on this PC (an earlier window, or the scheduled task from Part 6, step 5). Only one can own the ports. To find it: `Get-NetTCPConnection -LocalPort 8700 \| Select-Object OwningProcess`, then `Stop-Process -Id <that number>`, or press Ctrl-C in its window. If the scheduled task started it, it is doing its job; leave it. |
 | browser, read server | `http://localhost:8700/server` answers but `/records` shows `Internal Server Error` | The server cannot log in to the database: the reader password or account in `read-server.ps1` is wrong. PostgreSQL's log (newest file in `C:\Program Files\PostgreSQL\17\data\log\`) says `password authentication failed for user "qdt_reader"`. Part 6, step 3. |
 | read server window, on *open* in History | `FileNotFoundError: … Unable to synchronously open file … 'C:\qdt\payloads\2026\…h5'` | The record is in the database but the server looks for its data file in the wrong folder: `QDT_PAYLOAD_STORE` in `read-server.ps1` must be the shared folder's local path on this PC (`Get-SmbShare -Name qdt-payloads` prints it), not the example path. Fix the script, Ctrl-C the server, start it again. |
+| Python | `failed to resolve host 'qdt-db': [Errno 11001] getaddrinfo failed` (or `URLError … getaddrinfo failed`) | This machine does not know the name `qdt-db`. On the database PC itself that is normal: use `127.0.0.1` in the address (Part 8, step 3). On a laptop, the name is missing: Part 3, step 5 (hosts file), or Tailscale is not connected. |
 | PowerShell | `The argument '…\read-server.ps1' to the -File parameter does not exist` | No file has exactly that name. `Get-ChildItem` on its folder shows the real name; usually it is `read-server.ps1.txt` (Notepad added `.txt`): `Rename-Item …\read-server.ps1.txt read-server.ps1`. Part 6, step 2 says how to create it with the right name. |
 | browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |
