@@ -63,10 +63,26 @@ You need:
   needs this repository and Python; no instruments.
 - Both computers able to see each other on the network. The easiest test is to find `qdt-db`'s address
   (Part 3, step 5) and `ping` it from the laptop.
-- On both machines: this repository cloned (the instructions assume `C:\qdt\repo` on Windows and
-  `~/qdt/repo` on a Mac; adjust the paths if yours differ), `uv` installed (https://docs.astral.sh/uv/),
-  and `uv sync --all-packages --all-extras` run once inside the clone. On `qdt-db` you also need Node.js
+- On both machines: this repository cloned, `uv` installed (https://docs.astral.sh/uv/), and
+  `uv sync --all-packages --all-extras` run once inside the clone. On `qdt-db` you also need Node.js
   20 or newer for Part 6, because the Flight Deck page is built there.
+
+**Where things live.** The document names a handful of folders and files on `qdt-db` and on the laptop.
+Every one of them is your choice; the paths below are only what the examples use, so that they read
+consistently. If yours differ, substitute them wherever they appear. The right-hand column says what
+constrains the choice.
+
+| In the examples | What it is | Rules |
+|---|---|---|
+| `C:\qdt\repo` (Windows), `~/qdt/repo` (Mac) | This repository, cloned | Anywhere on a local disk. |
+| `C:\qdt\payloads` on `qdt-db` | The folder that holds every measurement's data file; shared as `qdt-payloads` (Part 5) | The largest disk the PC has. Grows for ever; include it in backups (Part 9). |
+| `C:\qdt\read-server` on `qdt-db` | The read server's scratch folder, named by `--root` (Part 6) | Small. On a local disk, outside the repository, and **not inside** `C:\qdt\payloads`, because the program creates a `payloads` subfolder of its own in it. |
+| `C:\qdt\read-server.ps1` on `qdt-db` | The start-up script you write in Part 6, step 2 | Anywhere **outside the repository**, because it holds the reader password. Steps 3 and 5 of Part 6 must name the same path. |
+| `C:\qdt\backup` and `C:\qdt\backup.ps1` on `qdt-db` | The nightly dumps and payload mirror, and the script that makes them (Part 9) | The folder on a different physical disk from the database and the payloads, if the PC has one. The script anywhere outside the repository (it holds a password). |
+| `~/qdt-payloads` on a Mac laptop | The mount point for the share (Part 5, step 5) | An empty folder in your home directory; the script creates it. |
+
+Keeping them side by side under one folder (`C:\qdt\…`), as the examples do, makes them easy to find; it
+is not required.
 
 **Which computer, which command line.** `qdt-db` is a Windows PC in this document, and every command
 you type on it is for **PowerShell**: open it from the Start menu, and where a step says "as
@@ -519,8 +535,18 @@ by hand to see it work, then make Windows start it at boot.
    The last command ends with `✓ built in …` and creates the folder `apps\flightdeck\dist`, which is the
    finished web page. Rebuild it the same way whenever you update the repository.
 
-2. Write the script that starts the read server. Create the file `C:\qdt\read-server.ps1` with this
-   content, replacing the reader password:
+2. Write the script that starts the read server. Nothing generates this file: you type it, now, as a new
+   text file of four lines. It can live anywhere outside the repository (it will hold the reader password);
+   the examples call it `C:\qdt\read-server.ps1`, and steps 3 and 5 refer to it by that full path, so use
+   yours there too. Create it from PowerShell, so that the file gets exactly that name (Notepad started
+   from the Start menu silently adds `.txt`, which File Explorer then hides):
+
+   ```powershell
+   notepad C:\qdt\read-server.ps1
+   ```
+
+   Notepad asks whether to create the file; say yes, paste the content below, save, and close. Replace
+   the reader password and, if yours differ, the three paths (see *Where things live*):
 
    ```powershell
    $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@127.0.0.1:5432/qdt"
@@ -532,11 +558,19 @@ by hand to see it work, then make Windows start it at boot.
    Line by line: the first tells the server where the database is and which account to use; the second
    tells it where the data files are (the folder from Part 5, reached locally, not through the share);
    the third moves into the repository so the program and the web page are found. The last line starts
-   the server. `--read-only` makes it the kind that drives no instrument. `--host 0.0.0.0` makes it
-   listen on every network interface, so that other computers can reach it (the default would be this PC
-   only). `--port 8700` is where the catalogue and the web page are served, and `--stream-port 8765` is a
-   second connection the web page uses to receive the measurement data it draws. `--ui` names the built
-   web page, and `--root` names a folder for the server's own small bookkeeping, which it creates.
+   the read server itself: the program that the laptop, your scripts and any browser will ask for
+   measurements from now on. (It is not Flight Deck; serving the Flight Deck page is one of the three
+   things it does, so that a browser on this PC can show a measurement, which is half of the goal 1 demo
+   in Part 8.) Its options: `--read-only` makes it the kind that drives no instrument. `--host 0.0.0.0`
+   makes it listen on every network interface, so that other computers can reach it (the default would be
+   this PC only). `--port 8700` is where the catalogue and the web page are served, and `--stream-port
+   8765` is a second connection the web page uses to receive the measurement data it draws. `--ui` names
+   the built web page, relative to the repository. `--root` names a scratch folder for the server's own
+   bookkeeping, which it creates: a small database file, `cache.sqlite`, and a `payloads` subfolder, the
+   same local cache every qdt program keeps (a measurement PC parks records there when `qdt-db` is
+   unreachable). The read server barely uses it, but it must exist somewhere: on a local disk, outside the
+   repository, and not inside the shared payload folder, where its own `payloads` subfolder would be
+   confusing.
 
    The file contains the reader password, so restrict who can read it: right-click the file → Properties →
    Security, and remove every entry except *SYSTEM*, *Administrators* and your own account.
@@ -559,7 +593,16 @@ by hand to see it work, then make Windows start it at boot.
    - `http://localhost:8700/` shows Flight Deck: a *History* pane on the left, a plot in the middle, and no
      *Run* button in the top strip.
 
-   Press Ctrl-C in the PowerShell window to stop it before the next step.
+   If `/server` answers but `/records` shows `Internal Server Error`, the server is running but cannot
+   log in to the database: the password or account in the script is wrong. The PowerShell window shows
+   the full error, and PostgreSQL's own log says it in one line: the newest file in
+   `C:\Program Files\PostgreSQL\17\data\log\` ends with `password authentication failed for user
+   "qdt_reader"`. Test the password on its own with `psql -U qdt_reader -h 127.0.0.1 -d qdt -c "SELECT 1;"`
+   (Part 2's check), fix the script, and restart the server.
+
+   Press Ctrl-C in the PowerShell window to stop it before the next step. Only one server can own the two
+   ports: starting a second while the first is running fails with `only one usage of each socket address`
+   (Appendix B says how to find the first).
 
 4. Open the firewall for the two ports, as in Part 3, in PowerShell **as administrator**:
 
@@ -675,7 +718,13 @@ machines; the project's step file calls these checks R-1 to R-3.
    picker offers no sweep or levels widget: this server cannot operate anything.
 
 3. **See it from a script.** On `qdt-db` (or any computer with the repository), the short way is the
-   command-line tool, this time as the reader. Set the address for this window only, then ask:
+   command-line tool, this time as the reader. The addresses below name the database PC as `qdt-db`.
+   Whether that works depends on whether the computer you run this on knows that name: the laptop does,
+   because you gave it the name in Part 3 (hosts file or Tailscale); the database PC itself usually does
+   not, unless you added the name there as well. `ping qdt-db` tells you in one line. Where the name is not
+   known, write the address instead: `127.0.0.1` on the database PC itself, or its network address from
+   Part 3, step 1 on any other machine. Also, `uv run` must be started inside the repository folder (`cd`
+   there first), or it cannot find the project's packages. Set the address for this window only, then ask:
 
    ```powershell
    $env:QDT_REGISTRY_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"   # PowerShell
@@ -685,7 +734,9 @@ machines; the project's step file calls these checks R-1 to R-3.
    (On a Mac the first line is `export QDT_REGISTRY_DSN="postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"`.)
 
    It prints one line per record and `1 record(s)`. The longer way, which also fetches the measured data,
-   is a few lines of Python. Save this as `read_one.py` and run it with `uv run python read_one.py`:
+   is a few lines of Python. Save this as `read_one.py` inside the repository folder and run it there with
+   `uv run python read_one.py`. The two addresses at the top follow the same rule as above: `qdt-db` where
+   this computer knows the name, the address where it does not:
 
    ```python
    import hashlib, urllib.request
@@ -838,4 +889,9 @@ few seconds before falling back.
 | Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
 | stand server log (Mac) | `registry sync failed … Permission denied: '/Users/…/qdt-payloads/…'` | The share is not mounted on the Mac (the read-only mount point refused the write, as intended). `bash deploy/qdt-db/mac-payload-mount.sh check` shows what the last attempt logged; running it without `check` mounts again. The waiting record is copied on the next sync. |
 | Python | `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` (or any spelling other than `postgresql.psycopg`) | A typo in the first word of `QDT_REGISTRY_DSN`. It must begin exactly `postgresql+psycopg://`. |
+| read server window | `error while attempting to bind on address ('0.0.0.0', 8765) … only one usage of each socket address` | A read server is already running on this PC (an earlier window, or the scheduled task from Part 6, step 5). Only one can own the ports. To find it: `Get-NetTCPConnection -LocalPort 8700 \| Select-Object OwningProcess`, then `Stop-Process -Id <that number>`, or press Ctrl-C in its window. If the scheduled task started it, it is doing its job; leave it. |
+| browser, read server | `http://localhost:8700/server` answers but `/records` shows `Internal Server Error` | The server cannot log in to the database: the reader password or account in `read-server.ps1` is wrong. PostgreSQL's log (newest file in `C:\Program Files\PostgreSQL\17\data\log\`) says `password authentication failed for user "qdt_reader"`. Part 6, step 3. |
+| read server window, on *open* in History | `FileNotFoundError: … Unable to synchronously open file … 'C:\qdt\payloads\2026\…h5'` | The record is in the database but the server looks for its data file in the wrong folder: `QDT_PAYLOAD_STORE` in `read-server.ps1` must be the shared folder's local path on this PC (`Get-SmbShare -Name qdt-payloads` prints it), not the example path. Fix the script, Ctrl-C the server, start it again. |
+| Python | `failed to resolve host 'qdt-db': [Errno 11001] getaddrinfo failed` (or `URLError … getaddrinfo failed`) | This machine does not know the name `qdt-db`. On the database PC itself that is normal: use `127.0.0.1` in the address (Part 8, step 3). On a laptop, the name is missing: Part 3, step 5 (hosts file), or Tailscale is not connected. |
+| PowerShell | `The argument '…\read-server.ps1' to the -File parameter does not exist` | No file has exactly that name. `Get-ChildItem` on its folder shows the real name; usually it is `read-server.ps1.txt` (Notepad added `.txt`): `Rename-Item …\read-server.ps1.txt read-server.ps1`. Part 6, step 2 says how to create it with the right name. |
 | browser | Flight Deck shows `connecting…` and an empty History from the laptop | The page was opened with the short address. Use the long one from Part 6 with `?api=` and `?ws=`. |
