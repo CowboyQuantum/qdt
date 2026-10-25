@@ -783,15 +783,35 @@ mirrored to a second place. A backup you have never restored is a hope rather th
 restore one into a scratch database once, now, and again on a date you put in the calendar.
 
 1. Let the backup program log in without a password prompt. PostgreSQL's tools read passwords from a
-   file at `%APPDATA%\postgresql\pgpass.conf` (create the folder and the file; `%APPDATA%` is usually
-   `C:\Users\<you>\AppData\Roaming`). Put one line in it:
+   file named `pgpass.conf` in a folder named `postgresql` inside your account's *Roaming* folder, so
+   the full path is:
+
+   ```
+   C:\Users\<you>\AppData\Roaming\postgresql\pgpass.conf
+   ```
+
+   Neither the `postgresql` folder nor the file exists yet. In PowerShell, logged in as the account the
+   scheduled tasks run as (yours), these two lines create the folder and open the file in Notepad:
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:APPDATA\postgresql" | Out-Null
+   notepad "$env:APPDATA\postgresql\pgpass.conf"
+   ```
+
+   (`$env:APPDATA` is Windows's name for the *Roaming* folder, which is why PostgreSQL's own
+   documentation writes the path as `%APPDATA%\postgresql\pgpass.conf`. It is a placeholder, not a
+   folder you will find.) Answer *Yes* when Notepad asks whether to create the file, put one line in it
+   and save:
 
    ```
    127.0.0.1:5432:qdt:qdt_admin:<admin password>
    ```
 
    The format is host, port, database, account, password. Restrict the file's permissions to your own
-   account as you did for the script in Part 6.
+   account as you did for the script in Part 6. **Check it:** `Get-ChildItem $env:APPDATA\postgresql`
+   lists exactly `pgpass.conf` (not `pgpass.conf.txt`, which Notepad adds if you type the name into its
+   Save dialog yourself), and `psql -U qdt_admin -h 127.0.0.1 qdt -c "select 1"` connects without asking
+   for a password.
 
 2. Create the backup folder and script. Make `C:\qdt\backup`, and save this as `C:\qdt\backup.ps1`,
    replacing `<backup host>` with the machine or NAS that holds the copy of the data files (it must not be
