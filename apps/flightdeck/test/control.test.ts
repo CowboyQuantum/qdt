@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiClient, ApiError, apiBase, describeDetail } from "../src/api/client";
+import { ApiClient, ApiError, addressWithoutToken, apiBase, commandToken, describeDetail } from "../src/api/client";
 import { check, defaults, overrides, parse } from "../src/control/methods";
 import { tuneupLines } from "../src/widgets/tuneup";
 import { setpointFor } from "../src/widgets/levels";
@@ -255,5 +255,50 @@ describe("click-to-set (ADR 0053)", () => {
     const { levels, skipped } = setpointFor([{ name: "P1", value: 0.05 }, { name: "P2", value: 0.1 }, { name: "V_sd", value: 1e-3 }, { name: "SG", value: NaN }], dc);
     expect(levels).toEqual([{ channel: "P1", value: 0.05 }, { channel: "P2", value: 0.1 }]);
     expect(skipped).toEqual(["V_sd", "SG"]);
+  });
+});
+
+describe("command token (ADR 0074, 0082)", () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const fake = async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const memory = () => {
+    const store = new Map<string, string>();
+    return { store, storage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) } };
+  };
+  const headers = (i: number) => (calls[i]!.init?.headers ?? {}) as Record<string, string>;
+
+  it("is sent as a bearer on every call when given, and not at all otherwise", async () => {
+    calls.length = 0;
+    await new ApiClient("http://x", fake, "t0k").runs();
+    await new ApiClient("http://x", fake, "t0k").setLevels([]);
+    await new ApiClient("http://x", fake).runs();
+    expect(headers(0).authorization).toBe("Bearer t0k");
+    expect(headers(1).authorization).toBe("Bearer t0k");
+    expect(headers(1)["content-type"]).toBe("application/json");
+    expect(headers(2).authorization).toBeUndefined();
+  });
+
+  it("comes from ?token= or #token=, is kept per API base, and is otherwise the kept one", () => {
+    const { store, storage } = memory();
+    expect(commandToken(new URLSearchParams(""), "", storage, "http://a")).toEqual({ token: null, fromAddress: false });
+    expect(commandToken(new URLSearchParams("api=http://a&token=abc"), "", storage, "http://a")).toEqual({ token: "abc", fromAddress: true });
+    expect(store.get("flightdeck.token.v1:http://a")).toBe("abc");
+    expect(commandToken(new URLSearchParams(""), "#token=def", storage, "http://b")).toEqual({ token: "def", fromAddress: true });
+    expect(commandToken(new URLSearchParams(""), "", storage, "http://a")).toEqual({ token: "abc", fromAddress: false });
+    expect(commandToken(new URLSearchParams(""), "", storage, "http://c")).toEqual({ token: null, fromAddress: false });
+    // no storage at all (private window): the token still serves this page
+    expect(commandToken(new URLSearchParams("token=x"), "", null, "http://a")).toEqual({ token: "x", fromAddress: true });
+    const broken = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+    expect(commandToken(new URLSearchParams("token=y"), "", broken, "http://a").token).toBe("y");
+    expect(commandToken(new URLSearchParams(""), "", broken, "http://a").token).toBeNull();
+  });
+
+  it("is dropped from the address once kept, leaving every other parameter as typed", () => {
+    expect(addressWithoutToken({ pathname: "/", search: "?api=http://a:8700&token=abc&ws=ws://a:8765", hash: "" })).toBe("/?api=http://a:8700&ws=ws://a:8765");
+    expect(addressWithoutToken({ pathname: "/", search: "?token=abc", hash: "#token=def" })).toBe("/");
+    expect(addressWithoutToken({ pathname: "/fd/", search: "", hash: "#token=def&x=1" })).toBe("/fd/#x=1");
   });
 });

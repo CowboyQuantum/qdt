@@ -19,6 +19,10 @@ from qdt_schemas.modeling import AnalysisResult
 from qdt_server import Settings, create_app
 from qdt_sim.scenarios import DEVICE_ID, diamonds, stability
 
+LOOPBACK = ("127.0.0.1", 50000)
+"""The test client's peer: this computer, so commands need no token (ADR 0074). The default peer,
+`testclient`, is not an address and counts as another computer."""
+
 
 def definition(n=(32, 32)) -> dict:
     return stability(*n, p1=(0.03, 0.18), p2=(0.03, 0.18), name="api stability").model_dump(
@@ -223,7 +227,7 @@ def test_a_built_ui_is_served_beside_the_api(tmp_path, client):
     (ui / "index.html").write_text("<title>Flight Deck</title>")
     (ui / "assets" / "app.js").write_text("// app")
     app = create_app(Settings(root=tmp_path / "registry2", stream_port=0, ui=ui))
-    with TestClient(app) as c:
+    with TestClient(app, client=LOOPBACK) as c:
         assert "Flight Deck" in c.get("/").text
         assert c.get("/assets/app.js").text == "// app"
         assert c.get("/stand").json()["stand_id"] == "simulated-double-dot"  # API routes first
@@ -239,7 +243,7 @@ def test_a_run_can_be_aborted_queued_or_running(tmp_path):
         return backends
 
     app = create_app(Settings(root=tmp_path / "registry", stream_port=0, backends=slow))
-    with TestClient(app) as c:
+    with TestClient(app, client=LOOPBACK) as c:
         first = Run.model_validate(c.post("/runs", json={"definition": definition()}).json())
         queued = Run.model_validate(c.post("/runs", json={"definition": definition()}).json())
 
@@ -343,7 +347,7 @@ def test_a_sweep_runs_on_the_real_drivers_streams_and_records(tmp_path):
         ],
         "sensed": [{"name": "I", "channel": "smu_i"}],
     }
-    with TestClient(create_app(settings)) as c:
+    with TestClient(create_app(settings), client=LOOPBACK) as c:
         run = wait_for(c, Run.model_validate(c.post("/runs", json={"definition": d}).json()).run_id)
         assert run.state == "completed" and run.record_id, run.error
         record = MeasurementRecord.model_validate(c.get(f"/records/{run.record_id}").json())
@@ -374,9 +378,9 @@ def test_a_restarted_server_reuses_its_registered_device(tmp_path):
             registered_at=datetime(2030, 1, 1, tzinfo=UTC),
         ),
     )
-    with TestClient(create_app(first)) as c:
+    with TestClient(create_app(first), client=LOOPBACK) as c:
         assert c.get("/devices").status_code == 200
-    with TestClient(create_app(later)) as c:
+    with TestClient(create_app(later), client=LOOPBACK) as c:
         assert [d["device_id"] for d in c.get("/devices").json()] == [first.device.device_id]
     other_kind = dataclasses.replace(
         first,
@@ -387,7 +391,7 @@ def test_a_restarted_server_reuses_its_registered_device(tmp_path):
             registered_at=datetime(2030, 1, 1, tzinfo=UTC),
         ),
     )
-    with pytest.raises(ValueError, match="registered as"), TestClient(create_app(other_kind)):
+    with pytest.raises(ValueError, match="registered as"), TestClient(create_app(other_kind), client=LOOPBACK):
         pass
 
 
@@ -561,7 +565,7 @@ def _records_on_the_server(tmp_path, dsn) -> list[MeasurementRecord]:
 def test_a_record_reaches_the_registry_server_after_its_run(tmp_path, monkeypatch):
     dsn, store = _server_env(monkeypatch, tmp_path)
     (tmp_path / "server").mkdir()
-    with TestClient(create_app(Settings(root=tmp_path / "registry", stream_port=0))) as c:
+    with TestClient(create_app(Settings(root=tmp_path / "registry", stream_port=0)), client=LOOPBACK) as c:
         run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
         assert run.state == "completed" and run.record_id, run.error
         assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
@@ -577,7 +581,7 @@ def test_an_unreachable_server_keeps_the_record_in_the_cache_until_the_next_run(
     failed = lambda: any("registry sync failed" in r.message for r in caplog.records)
     with (
         caplog.at_level(logging.WARNING, logger="qdt_server.runs"),
-        TestClient(create_app(Settings(root=tmp_path / "registry", stream_port=0))) as c,
+        TestClient(create_app(Settings(root=tmp_path / "registry", stream_port=0)), client=LOOPBACK) as c,
     ):
         reg = c.app.state.registry
         assert _until(failed)  # the start-up sync, against a server that is down
@@ -607,13 +611,13 @@ def test_without_a_server_the_cache_is_the_registry(client, caplog):
 
 def test_a_server_uploads_what_an_earlier_session_left_when_it_starts(tmp_path, monkeypatch):
     root = tmp_path / "registry"
-    with TestClient(create_app(Settings(root=root, stream_port=0))) as c:  # no server configured
+    with TestClient(create_app(Settings(root=root, stream_port=0)), client=LOOPBACK) as c:  # no server configured
         run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
         assert run.record_id, run.error
         assert c.app.state.registry.unsynced()["records"] == 1
     dsn, _ = _server_env(monkeypatch, tmp_path)
     (tmp_path / "server").mkdir()
-    with TestClient(create_app(Settings(root=root, stream_port=0))) as c:  # the same cache, a server
+    with TestClient(create_app(Settings(root=root, stream_port=0)), client=LOOPBACK) as c:  # the same cache, a server
         assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
     assert [r.record_id for r in _records_on_the_server(tmp_path, dsn)] == [run.record_id]
 
@@ -625,7 +629,7 @@ def _stand_server_that_measured_once(tmp_path, monkeypatch):
     """A stand server on the laptop that ran one sweep and synced it; (dsn, store, run)."""
     dsn, store = _server_env(monkeypatch, tmp_path)
     (tmp_path / "server").mkdir()
-    with TestClient(create_app(Settings(root=tmp_path / "laptop", stream_port=0))) as c:
+    with TestClient(create_app(Settings(root=tmp_path / "laptop", stream_port=0)), client=LOOPBACK) as c:
         run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
         assert run.state == "completed" and run.record_id, run.error
         assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
@@ -653,7 +657,7 @@ STAND_ROUTES = [
 def test_a_read_server_serves_the_registry_and_has_no_command(tmp_path, monkeypatch):
     _, store, run = _stand_server_that_measured_once(tmp_path, monkeypatch)
     desktop = Settings(root=tmp_path / "desktop", stream_port=0, read_only=True)
-    with TestClient(create_app(desktop)) as c:
+    with TestClient(create_app(desktop), client=LOOPBACK) as c:
         assert c.get("/server").json() == {"read_only": True, "stand_id": None, "device_id": None}
         assert [d["device_id"] for d in c.get("/devices").json()] == [DEVICE_ID]
         [rec] = c.get("/records").json()
@@ -682,7 +686,7 @@ def test_a_read_server_serves_the_registry_and_has_no_command(tmp_path, monkeypa
 
 def test_a_read_server_needs_the_registry_server(tmp_path):
     desktop = Settings(root=tmp_path / "desktop", stream_port=0, read_only=True)
-    with pytest.raises(RuntimeError, match=DSN_ENV), TestClient(create_app(desktop)):
+    with pytest.raises(RuntimeError, match=DSN_ENV), TestClient(create_app(desktop), client=LOOPBACK):
         pass
 
 

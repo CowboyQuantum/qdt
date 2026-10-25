@@ -160,10 +160,14 @@ Each closes by an ADR or by the human's decision recorded on its issue.
 ## Status
 IN PROGRESS (session 29, 2026-10-24). Goal 1 in L0: deliverable 2's code half (sync after every record and at
 start), 3 (`--read-only`, `GET /server`, payload GET, Flight Deck without commands, e2e), 4 (reader DSN,
-`init`, tutorial 04; payload bytes over HTTP — ADR 0081). **Deliverable 1's rehearsal is done:** the runbook
+`init`, tutorial 04; payload bytes over HTTP — ADR 0081), **5 (the command token, ADR 0082:** a dependency
+on the stand router challenges every non-read from a non-loopback peer for `Authorization: Bearer` with a
+token from `<root>/tokens`; loopback, reads, replay and the preflight exempt; `--add-token`; Flight Deck
+takes `?token=`/`#token=`, keeps it per API base, drops it from the address, sends it on every call;
+`tests/test_tokens.py`, `test/control.test.ts`). **Deliverable 1's rehearsal is done:** the runbook
 (`deploy/qdt-db/README.md`) ran end to end, Parts 1–10, on the human's personal PC as `qdt-db` with a Mac
 laptop as the measurement PC (2026-10-23/24), nightly dump and payload mirror to a second disk, one restore
 drill; `bench/reports/2026-10-24-step6c.md`. Deliverable 2's share is in place on that machine. R-1 … R-3
 passed by hand through the runbook's Part 8; the scripted `bench/test_l1_remote_read.py` is still to write.
-Remaining for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080). Deliverables 5–16
-not started.
+Remaining for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080), which also gets the
+token section ADR 0082 asks for. Deliverables 6–16 not started.

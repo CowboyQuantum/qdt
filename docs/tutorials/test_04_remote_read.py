@@ -58,8 +58,11 @@ def poll(condition, timeout=30.0):
 # 2. The measurement PC: a stand server on the simulated stand, configured for the server by the two
 #    environment variables (ADR 0080: it syncs after every record, and keeps working when `qdt-db` is
 #    unreachable). `python -m qdt_server` reads the same variables; `Settings` is what it builds.
+#    The client here speaks from the measurement PC itself (loopback), so its commands need no token;
+#    from another computer a stand server wants `Authorization: Bearer <token>` (ADR 0074, 0082).
 os.environ[DSN_ENV], os.environ[STORE_ENV] = WRITER_DSN, str(share)
-with TestClient(create_app(Settings(root=workdir / "measurement-pc", stream_port=0))) as laptop:
+laptop_server = create_app(Settings(root=workdir / "measurement-pc", stream_port=0))
+with TestClient(laptop_server, client=("127.0.0.1", 50000)) as laptop:
     run = laptop.post(
         "/runs", json={"definition": stability(8, 12).model_dump(mode="json"), "options": {"seed": 3}}
     ).json()

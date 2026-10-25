@@ -2,11 +2,13 @@
 // and one source. URL parameters:
 //   ?ws=ws://127.0.0.1:8765   WebSocket source (default)
 //   ?api=http://127.0.0.1:8700  qdt-server API for the control widget (default)
+//   ?token=<token>            command token for a stand server on another computer (ADR 0074): kept in
+//                             this browser for that server and dropped from the address; `#token=` too
 //   ?replay=<url>&speed=1     replay a .qdtrec fetched from <url> (speed omitted = unpaced)
 //   ?renderer=webgl2|cpu      2D renderer (default webgl2, falling back to cpu)
 //   ?bench=1                  record per-chunk latency in window.__flightdeck (benchmark harness)
 // A .qdtrec can also be loaded with the strip's file picker.
-import { ApiClient, apiBase } from "./api/client";
+import { ApiClient, addressWithoutToken, apiBase, commandToken } from "./api/client";
 import { ReplaySource } from "./sources/replay";
 import type { Source } from "./sources/source";
 import { WebSocketSource } from "./sources/websocket";
@@ -29,7 +31,10 @@ import { WidgetRegistry } from "./workspace/widget";
 import { Workspace } from "./workspace/workspace";
 
 const params = new URLSearchParams(location.search);
-const api = new ApiClient(apiBase(params));
+const base = apiBase(params);
+const { token, fromAddress } = commandToken(params, location.hash, safeStorage(), base);
+if (fromAddress) history.replaceState(null, "", addressWithoutToken(location));
+const api = new ApiClient(base, undefined, token);
 const bus = new Bus();
 const datasets = new Datasets();
 // The kind of server decides what is on offer (ADR 0074): against a read server the command widgets and

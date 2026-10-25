@@ -44,14 +44,18 @@ export class ApiClient {
   constructor(
     readonly base: string,
     private readonly fetchFn: Fetch = (i, init) => fetch(i, init),
+    /** The command token (ADR 0074, 0082): a stand server on another computer refuses a command
+     * without it. Sent as `Authorization: Bearer` on every call when set; a read never needs it. */
+    readonly token: string | null = null,
   ) {}
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (this.token) headers.authorization = `Bearer ${this.token}`;
     const init: RequestInit = { method };
-    if (body !== undefined) {
-      init.headers = { "content-type": "application/json" };
-      init.body = JSON.stringify(body);
-    }
+    if (Object.keys(headers).length) init.headers = headers;
+    if (body !== undefined) init.body = JSON.stringify(body);
     const r = await this.fetchFn(this.base + path, init);
     if (!r.ok) {
       let detail = r.statusText;
@@ -175,4 +179,38 @@ export function describeDetail(detail: unknown): string {
 /** The API base: `?api=` overrides the default local server. */
 export function apiBase(params: URLSearchParams): string {
   return (params.get("api") ?? "http://127.0.0.1:8700").replace(/\/$/, "");
+}
+
+const TOKEN_KEY = "flightdeck.token.v1";
+type TokenStore = Pick<Storage, "getItem" | "setItem"> | null;
+
+/** The command token for this API base (ADR 0074, 0082). One given on the address — `?token=`, or
+ * `#token=` in the fragment, which no server ever sees — is kept in this browser for that base and
+ * reported as `fromAddress`, so the caller drops it from the address; otherwise the kept one, if any. */
+export function commandToken(params: URLSearchParams, hash: string, storage: TokenStore, base: string): { token: string | null; fromAddress: boolean } {
+  const key = `${TOKEN_KEY}:${base}`;
+  const given = params.get("token") ?? new URLSearchParams(hash.replace(/^#/, "")).get("token");
+  if (given) {
+    try {
+      storage?.setItem(key, given);
+    } catch {
+      /* storage blocked: the token lives for this page only */
+    }
+    return { token: given, fromAddress: true };
+  }
+  try {
+    return { token: storage?.getItem(key) ?? null, fromAddress: false };
+  } catch {
+    return { token: null, fromAddress: false };
+  }
+}
+
+/** The address without its `token=`, query or fragment, for `history.replaceState` once it is kept;
+ * every other parameter stays as typed. */
+export function addressWithoutToken(loc: { pathname: string; search: string; hash: string }): string {
+  const drop = (s: string, lead: string) => {
+    const parts = s.replace(/^[?#]/, "").split("&").filter((p) => p && !p.startsWith("token="));
+    return parts.length ? lead + parts.join("&") : "";
+  };
+  return `${loc.pathname}${drop(loc.search, "?")}${drop(loc.hash, "#")}`;
 }

@@ -2,6 +2,8 @@
 
     uv run python -m qdt_server [--root ~/.qdt/registry] [--host 127.0.0.1] [--port 8700] [--stream-port 8765]
                                 [--ui apps/flightdeck/dist] [--stand stand.json --device-id <id>] [--read-only]
+                                [--tokens <file>]
+    uv run python -m qdt_server [--root …] [--tokens <file>] --add-token "<desk or person>"
 
 Then Flight Deck (`corepack pnpm dev` in apps/flightdeck, or the built one served at / with --ui)
 connects to the stream, and the API is at http://127.0.0.1:8700 (interactive docs at /docs).
@@ -12,6 +14,13 @@ server after it is ingested, and once at start (ADR 0080); unreachable, the reco
 `--read-only` is the other kind of server (ADR 0074): on the database PC, no stand and no command,
 serving records, results, outcomes, payload bytes and replay from the registry server to Flight Deck
 and to any application over HTTP; it answers when the measurement PC is off.
+
+Commands from another computer need a token (ADR 0074, 0082). A stand server reachable from the network
+(`--host 0.0.0.0`) refuses every `POST`/`DELETE` that does not carry `Authorization: Bearer <token>`
+with a token from its token file (`--tokens`, default `<root>/tokens`; one token per line, a label after
+it, `#` comments; delete a line to revoke). From this computer nothing changes. `--add-token "<label>"`
+appends a token and prints it once; give it to that desk as `?token=<token>` on Flight Deck's address,
+which keeps it in the browser and drops it from the address.
 
 On the bench (Step 5), `--stand stand.json --device-id <id>` runs on the real instruments instead of
 the simulator: the stand file is a `StandConfig` whose instruments name a driver backend ('qdac2',
@@ -30,6 +39,7 @@ from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.stand import StandConfig
 
 from .app import Settings, create_app, stand_backends
+from .auth import new_token
 
 DEFAULT_ROOT = pathlib.Path.home() / ".qdt" / "registry"
 
@@ -53,11 +63,33 @@ def cli() -> None:
         help="a read server (ADR 0074): no stand, no commands; records, results, payloads and "
         "replay from QDT_REGISTRY_DSN / QDT_PAYLOAD_STORE",
     )
+    p.add_argument(
+        "--tokens",
+        type=pathlib.Path,
+        default=None,
+        help="the command token file (ADR 0074): one token per line; default <root>/tokens",
+    )
+    p.add_argument(
+        "--add-token",
+        metavar="LABEL",
+        default=None,
+        help="append a fresh token labelled LABEL (a desk or person) to the token file, print it "
+        "once and exit",
+    )
     a = p.parse_args()
+    tokens = a.tokens if a.tokens is not None else a.root / "tokens"
+    if a.add_token is not None:
+        print(new_token(tokens, a.add_token))
+        return
     if a.read_only and (a.stand is not None or a.device_id):
         p.error("--read-only drives no stand: drop --stand/--device-id")
     settings = Settings(
-        root=a.root, stream_host=a.host, stream_port=a.stream_port, ui=a.ui, read_only=a.read_only
+        root=a.root,
+        stream_host=a.host,
+        stream_port=a.stream_port,
+        ui=a.ui,
+        read_only=a.read_only,
+        tokens=tokens,
     )
     if a.stand is not None:
         if not a.device_id:
