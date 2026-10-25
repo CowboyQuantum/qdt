@@ -78,7 +78,8 @@ constrains the choice.
 | `C:\qdt\payloads` on `qdt-db` | The folder that holds every measurement's data file; shared as `qdt-payloads` (Part 5) | The largest disk the PC has. Grows for ever; include it in backups (Part 9). |
 | `C:\qdt\read-server` on `qdt-db` | The read server's scratch folder, named by `--root` (Part 6) | Small. On a local disk, outside the repository, and **not inside** `C:\qdt\payloads`, because the program creates a `payloads` subfolder of its own in it. |
 | `C:\qdt\read-server.ps1` on `qdt-db` | The start-up script you write in Part 6, step 2 | Anywhere **outside the repository**, because it holds the reader password. Steps 3 and 5 of Part 6 must name the same path. |
-| `C:\qdt\backup` and `C:\qdt\backup.ps1` on `qdt-db` | The nightly dumps and payload mirror, and the script that makes them (Part 9) | The folder on a different physical disk from the database and the payloads, if the PC has one. The script anywhere outside the repository (it holds a password). |
+| `D:\qdt\backup` on `qdt-db`, or `\\<backup host>\qdt-backup` | The nightly dumps and the payload mirror (Part 9) | A different physical disk from the database and the payloads: a second disk in `qdt-db`, or a share on another machine or NAS. Part 9, step 2 says how to tell the two apart. |
+| `C:\qdt\backup.ps1` on `qdt-db` | The script that makes the backups (Part 9) | Anywhere outside the repository. |
 | `~/qdt-payloads` on a Mac laptop | The mount point for the share (Part 5, step 5) | An empty folder in your home directory; the script creates it. |
 
 Keeping them side by side under one folder (`C:\qdt\…`), as the examples do, makes them easy to find; it
@@ -813,34 +814,53 @@ restore one into a scratch database once, now, and again on a date you put in th
    Save dialog yourself), and `psql -U qdt_admin -h 127.0.0.1 qdt -c "select 1"` connects without asking
    for a password.
 
-2. Create the backup folder and script. Make `C:\qdt\backup`, and save this as `C:\qdt\backup.ps1`,
-   replacing `<backup host>` with the machine or NAS that holds the copy of the data files (it must not be
-   `qdt-db` itself, and it must have a share you can write to):
+2. Choose where the backups go, then create the script. The backup must live on a **different physical
+   disk** from the database and the payloads, so that one failing disk does not take both the data and its
+   copy. Two places qualify:
+
+   - *A second disk inside `qdt-db`.* Open *Disk Management* (right-click Start → Disk Management). The
+     second disk appears as its own row, *Disk 1*, with its own drive letter. A second drive letter on
+     *Disk 0* is only a second partition of the same disk and does not count. The examples use `D:`.
+     This protects against a disk failure, and it is enough for a demonstration; it does not protect
+     against the whole PC being lost, stolen or encrypted by malware.
+   - *A share on another machine or NAS* that `qdt-db` can write to without a password prompt, for
+     example `\\<backup host>\qdt-backup`. This also survives the loss of `qdt-db`. Use it when you have
+     one.
+
+   Save this as `C:\qdt\backup.ps1`. Only the first line changes between the two cases: set `$dest` to
+   the folder you chose. The script creates it if it does not exist.
 
    ```powershell
+   $dest = "D:\qdt\backup"        # or "\\<backup host>\qdt-backup" for a share on another machine
    $stamp = Get-Date -Format yyyyMMdd
-   pg_dump -U qdt_admin -h 127.0.0.1 -Fc -f "C:\qdt\backup\qdt-$stamp.dump" qdt
-   Get-ChildItem C:\qdt\backup\qdt-*.dump | Sort-Object Name -Descending | Select-Object -Skip 30 | Remove-Item
-   robocopy C:\qdt\payloads \\<backup host>\qdt-payloads /MIR /R:2 /W:5 /LOG:C:\qdt\backup\payloads.log
+   New-Item -ItemType Directory -Force "$dest\dumps" | Out-Null
+   pg_dump -U qdt_admin -h 127.0.0.1 -Fc -f "$dest\dumps\qdt-$stamp.dump" qdt
+   Get-ChildItem "$dest\dumps\qdt-*.dump" | Sort-Object Name -Descending | Select-Object -Skip 30 | Remove-Item
+   robocopy C:\qdt\payloads "$dest\payloads" /MIR /R:2 /W:5 /LOG:"$dest\payloads.log"
    ```
 
-   The first line makes a date such as `20261022`. `pg_dump` writes the whole database into one compressed
-   file (`-Fc`) named with the date. The third line keeps the newest thirty dumps and deletes older ones.
-   `robocopy … /MIR` mirrors the data folder to the backup share, copying only what changed, and writes a
-   log; `/R:2 /W:5` means retry a failing file twice, five seconds apart, rather than for ever.
+   Line by line: the destination; a date such as `20261022`; make the `dumps` folder if needed;
+   `pg_dump` writes the whole database into one compressed file (`-Fc`) named with the date; keep the
+   newest thirty dumps and delete older ones; `robocopy … /MIR` mirrors the data folder into
+   `payloads` under the destination, copying only what changed, and writes a log next to it. `/R:2 /W:5`
+   means retry a failing file twice, five seconds apart, rather than for ever.
+
+   Afterwards the destination holds `dumps\`, `payloads\` and `payloads.log`, so one folder is the whole
+   backup. Do not point `$dest` at `C:\qdt\payloads` or anywhere inside it: `/MIR` deletes from the
+   destination whatever is missing from the source.
 
 3. Schedule it as in Part 6, step 5, named `qdt backup`, triggered *Daily* at 02:00, with the action
    `powershell.exe -ExecutionPolicy Bypass -File C:\qdt\backup.ps1`. Run it once by hand from Task
-   Scheduler (*Run* in the right-hand panel). **Check it:** `C:\qdt\backup` contains a file
-   `qdt-<today>.dump` larger than zero bytes, and `payloads.log` ends with a summary whose *FAILED*
-   column is 0.
+   Scheduler (*Run* in the right-hand panel). **Check it:** `D:\qdt\backup\dumps` (or your `$dest`)
+   contains a file `qdt-<today>.dump` larger than zero bytes, `D:\qdt\backup\payloads` holds the same
+   year folders as `C:\qdt\payloads`, and `payloads.log` ends with a summary whose *FAILED* column is 0.
 
 4. **The restore drill.** This creates a scratch database from last night's file, counts the records in
    it, and throws it away. Run it in PowerShell; it asks for the superuser password a few times.
 
    ```powershell
    psql -U postgres -d postgres -c "CREATE DATABASE qdt_drill;"
-   pg_restore -U postgres -d qdt_drill C:\qdt\backup\qdt-<date>.dump
+   pg_restore -U postgres -d qdt_drill D:\qdt\backup\dumps\qdt-<date>.dump
    psql -U postgres -d qdt_drill -c "SELECT count(*) FROM records;"
    psql -U postgres -d postgres -c "DROP DATABASE qdt_drill;"
    ```
