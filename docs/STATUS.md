@@ -65,7 +65,19 @@ queue) and ADR 0077 (discovery); when the lab PC exists, run the runbook a secon
 
 ## Direction recorded (human)
 - **2026-10-25 (session 30):** "the mac mount script was confirmed by me last night" (the `uninstall`/
-  `install` test of `deploy/qdt-db/mac-payload-mount.sh`, 2026-10-24). "Otherwise continue."
+  `install` test of `deploy/qdt-db/mac-payload-mount.sh`, 2026-10-24). "Otherwise continue." On ADR 0075:
+  "I think it makes sense for the voltage limits and the voltage state of the instruments to belong to the
+  stand and NOT have that belong to the front end" (matches the ADR; not yet an acceptance — the queue half
+  and the refuse-never-clamp and confirm-before-reapply details were explained, awaiting "accept 0075").
+  On ADR 0077: the instruments relevant to discovery hang off a rack switch with an optical uplink to the
+  lab network, and "the measurement pc is hardwired to the rack switch"; discovery should search only that
+  switch and instruments connected directly to the measurement PC. Agent's reading recorded on #80:
+  discovery per network interface, probe range derived from the interface and capped, mDNS on that
+  interface only, VISA enumeration for direct connections; one check pending — whether the rack-facing
+  interface is on its own address range (fenced) or on the lab subnet through an untagged uplink (not
+  fenced). Amends ADR 0077's "configured, bounded address range" at acceptance; plan §9 row 9 changes
+  accordingly. Also asked that the writing guidance (complete sentences, acronyms expanded, no
+  comma-separated triplets) live in the repo: root `CLAUDE.md`, "Writing for the human".
 - **2026-10-24 (session 29):** ran Parts 6–10 of the runbook. "For the purpose of this demonstration, I
   don't have a third workstation or NAS to serve as backup, so then the host will have to be the database
   PC (`qdt-db`) but on a different drive." On the missing-dash fault: "there's no need to add that to the
