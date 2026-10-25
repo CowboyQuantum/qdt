@@ -11,7 +11,8 @@ qdt_server/
   runs.py       # RunManager: queue → compile → execute on a backend → stream → record → ingest; abort; `Run` objects
   catalogue.py  # METHODS: MethodSpec per curated method + the callable; run_method()
   tuning.py     # run_node / run_tuneup (direct); TuneUpManager: tune-ups through the RunManager, TuneUp lifecycle, outcomes to the registry (ADR 0048–0050)
-  __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port --ui <dist>]
+  auth.py       # the command token (ADR 0074, 0082): token file, loopback test, the stand router's dependency
+  __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port --ui <dist> --read-only --tokens <file>] | --add-token <label>
 ```
 
 ## Rules
@@ -33,6 +34,13 @@ qdt_server/
   `tau_s`, `droop_v`, `scope_noise_v`.
 - A method is callable from the API only if it is in `catalogue.METHODS` with a `MethodSpec` whose
   parameters match the function's keyword arguments (the test pins this).
-- No authentication in Step 4b (single machine). Multi-user and deployment are Step 7.
+- Commands need a token off loopback (ADR 0074, 0082): every route on the `stand` router carries
+  `auth.command_token`, which challenges any method but GET/HEAD/OPTIONS when the peer is not loopback
+  and accepts `Authorization: Bearer <token>` with a token from `Settings.token_file` (`<root>/tokens`
+  by default; one per line, a label after it; read on every command, so deleting a line revokes). Reads,
+  `POST /stream/replay` (a read that happens to be a POST) and the CORS preflight are never challenged.
+  A missing file refuses every command from elsewhere. Tests speak from loopback
+  (`TestClient(app, client=LOOPBACK)`); the default peer `testclient` counts as another computer.
+  Logins and roles are the hub's (ADR 0076).
 - `--ui` (Settings.ui) serves a built Flight Deck as static files at `/`, mounted after every API route;
   the server knows nothing about the UI beyond that. `scripts/demo_control_path.py` builds and serves it.

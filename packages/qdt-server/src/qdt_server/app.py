@@ -6,6 +6,7 @@ run or a method parameter out of range, 422 (FastAPI) for a body that is not the
 
 import asyncio
 import dataclasses
+import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -13,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,8 +34,11 @@ from qdt_sim.dot import DoubleDotModel
 from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
 
 from . import catalogue
+from .auth import command_token, read_tokens
 from .runs import BackendFactory, RunManager
 from .tuning import TuneUpManager
+
+log = logging.getLogger(__name__)
 
 MODEL_OPTIONS = {
     f.name for f in dataclasses.fields(DoubleDotModel) if f.type in ("float", "int", float, int)
@@ -128,6 +132,13 @@ class Settings:
     """A read server (ADR 0074): no backends, no stand, no command route; records, results, outcomes,
     payload bytes and replay from the registry server (`QDT_REGISTRY_DSN`, `QDT_PAYLOAD_STORE`), which
     it needs. Runs on the database PC, answers when the measurement PC is off."""
+    tokens: Path | None = None
+    """The command token file (ADR 0074, 0082): a command from another computer must carry one of its
+    tokens; None means `<root>/tokens`. Missing, every command from elsewhere is refused."""
+
+    @property
+    def token_file(self) -> Path:
+        return self.tokens if self.tokens is not None else self.root / "tokens"
 
 
 class RunRequest(BaseModel):
@@ -250,13 +261,21 @@ def create_app(settings: Settings) -> FastAPI:
             )
             app.state.tuneups = TuneUpManager(app.state.runs)
             app.state.runs.sync_later()  # what an earlier session left in the cache (ADR 0080)
+            if not read_tokens(settings.token_file):
+                log.info(
+                    "no command token in %s: commands from other computers are refused; "
+                    "'python -m qdt_server --add-token <label>' makes one (ADR 0074)",
+                    settings.token_file,
+                )
             yield
 
     # one schema per model (no -Input/-Output pairs): the UI's generated types mirror qdt-schemas 1:1
     app = FastAPI(
         title="qdt-server", version="0.1.0", lifespan=lifespan, separate_input_output_schemas=False
     )
-    # Flight Deck is served by Vite on another port of the same machine; no auth in Step 4b (ADR 0032)
+    # Flight Deck is served from another origin (Vite's port, or the read server on `qdt-db`). CORS is
+    # open; what guards a command is the token (ADR 0074), and this middleware sits outside the router
+    # so a 401 reaches the browser with CORS headers and the preflight (OPTIONS) is never challenged.
     app.add_middleware(
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
     )
@@ -272,8 +291,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     # A read server answers from the registry server; a stand server from its own cache (ADR 0074).
     remote = settings.read_only
-    # Everything that needs a stand: the routes below on `stand` exist only on a stand server.
-    stand = APIRouter()
+    # Everything that needs a stand: the routes below on `stand` exist only on a stand server, and a
+    # command among them (any method but a read) from another computer needs a token (ADR 0074).
+    stand = APIRouter(dependencies=[Depends(command_token(settings.token_file))])
 
     @app.get("/server", response_model=ServerInfo)
     def get_server() -> ServerInfo:

@@ -18,5 +18,7 @@ def no_registry_server(monkeypatch):
 @pytest.fixture
 def client(tmp_path):
     app = create_app(Settings(root=tmp_path / "registry", stream_port=0))
-    with TestClient(app) as c:
+    # the peer is this computer, so commands need no token (ADR 0074); the default peer,
+    # `testclient`, is not an address and counts as another computer (test_api.LOOPBACK)
+    with TestClient(app, client=("127.0.0.1", 50000)) as c:
         yield c
