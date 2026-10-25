@@ -777,6 +777,31 @@ machines; the project's step file calls these checks R-1 to R-3.
    laptop, with the long address from Part 6) and 3. If they pass, the services really do start on their
    own.
 
+6. **The same checks as a test run, for the record.** Steps 2–5 are also a pytest file in the repository,
+   `bench\test_l1_remote_read.py`, which writes its result into `bench\reports\<date>-step6c.md` the way
+   the project records every bench run (no address or password reaches the file). Run it from a computer
+   that is not the measurement PC (the database PC will do for the first three checks), inside the
+   repository folder, with the addresses in the window's variables. The first command is run three times,
+   once in each state the earlier steps asked for; `QDT_L1_REMOTE_CONDITION` is you telling the test
+   which state the machines are in, since it cannot switch the laptop off or reboot `qdt-db` itself:
+
+   ```powershell
+   $env:QDT_READ_SERVER_ADDRESS = "http://qdt-db:8700"
+   $env:QDT_READER_DSN = "postgresql+psycopg://qdt_reader:<reader password>@qdt-db:5432/qdt"
+   $env:QDT_STAND_SERVER_ADDRESS = "http://<laptop>:8700"      # the laptop's address, as in Part 3
+   uv run pytest bench\test_l1_remote_read.py -m hardware                                  # steps 2–3, and R-4
+   $env:QDT_L1_REMOTE_CONDITION = "stand-off"; uv run pytest bench\test_l1_remote_read.py -m hardware   # step 4
+   $env:QDT_L1_REMOTE_CONDITION = "rebooted";  uv run pytest bench\test_l1_remote_read.py -m hardware   # step 5
+   ```
+
+   (On a Mac, `export NAME="value"` for each variable and forward slashes in the path.) Each run prints
+   `passed` for the checks that apply and `skipped` for the two that belong to another state. The fourth
+   check, `test_r4_commands_need_a_token`, needs the laptop's stand server to be reachable from this
+   computer by its network address: it sends it commands without a token and expects each to be refused
+   with "401 Unauthorized" and nothing to change. It is skipped when the address is this computer's own,
+   because a server never asks its own machine for a token. Commit the report file with the repository's
+   next change.
+
 ## Part 9 — Backups, and proving they restore
 
 **What this does.** Every night the database is written out to a single file, and the data folder is
