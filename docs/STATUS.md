@@ -8,7 +8,7 @@
 deliverables 2 (code half), 3, 4, 5 in L0; **deliverable 1 rehearsed end to end** on the human's personal
 PC and Mac (runbook Parts 1–10, 2026-10-23/24, `bench/reports/2026-10-24-step6c.md`); **this session: the
 L1 rows scripted (`bench/test_l1_remote_read.py`), deliverable 6 (plan §9) written, deliverable 12 (#77)
-done.** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
+done, ADR 0075 accepted (ADR 0084).** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
 **Branch:** `step-6c/l1-remote-read` (PR against `main`; the human merges). Merged before this session:
 #134, #136 (the command token).
 **Last session:** 2026-10-25 (session 30), no bench.
@@ -51,17 +51,23 @@ done.** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Agent, next session:** Step 6c goal 2 needs ADR 0075 accepted or amended before deliverables 7–8, so
-either (a) the human decides ADR 0075 and the agent starts deliverable 7 (`operations.py` slice:
-`ChannelLimit`, `StandState`, `QueuedRun`; limits enforced on levels and compile, refuse never clamp), or
-(b) without that decision, deliverable 14 (#112: a documented local Postgres for the Postgres-parametrized
-tests without Docker; Appendix A of the runbook is the start) and 15 (#114: `corepack pnpm` documented for
-the lab PC) — housekeeping that needs no decision. Branch `step-6c/<short-name>`. Blockers from the human's
-machines first, if any appear.
-**Human:** merge the PR; send plan §9 to IT (fill the placeholders); decide ADR 0075 (stand state, server
-queue) and ADR 0077 (discovery); when the lab PC exists, run the runbook a second time there, then
-`bench/test_l1_remote_read.py` from a desk (Part 8 step 6); review the ~80 pre-deployment records for gaps
-(findings → issues on `Deployment`); restore drill #2 on 2026-10-31 (#133).
+**Agent, next session:** **deliverable 7** (ADR 0075, accepted by ADR 0084): the `operations.py` slice —
+`ChannelLimit`, `StandState` (per-channel limits, the coupling matrix, the held operating point; versioned,
+append-only, who/when/why) and `QueuedRun`, every field with `description=`; `StandState` versions as
+registry records (a new table set: `DDL_VERSION` bump, DDL export, additive migration, ADR per
+`packages/qdt-registry/CLAUDE.md`); the stand server loads the latest version at start, refuses (never
+clamps) a level or a compiled sweep beyond a limit, and re-applies the held point after a restart only on
+confirmation; routes on the stand router (commands need the token); L0 rows "`StandState`" in the step
+file. Then deliverable 8 (the queue in the stand server; #78) and Flight Deck's Levels, Virtual gates and
+queue widgets switched to the server. Branch `step-6c/<short-name>`. Blockers from the human's machines
+first, if any appear.
+**Human:** merge PR #138; send plan §9 to IT (fill the placeholders; row 9 is informational for now); on the
+measurement PC, `ipconfig` tells whether the rack-facing interface has its own address range (#80), which
+decides how the probe range is specified later; decide the rest of ADR 0077 (inventory vs binding, binding
+by identity, drivers declare ports, the pool, the widget) when deliverables 9–10 come up; when the lab PC
+exists, run the runbook there and then `bench/test_l1_remote_read.py` from a desk (Part 8 step 6); review
+the ~80 pre-deployment records for gaps (findings → issues on `Deployment`); restore drill #2 on 2026-10-31
+(#133).
 
 ## Direction recorded (human)
 - **2026-10-25 (session 30):** "the mac mount script was confirmed by me last night" (the `uninstall`/
@@ -75,9 +81,11 @@ queue) and ADR 0077 (discovery); when the lab PC exists, run the runbook a secon
   discovery per network interface, probe range derived from the interface and capped, mDNS on that
   interface only, VISA enumeration for direct connections; one check pending — whether the rack-facing
   interface is on its own address range (fenced) or on the lab subnet through an untagged uplink (not
-  fenced). Amends ADR 0077's "configured, bounded address range" at acceptance; plan §9 row 9 changes
-  accordingly. Also asked that the writing guidance (complete sentences, acronyms expanded, no
-  comma-separated triplets) live in the repo: root `CLAUDE.md`, "Writing for the human".
+  fenced). Then: **"accept 0075. for now with the instrument discovery, let's just design so that we can
+  discover anything connected to the computer directly and then allow an ip range for future specification
+  when I understand how we can isolate the rack ips to a vlan or range"** → ADR 0084. Also asked that the
+  writing guidance (complete sentences, acronyms expanded, no comma-separated triplets) live in the repo:
+  root `CLAUDE.md`, "Writing for the human".
 - **2026-10-24 (session 29):** ran Parts 6–10 of the runbook. "For the purpose of this demonstration, I
   don't have a third workstation or NAS to serve as backup, so then the host will have to be the database
   PC (`qdt-db`) but on a different drive." On the missing-dash fault: "there's no need to add that to the
@@ -107,7 +115,7 @@ queue) and ADR 0077 (discovery); when the lab PC exists, run the runbook a secon
 - Earlier direction (sessions ≤ 25): `git show b94193f:docs/STATUS.md`, § Direction recorded.
 
 ## Decisions pending
-All are `decision` issues (`gh issue list --label decision`), plus Step 6c's remaining open decisions:
-ADR 0075 (before deliverables 7–8), ADR 0077 (before 9–10), the LAN probe range (now asked of IT in plan
-§9 row 9, with deliverable 6). How a script gets payload bytes is settled: HTTP from the read server
-(ADR 0081).
+All are `decision` issues (`gh issue list --label decision`), plus Step 6c's remaining open decision:
+ADR 0077 (before deliverables 9–10; its discovery scope is already narrowed by ADR 0084 — direct
+connections now, a configured probe range later once the rack's isolation is known, #80). Settled: ADR
+0075 (ADR 0084, 2026-10-25); how a script gets payload bytes — HTTP from the read server (ADR 0081).

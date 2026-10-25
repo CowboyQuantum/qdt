@@ -144,14 +144,16 @@ each record from History. The dated report lists every step that needed a workar
 Each closes by an ADR or by the human's decision recorded on its issue.
 - **Settled 2026-10-22 (ADR 0080):** ADR 0074 accepted — read server, HTTP read contract, three roles,
   payloads on the share for stand servers and HTTP for every reader (HTTP upload waits for the hub),
-  credentials in per-machine environment, command token. Still open: accept or amend **ADR 0075**
-  (stand state, server queue) before deliverables 7–8.
-- Where the run queue lives (#78): ADR 0075 proposes the stand server.
-- Where limits, couplings and the held point live (#79): ADR 0075 proposes versioned `StandState`.
+  credentials in per-machine environment, command token.
+- **Settled 2026-10-25 (ADR 0084):** ADR 0075 accepted as written — versioned `StandState` on the server
+  (#79), the run queue in the stand server (#78); deliverables 7–8 may start.
 - Accept or amend **ADR 0077** (instruments are discovered) before deliverables 9–10; it closes #75 and,
   by binding to identity rather than address, #80 (DHCP reservations stay good practice, not a requirement).
-- The instrument range the LAN probe may touch, and whether IT allows probing at all (mDNS alone otherwise):
-  part of deliverable 6's IT ask.
+  **Narrowed 2026-10-25 (ADR 0084):** discovery begins with instruments connected directly to the measurement
+  computer; the network probe is a configured range, empty until the human knows how the rack's addresses
+  are isolated (its own range behind the computer's rack-facing interface, or a VLAN from IT; #80).
+- The instrument range the LAN probe may touch, and whether IT allows probing at all: informational in
+  deliverable 6's IT ask (plan §9 row 9) until a range is wanted.
 - **Settled 2026-10-22 (ADR 0080):** the lab PC's OS (plan §12 #6, #114) is Windows for now, Postgres as a
   native service, not WSL2; the Linux preference and its reasons stay in Analysis 0003 §4, and the runbook
   gains a Linux section when a Linux host exists.
@@ -172,4 +174,5 @@ server addressed off loopback; runbook Part 8 step 6 runs it. R-1 … R-3 passed
 scripted run on the lab PC is still to come. **Deliverable 6 written** (plan §9, 2026-10-25), to be sent by
 the human. **Deliverable 12 done** (ADR 0083: reports file under the planning step; closes #77). Remaining
 for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080), which also gets the token
-section ADR 0082 asks for. Deliverables 7–11, 13–16 not started.
+section ADR 0082 asks for. **ADR 0075 accepted 2026-10-25 (ADR 0084):** deliverable 7 is next. Deliverables
+7–11, 13–16 not started.
