@@ -4,69 +4,70 @@
 > A fresh session must be able to continue from this file alone.
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
-**Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS: goal 1's first
-slice is in L0 (deliverables 2 code half, 3, 4; PR #121 merged), and **the `qdt-db` runbook (deliverable 1)
-has now run end to end, Parts 1–10, on the human's personal PC and Mac laptop**: "the demo database
-deployment has been completed. Everything works as expected" (2026-10-24). Steps 0–6 and 6b are DONE.
-Milestone `Deployment`.
-**Branch:** `step-6c/runbook-paths` (PR #131 against `main`; the human merges). Merged today: #127 (paths
-are the reader's choice; `--root`; `read-server.ps1` by name). Earlier: #126, #124, #123.
-**Last session:** 2026-10-24 (session 29: the human ran Parts 8–10 with the agent fixing the runbook as
-problems appeared), no pytest bench run; a hand-written report `bench/reports/2026-10-24-step6c.md`.
+**Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS. Goal 1:
+deliverables 2 (code half), 3, 4 in L0 (PR #121); **deliverable 1 rehearsed end to end** on the human's
+personal PC and Mac (runbook Parts 1–10, 2026-10-23/24, `bench/reports/2026-10-24-step6c.md`, PR #131);
+**deliverable 5 (the command token) built this session** on `step-6c/command-token`, ADR 0082. Steps 0–6
+and 6b are DONE. Milestone `Deployment`.
+**Branch:** `step-6c/command-token` (PR against `main`; the human merges). Merged today: #127, #131;
+#134 (drill date, records decision) may still be open.
+**Last session:** 2026-10-24 (session 29, second half: deliverable 5), no bench.
 
 ## Done this session
-- **Runbook Parts 6–10 ran on the real machines** (personal Windows PC = `qdt-db`, PostgreSQL 18; Mac laptop
-  over Tailscale, simulated stand), following Parts 1–5 from session 28. Part 8's smoke test passed in all
-  three forms (sweep on the laptop → record in the PC's Flight Deck and in a script; with the laptop off;
-  after a reboot with nobody logged in). Part 9's nightly backup runs as a scheduled task and the restore
-  drill was done (2026-10-24, the human's `drill-date` line in the report). Part 10's checklist ticked.
-  R-1 … R-3 of the step file are therefore passed by hand; see the bench report for the mapping.
-- **Runbook fixes from the run** (all in PR #131, docs only):
-  - Part 8 step 3 (morning): the addresses depend on whether the computer knows the name `qdt-db`; on
-    `qdt-db` itself use `127.0.0.1`; run the script inside the repo.
-  - Part 9 step 1: the human looked for a folder named `%APPDATA%`. The step now gives the full
-    `pgpass.conf` path, creates the folder from PowerShell with `$env:APPDATA`, and checks that `psql`
-    connects as the admin without a prompt.
-  - Part 9 step 2: the human has no third machine or NAS, only a second disk in the PC. The script now takes
-    one `$dest` (a second **physical** disk in `qdt-db`, told from a partition in Disk Management, or a share
-    elsewhere) and writes `dumps\`, `payloads\` and `payloads.log` under it, so the dumps also leave `C:`.
-    The paths table follows. What a second disk does and does not protect against is stated.
-  - Part 9 step 2–3: run `backup.ps1` by hand with the task's exact command before scheduling it; the
-    script keeps a transcript in `C:\qdt\backup.log` so a scheduled run leaves evidence. The actual fault was
-    the task's action typed without the dash before `-ExecutionPolicy`; the human asked that this **not**
-    go into Appendix B, and the row was reverted.
-- **Filed:** #132 (Dependabot: `certifi` in `uv.lock`, critical, patched in 2026.10.19; `backlog`, not a
-  blocker). The bench report file was created by the human (the drill date) and completed by the agent.
-- No code changed. `check_all` green except the pre-existing #125 (vocabulary); pytest 476 passed, 4 skipped.
+- **Deliverable 5, the command token (ADR 0074 → ADR 0082).** `qdt_server/auth.py`: a token file
+  (`Settings.tokens`, default `<root>/tokens`; one token per line, a label after it, `#` comments; read on
+  every command, so deleting a line revokes; missing = every command from elsewhere refused, logged at
+  start), `is_loopback` (127/8, `::1`, IPv4-mapped; a non-IP peer counts as another computer), and
+  `command_token(path)`, a dependency on the `stand` router that challenges any method but
+  GET/HEAD/OPTIONS from a non-loopback peer: 401 + `WWW-Authenticate: Bearer` without a token or with
+  one not in the file. Reads, `POST /stream/replay` and the CORS preflight are never challenged; the CORS
+  middleware stays outside so the 401 reaches the browser. `python -m qdt_server --tokens <file>` and
+  `--add-token "<label>"` (prints a `token_urlsafe(32)` once, chmod 600 where modes exist). Flight Deck:
+  `ApiClient(base, fetch, token)` sends `Authorization: Bearer` on every call when it has one;
+  `commandToken()` takes `?token=`/`#token=`, keeps it in `localStorage` per API base, `main.ts` drops it
+  from the address with `replaceState`. Tests: `packages/qdt-server/tests/test_tokens.py` (refusal,
+  acceptance, revocation, loopback exemption incl. `::1`, missing file, replay open, preflight + CORS on
+  the 401, file format, default path) and three cases in `apps/flightdeck/test/control.test.ts`.
+  `TestClient`s in `test_api.py`, `conftest.py` and tutorial 04 now speak from `("127.0.0.1", 50000)`;
+  the default peer `testclient` is not an address. OpenAPI export unchanged (`check:api` OK).
+  `packages/qdt-server/CLAUDE.md` rule rewritten ("no authentication in Step 4b" is gone).
+- pytest 491 passed, 4 skipped (was 476); Flight Deck 145 unit tests; `check_all` green except the
+  pre-existing #125 (vocabulary; `ruff format --check` also lists 28 pre-existing files, none touched);
+  `uv lock --check` clean. Flight Deck e2e 13/15: the two failures in `workspace.test.ts` are pre-existing
+  and local (this PC runs the demo's read server on :8700, which the test's default `?api=` finds; #135).
+- Earlier today (first half, PR #131 + #134): the runbook's Parts 8–10 fixed as the human ran them, the
+  demo declared complete, restore drill #2 set for 2026-10-31 (#133), the ~80 pre-deployment records
+  kept for the human's review. Filed #132 (Dependabot: `certifi`).
 
 ## In flight
-- PR #131 awaits the human's merge (five docs commits plus this STATUS/report/step-file commit).
+- PR for `step-6c/command-token` awaits the human's merge; #134 too if not yet merged.
 - **Still unverified:** `deploy/qdt-db/mac-payload-mount.sh` as a script (merged in #126; the steps it
   automates are verified by hand). The human runs `uninstall` then `install` on the Mac as the test.
-- The database holds ~80 records dated before it existed, from a development cache synced at a stand
-  server's first start (ADR 0080); the human has not said whether to keep them or give the lab stand its
-  own `--root`.
-- Open UI findings from the run: #130 (History's open/analyse buttons hidden when the pane is narrow),
-  #122, #120, #119.
+- The token is not yet in the runbook: ADR 0082's "must now" puts a token section where a stand server
+  is first bound off loopback (the lab PC, deliverable 13). The demo laptop runs Flight Deck and the
+  stand server together, so it needs none.
+- Open UI findings: #130, #122, #120, #119.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Agent, next session:** deliverable 5 (the command token: a stand server bound off loopback refuses
-`POST`/`DELETE` without a bearer token from its token file; loopback exempt; Flight Deck sends the token it
-was given and hides commands on a read-only server) with the step file's L0 rows, then the scripted
-`bench/test_l1_remote_read.py` for R-1 … R-4 so the next runbook run (the lab PC) is a pytest run, not a
-hand report. Branch `step-6c/<short-name>`. Blockers from the human's machines first, if any appear.
-**Human:** merge #131; decide on the ~80 pre-deployment records; put the next restore drill in the
-calendar; the lab PC is a second run of the same runbook when its time comes (deliverable 1's last part;
-deliverable 6, the IT checklist, precedes it).
+**Agent, next session:** the scripted `bench/test_l1_remote_read.py` for R-1 … R-4 (`PLANNED_BY` the step
+file), so the lab-PC run of the runbook is a pytest bench report rather than a hand-written one; R-4 is
+now testable (a command from another computer without a token is refused). Then deliverable 6 (the plan
+§9 IT checklist rewritten from Analysis 0003 and this step). Branch `step-6c/<short-name>`. Blockers from
+the human's machines first, if any appear.
+**Human:** merge the PR(s); the Mac mount script's `uninstall`/`install` test; review the ~80
+pre-deployment records for gaps in what a measurement record carries (findings → issues on
+`Deployment`); restore drill #2 on 2026-10-31 (#133).
 
 ## Direction recorded (human)
-- **2026-10-24 (session 29):** ran Parts 6–10. "For the purpose of this demonstration, I don't have a third
-  workstation or NAS to serve as backup, so then the host will have to be the database PC (`qdt-db`) but on
-  a different drive." On the missing-dash fault: "there's no need to add that to the appendix." Then: "the
-  demo database deployment has been completed. Everything works as expected."
+- **2026-10-24 (session 29):** ran Parts 6–10 of the runbook. "For the purpose of this demonstration, I
+  don't have a third workstation or NAS to serve as backup, so then the host will have to be the database
+  PC (`qdt-db`) but on a different drive." On the missing-dash fault: "there's no need to add that to the
+  appendix." "The demo database deployment has been completed. Everything works as expected." "Schedule
+  the next drill for next week" (2026-10-31, #133). "Keep the predeployment records for me to review for
+  gaps in information in measurement records." Then: "start deliverable 5."
 - **2026-10-23 (session 28):** ran the runbook on the personal PC and the Mac; asked for the runbook to be
   updated with the Mac mount method "at least for macbooks"; asked whether Windows needs the same (no: the
   UNC path connects on demand with `cmdkey`'s credential and fails safely when the share is away) and
