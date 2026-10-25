@@ -831,19 +831,34 @@ restore one into a scratch database once, now, and again on a date you put in th
    the folder you chose. The script creates it if it does not exist.
 
    ```powershell
+   Start-Transcript -Path C:\qdt\backup.log -Append | Out-Null
    $dest = "D:\qdt\backup"        # or "\\<backup host>\qdt-backup" for a share on another machine
    $stamp = Get-Date -Format yyyyMMdd
    New-Item -ItemType Directory -Force "$dest\dumps" | Out-Null
    pg_dump -U qdt_admin -h 127.0.0.1 -Fc -f "$dest\dumps\qdt-$stamp.dump" qdt
    Get-ChildItem "$dest\dumps\qdt-*.dump" | Sort-Object Name -Descending | Select-Object -Skip 30 | Remove-Item
    robocopy C:\qdt\payloads "$dest\payloads" /MIR /R:2 /W:5 /LOG:"$dest\payloads.log"
+   Stop-Transcript | Out-Null
    ```
 
-   Line by line: the destination; a date such as `20261022`; make the `dumps` folder if needed;
-   `pg_dump` writes the whole database into one compressed file (`-Fc`) named with the date; keep the
-   newest thirty dumps and delete older ones; `robocopy … /MIR` mirrors the data folder into
-   `payloads` under the destination, copying only what changed, and writes a log next to it. `/R:2 /W:5`
-   means retry a failing file twice, five seconds apart, rather than for ever.
+   Line by line: everything the script prints, including errors, is also written to `C:\qdt\backup.log`,
+   because a scheduled run has no window to show it in; the destination; a date such as `20261022`; make
+   the `dumps` folder if needed; `pg_dump` writes the whole database into one compressed file (`-Fc`)
+   named with the date; keep the newest thirty dumps and delete older ones; `robocopy … /MIR` mirrors the
+   data folder into `payloads` under the destination, copying only what changed, and writes a log next to
+   it (`/R:2 /W:5` means retry a failing file twice, five seconds apart, rather than for ever); stop
+   writing the log.
+
+   **Run it by hand first,** in a PowerShell window, with exactly the command the task will use:
+
+   ```powershell
+   powershell.exe -ExecutionPolicy Bypass -File C:\qdt\backup.ps1
+   ```
+
+   Anything wrong shows in the window: `pg_dump : The term 'pg_dump' is not recognized` means Part 1,
+   step 6 was skipped; a password prompt means step 1's `pgpass.conf` is not being read; a red line
+   naming `D:\` means the drive letter in `$dest` is wrong. Fix it and run again until the window shows
+   only robocopy's summary table. Only then schedule it.
 
    Afterwards the destination holds `dumps\`, `payloads\` and `payloads.log`, so one folder is the whole
    backup. Do not point `$dest` at `C:\qdt\payloads` or anywhere inside it: `/MIR` deletes from the
@@ -854,6 +869,10 @@ restore one into a scratch database once, now, and again on a date you put in th
    Scheduler (*Run* in the right-hand panel). **Check it:** `D:\qdt\backup\dumps` (or your `$dest`)
    contains a file `qdt-<today>.dump` larger than zero bytes, `D:\qdt\backup\payloads` holds the same
    year folders as `C:\qdt\payloads`, and `payloads.log` ends with a summary whose *FAILED* column is 0.
+   If the by-hand run worked and the scheduled one did not, read the end of `C:\qdt\backup.log`: that is
+   what the task saw. If the log has no new entry at all, the task never started the script: check the
+   *Last Run Result* column (`0x1` or `0x2` usually means a typo in the script path in the task's action)
+   and that the task's *General* tab says *Run whether user is logged on or not* with your account.
 
 4. **The restore drill.** This creates a scratch database from last night's file, counts the records in
    it, and throws it away. Run it in PowerShell; it asks for the superuser password a few times.
