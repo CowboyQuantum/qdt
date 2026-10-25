@@ -158,8 +158,12 @@ Each closes by an ADR or by the human's decision recorded on its issue.
 - A local Postgres test run without Docker (#112): deliverable 14.
 
 ## Status
-IN PROGRESS (session 27, 2026-10-22). Goal 1 in L0: deliverable 2's code half (sync after every record and at
+IN PROGRESS (session 29, 2026-10-24). Goal 1 in L0: deliverable 2's code half (sync after every record and at
 start), 3 (`--read-only`, `GET /server`, payload GET, Flight Deck without commands, e2e), 4 (reader DSN,
-`init`, tutorial 04; payload bytes over HTTP — ADR 0081). Deliverable 1 is written (`deploy/qdt-db/README.md`,
-`roles.sql`) and awaits its first run on the human's personal PC; deliverable 2's share and the L1 rows R-1
-… R-3 wait for that machine. Deliverables 5–16 not started.
+`init`, tutorial 04; payload bytes over HTTP — ADR 0081). **Deliverable 1's rehearsal is done:** the runbook
+(`deploy/qdt-db/README.md`) ran end to end, Parts 1–10, on the human's personal PC as `qdt-db` with a Mac
+laptop as the measurement PC (2026-10-23/24), nightly dump and payload mirror to a second disk, one restore
+drill; `bench/reports/2026-10-24-step6c.md`. Deliverable 2's share is in place on that machine. R-1 … R-3
+passed by hand through the runbook's Part 8; the scripted `bench/test_l1_remote_read.py` is still to write.
+Remaining for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080). Deliverables 5–16
+not started.
