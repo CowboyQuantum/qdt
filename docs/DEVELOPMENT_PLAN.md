@@ -159,9 +159,40 @@ Prior Flight Deck / gatepick work is reference material for what the UI felt lik
 
 ## 9. IT engagement checklist — a deliverable of Step 6c (ADR 0072, 0073)
 
-Admin/install rights on lab PC; Docker approval (Engine-in-WSL2 vs Desktop licensing); firewall inbound 5432/8100 (+9000/9001) scoped to lab subnet; VLAN reachability; DHCP reservation / DNS name `qdt-db`; access mode for the lab's existing fridge monitoring/logs (ADR 0051); backup landing location; declared prototype→VM trajectory; Windows Update policy.
+Rewritten 2026-10-25 from Analysis 0003, ADR 0074/0080/0082 and the Step 6c rehearsal (the runbook
+`deploy/qdt-db/README.md` ran end to end on a personal PC standing in as `qdt-db`, 2026-10-23/24). This is
+the text to send; the placeholders (`qdt-db`, `<lab-subnet>`, `<office-subnet>`) are filled in by the
+sender, never here (rule 7). Nothing in this list gates a step (ADR 0072): the lab deployment is a second
+run of a runbook that already works.
 
-**Note (2026-10-15):** Analysis 0003 (`docs/analysis/0003-registry-deployment-requirements.md`) revises this list — no Docker required (native Postgres service, not WSL), inbound 5432 plus one payload-transport port, DNS name; 9000/9001 were MinIO defaults and are retired. The Step 7 ADR supersedes this paragraph.
+**What is being deployed.** One ordinary Windows PC, `qdt-db`, runs three things as native services or
+scheduled tasks that start with the machine and need nobody logged in: PostgreSQL (the measurement
+database), a shared folder (the measurement data files, written by the measurement PC only), and the
+project's read server (a Python process that serves the database read-only over HTTP, with a web page for
+browsing measurements). The measurement PC keeps driving the instruments as today and copies each record
+to `qdt-db` as it is taken; it keeps working when `qdt-db` is away. No Docker, no WSL, no VM, no container
+platform, no new server hardware beyond the one PC. We operate it; IT is asked for the items below.
+
+| # | Ask | Detail |
+|---|---|---|
+| 1 | **A dedicated Windows PC as `qdt-db`**, with local administrator rights for the person installing it | Installs: PostgreSQL (native Windows service), Node.js, `uv`. Sizing per Analysis 0003 §7: 16 GB RAM, 4 cores, SSD for the database, a large disk for data files (4 TB, growable). Wired gigabit. Never sleeps; restarts after power loss. |
+| 2 | **A fixed address and the name `qdt-db`** | DHCP reservation or static address, and a DNS entry `qdt-db`; until DNS exists, a `hosts` entry on each client. The measurement PC and every desk find the database and the read server by this name. |
+| 3 | **Inbound firewall on `qdt-db`, scoped to `<lab-subnet>`** | TCP **5432** (PostgreSQL: the measurement PC as writer, desks and scripts as reader); TCP **445** (the data-file share, mounted by the measurement PC only); TCP **8700** and **8765** (the read server's HTTP API with the web page, and its data stream). Rules are created by the runbook with `New-NetFirewallRule`; IT confirms the subnet and that the host firewall is allowed to hold them. |
+| 4 | **The read server's ports from `<office-subnet>` too**, if people will browse measurements from office desks | TCP 8700 and 8765 only; 5432 and 445 stay lab-only. The read server cannot operate anything (ADR 0074). |
+| 5 | **Inbound on the measurement PC from `<lab-subnet>`**: TCP 8700 and 8765 | For Flight Deck on a second desk driving the stand (Step 6c goal 3). Commands from another computer need a bearer token the stand server's owner issues and can revoke (ADR 0082); reads need only the network. |
+| 6 | **Windows Update policy for `qdt-db`** | Restarts allowed at an agreed hour; every service starts on its own after a reboot (proven by the runbook's "after a reboot" check, bench row R-3). No agent that sleeps or hibernates the machine. |
+| 7 | **A backup landing place off the machine** | A share on another machine or a NAS reachable from `qdt-db`, at least the size of the data-file disk, for the nightly database dump and data-file mirror (the rehearsal used a second internal disk, which is not enough for the lab). A restore drill is repeated on a calendar (the first two: 2026-10-24, 2026-10-31). |
+| 8 | **An account the services run under** | A local account on `qdt-db` whose scheduled tasks run at boot without a logged-in user, and the right to store the three database passwords outside the repository on each machine (Analysis 0003 §6). No domain changes needed. |
+| 9 | **The instrument network** | Which subnet the instruments sit on, DHCP reservations for them (good practice; the software binds to identity, not address, ADR 0077), and **whether an opt-in probe of a configured, bounded instrument address range is allowed** at all. If not, discovery uses mDNS and configured hosts only. *Open decision of Step 6c (ADR 0077): the range the probe may touch.* |
+| 10 | **Encryption in transit, when a client is on another subnet** | TLS on 5432 and on 8700/8765 the moment any reader is outside `<lab-subnet>` (Analysis 0003 §5); a certificate for `qdt-db` from IT's issuer, or IT's statement that the office subnet is trusted. |
+
+**Not asked now** (Step 7, plan §12 row 7): the access mode for the lab's existing fridge monitoring and
+logs (ADR 0051), and the prototype → managed-VM trajectory (Analysis 0003 §9: a dump, a mirror and one
+name change move the whole thing; no client code changes).
+
+**Retired from the earlier version of this list:** Docker approval (Engine-in-WSL2 vs Desktop licensing) —
+nothing runs in a container; ports 8100, 9000, 9001 — the HTTP payload upload waits for the hub (ADR 0076)
+and 9000/9001 were MinIO defaults, which Analysis 0003 rejected.
 
 ## 10. Out of scope — a *general* pulse compiler (waveform algebra, phase-tracked frames, branching, real-time feedback); rewriting arbok; public PyPI; Diraq-identifying content in the public repo; hardening Windows/WSL beyond unbroken-record minimum. **In scope since ADR 0018:** a minimal backend-neutral `PulseSequence` (`pulse.py`) with per-backend emitters, so a sweep takes its per-shot sequence as data and the same sequence runs on any sequencer with an emitter (OPX/QUA, other AWGs, custom ISAs).
 
