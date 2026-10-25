@@ -43,9 +43,10 @@ problems appeared), no pytest bench run; a hand-written report `bench/reports/20
 - PR #131 awaits the human's merge (five docs commits plus this STATUS/report/step-file commit).
 - **Still unverified:** `deploy/qdt-db/mac-payload-mount.sh` as a script (merged in #126; the steps it
   automates are verified by hand). The human runs `uninstall` then `install` on the Mac as the test.
-- The database holds ~80 records dated before it existed, from a development cache synced at a stand
-  server's first start (ADR 0080); the human has not said whether to keep them or give the lab stand its
-  own `--root`.
+- The database keeps its ~80 records dated before it existed (a development cache synced at a stand
+  server's first start, ADR 0080): the human is reviewing them for gaps in the information a measurement
+  record carries. Findings become issues on `Deployment`.
+- Restore drill #2 is due **2026-10-31** (#133; the calendar connector was not available to the agent).
 - Open UI findings from the run: #130 (History's open/analyse buttons hidden when the pane is narrow),
   #122, #120, #119.
 
@@ -58,15 +59,17 @@ Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issu
 was given and hides commands on a read-only server) with the step file's L0 rows, then the scripted
 `bench/test_l1_remote_read.py` for R-1 … R-4 so the next runbook run (the lab PC) is a pytest run, not a
 hand report. Branch `step-6c/<short-name>`. Blockers from the human's machines first, if any appear.
-**Human:** merge #131; decide on the ~80 pre-deployment records; put the next restore drill in the
-calendar; the lab PC is a second run of the same runbook when its time comes (deliverable 1's last part;
-deliverable 6, the IT checklist, precedes it).
+**Human:** merge #131; review the ~80 pre-deployment records for gaps in what a measurement record carries;
+restore drill #2 on 2026-10-31 (#133); the lab PC is a second run of the same runbook when its time comes
+(deliverable 1's last part; deliverable 6, the IT checklist, precedes it).
 
 ## Direction recorded (human)
 - **2026-10-24 (session 29):** ran Parts 6–10. "For the purpose of this demonstration, I don't have a third
   workstation or NAS to serve as backup, so then the host will have to be the database PC (`qdt-db`) but on
   a different drive." On the missing-dash fault: "there's no need to add that to the appendix." Then: "the
-  demo database deployment has been completed. Everything works as expected."
+  demo database deployment has been completed. Everything works as expected." Then: "schedule the next
+  drill for next week" (2026-10-31, #133). "Keep the predeployment records for me to review for gaps in
+  information in measurement records."
 - **2026-10-23 (session 28):** ran the runbook on the personal PC and the Mac; asked for the runbook to be
   updated with the Mac mount method "at least for macbooks"; asked whether Windows needs the same (no: the
   UNC path connects on demand with `cmdkey`'s credential and fails safely when the share is away) and
