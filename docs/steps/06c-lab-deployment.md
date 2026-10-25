@@ -158,16 +158,18 @@ Each closes by an ADR or by the human's decision recorded on its issue.
 - A local Postgres test run without Docker (#112): deliverable 14.
 
 ## Status
-IN PROGRESS (session 29, 2026-10-24). Goal 1 in L0: deliverable 2's code half (sync after every record and at
+IN PROGRESS (session 30, 2026-10-25). Goal 1 in L0: deliverable 2's code half (sync after every record and at
 start), 3 (`--read-only`, `GET /server`, payload GET, Flight Deck without commands, e2e), 4 (reader DSN,
-`init`, tutorial 04; payload bytes over HTTP — ADR 0081), **5 (the command token, ADR 0082:** a dependency
-on the stand router challenges every non-read from a non-loopback peer for `Authorization: Bearer` with a
-token from `<root>/tokens`; loopback, reads, replay and the preflight exempt; `--add-token`; Flight Deck
-takes `?token=`/`#token=`, keeps it per API base, drops it from the address, sends it on every call;
-`tests/test_tokens.py`, `test/control.test.ts`). **Deliverable 1's rehearsal is done:** the runbook
-(`deploy/qdt-db/README.md`) ran end to end, Parts 1–10, on the human's personal PC as `qdt-db` with a Mac
-laptop as the measurement PC (2026-10-23/24), nightly dump and payload mirror to a second disk, one restore
-drill; `bench/reports/2026-10-24-step6c.md`. Deliverable 2's share is in place on that machine. R-1 … R-3
-passed by hand through the runbook's Part 8; the scripted `bench/test_l1_remote_read.py` is still to write.
-Remaining for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080), which also gets the
-token section ADR 0082 asks for. Deliverables 6–16 not started.
+`init`, tutorial 04; payload bytes over HTTP — ADR 0081), 5 (the command token, ADR 0082). **Deliverable 1's
+rehearsal is done:** the runbook (`deploy/qdt-db/README.md`) ran end to end, Parts 1–10, on the human's
+personal PC as `qdt-db` with a Mac laptop as the measurement PC (2026-10-23/24), nightly dump and payload
+mirror to a second disk, one restore drill; `bench/reports/2026-10-24-step6c.md`; the Mac mount script's
+`uninstall`/`install` confirmed by the human 2026-10-24. **The L1 rows are scripted:**
+`bench/test_l1_remote_read.py` (R-1 … R-4; R-2 verifies the stand server is unreachable, R-3 is the
+operator's declaration in `QDT_L1_REMOTE_CONDITION`, R-4 sends every command without a token and with a
+wrong one and proves levels, runs and the scope unchanged), checked end to end on one PC against a stand
+server addressed off loopback; runbook Part 8 step 6 runs it. R-1 … R-3 passed by hand on 2026-10-24; the
+scripted run on the lab PC is still to come. **Deliverable 6 written** (plan §9, 2026-10-25), to be sent by
+the human. **Deliverable 12 done** (ADR 0083: reports file under the planning step; closes #77). Remaining
+for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080), which also gets the token
+section ADR 0082 asks for. Deliverables 7–11, 13–16 not started.

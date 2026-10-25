@@ -5,63 +5,67 @@
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
 **Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS. Goal 1:
-deliverables 2 (code half), 3, 4 in L0 (PR #121); **deliverable 1 rehearsed end to end** on the human's
-personal PC and Mac (runbook Parts 1–10, 2026-10-23/24, `bench/reports/2026-10-24-step6c.md`, PR #131);
-**deliverable 5 (the command token) built this session** on `step-6c/command-token`, ADR 0082. Steps 0–6
-and 6b are DONE. Milestone `Deployment`.
-**Branch:** `step-6c/command-token` (PR against `main`; the human merges). Merged today: #127, #131;
-#134 (drill date, records decision) may still be open.
-**Last session:** 2026-10-24 (session 29, second half: deliverable 5), no bench.
+deliverables 2 (code half), 3, 4, 5 in L0; **deliverable 1 rehearsed end to end** on the human's personal
+PC and Mac (runbook Parts 1–10, 2026-10-23/24, `bench/reports/2026-10-24-step6c.md`); **this session: the
+L1 rows scripted (`bench/test_l1_remote_read.py`), deliverable 6 (plan §9) written, deliverable 12 (#77)
+done.** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
+**Branch:** `step-6c/l1-remote-read` (PR against `main`; the human merges). Merged before this session:
+#134, #136 (the command token).
+**Last session:** 2026-10-25 (session 30), no bench.
 
 ## Done this session
-- **Deliverable 5, the command token (ADR 0074 → ADR 0082).** `qdt_server/auth.py`: a token file
-  (`Settings.tokens`, default `<root>/tokens`; one token per line, a label after it, `#` comments; read on
-  every command, so deleting a line revokes; missing = every command from elsewhere refused, logged at
-  start), `is_loopback` (127/8, `::1`, IPv4-mapped; a non-IP peer counts as another computer), and
-  `command_token(path)`, a dependency on the `stand` router that challenges any method but
-  GET/HEAD/OPTIONS from a non-loopback peer: 401 + `WWW-Authenticate: Bearer` without a token or with
-  one not in the file. Reads, `POST /stream/replay` and the CORS preflight are never challenged; the CORS
-  middleware stays outside so the 401 reaches the browser. `python -m qdt_server --tokens <file>` and
-  `--add-token "<label>"` (prints a `token_urlsafe(32)` once, chmod 600 where modes exist). Flight Deck:
-  `ApiClient(base, fetch, token)` sends `Authorization: Bearer` on every call when it has one;
-  `commandToken()` takes `?token=`/`#token=`, keeps it in `localStorage` per API base, `main.ts` drops it
-  from the address with `replaceState`. Tests: `packages/qdt-server/tests/test_tokens.py` (refusal,
-  acceptance, revocation, loopback exemption incl. `::1`, missing file, replay open, preflight + CORS on
-  the 401, file format, default path) and three cases in `apps/flightdeck/test/control.test.ts`.
-  `TestClient`s in `test_api.py`, `conftest.py` and tutorial 04 now speak from `("127.0.0.1", 50000)`;
-  the default peer `testclient` is not an address. OpenAPI export unchanged (`check:api` OK).
-  `packages/qdt-server/CLAUDE.md` rule rewritten ("no authentication in Step 4b" is gone).
-- pytest 491 passed, 4 skipped (was 476); Flight Deck 145 unit tests; `check_all` green except the
-  pre-existing #125 (vocabulary; `ruff format --check` also lists 28 pre-existing files, none touched);
-  `uv lock --check` clean. Flight Deck e2e 13/15: the two failures in `workspace.test.ts` are pre-existing
-  and local (this PC runs the demo's read server on :8700, which the test's default `?api=` finds; #135).
-- Earlier today (first half, PR #131 + #134): the runbook's Parts 8–10 fixed as the human ran them, the
-  demo declared complete, restore drill #2 set for 2026-10-31 (#133), the ~80 pre-deployment records
-  kept for the human's review. Filed #132 (Dependabot: `certifi`).
+- **`bench/test_l1_remote_read.py`** (`PLANNED_BY` the step file): the runbook's Part 8 as a pytest run.
+  R-1: the record listed by the read server, its payload over HTTP with a matching `X-Content-SHA256`,
+  read by a script through `qdt_registry` as the reader, whose `sync` of a probe device is refused by the
+  server. R-2: skips unless `QDT_L1_REMOTE_CONDITION=stand-off`, then fails if the stand server still
+  answers, then R-1. R-3: `rebooted`, the operator's declaration (a test cannot reboot `qdt-db`), then
+  R-1. R-4: every stand-router command (`POST`/`DELETE /levels`, compile, `POST /runs`, abort) with no
+  body, without a token and with a wrong one → 401 + `WWW-Authenticate: Bearer`; the held levels, the run
+  list and (with `QDT_SCOPE_ADDRESS`) the scope's DC reading unchanged; skips when the stand address is
+  this computer. Variables: `QDT_READ_SERVER_ADDRESS`, `QDT_READER_DSN`, `QDT_STAND_SERVER_ADDRESS`,
+  `QDT_L1_RECORD_ID` (default newest). Checked end to end on this PC: a stand server on `0.0.0.0` and a
+  read server on a SQLite registry, the stand addressed by this PC's network address — R-1 and R-4 pass,
+  `rebooted` passes R-3, `stand-off` with the stand still up fails as designed. Runbook Part 8 step 6
+  documents the three runs.
+- **ADR 0083 (#77, deliverable 12):** `scripts/bench_report.py` files a run under the step its tests'
+  `PLANNED_BY` resolves to (step file, else the highest-numbered ADR's `**Step:**` line), one section per
+  step per run; `bench_step` removed from `pyproject.toml` (fallback `unplanned`); `QDT_*_DSN` values and
+  URLs with credentials redacted. Every existing bench test resolves (loopback/capture/current → 5,
+  paced/sensor/two-lines/segments/opx_streaming → 6, remote_read → 6c). Four new tests in
+  `packages/qdt-lab/tests/test_bench_report.py`.
+- **Deliverable 6:** plan §9 rewritten as the IT checklist to send (ten asks: the PC, name/address, 5432
+  + 445 + 8700/8765 from the lab subnet, 8700/8765 from the office subnet, 8700/8765 on the measurement PC
+  for a second desk with the token, Update policy, off-machine backup place, service account, instrument
+  network + the opt-in probe question, TLS off-subnet; Docker and 8100/9000/9001 retired). The human sends it.
+- pytest 495 passed, 4 skipped (was 491); `check_all` green except the pre-existing #125 (vocabulary) and,
+  locally only, `provenance_check` matching a byte pattern inside the gitignored `.ruff_cache` (CI has no
+  cache; tracked files are clean). `check_bench_rows` needs `PYTHONUTF8=1` on Windows (cp1252 default).
 
 ## In flight
-- PR for `step-6c/command-token` awaits the human's merge; #134 too if not yet merged.
-- **Still unverified:** `deploy/qdt-db/mac-payload-mount.sh` as a script (merged in #126; the steps it
-  automates are verified by hand). The human runs `uninstall` then `install` on the Mac as the test.
+- PR for `step-6c/l1-remote-read` awaits the human's merge.
 - The token is not yet in the runbook: ADR 0082's "must now" puts a token section where a stand server
-  is first bound off loopback (the lab PC, deliverable 13). The demo laptop runs Flight Deck and the
-  stand server together, so it needs none.
-- Open UI findings: #130, #122, #120, #119.
+  is first bound off loopback (the lab PC, deliverable 13).
+- Open UI findings: #130, #122, #120, #119. Pre-existing local e2e failures in `workspace.test.ts`: #135.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Agent, next session:** the scripted `bench/test_l1_remote_read.py` for R-1 … R-4 (`PLANNED_BY` the step
-file), so the lab-PC run of the runbook is a pytest bench report rather than a hand-written one; R-4 is
-now testable (a command from another computer without a token is refused). Then deliverable 6 (the plan
-§9 IT checklist rewritten from Analysis 0003 and this step). Branch `step-6c/<short-name>`. Blockers from
-the human's machines first, if any appear.
-**Human:** merge the PR(s); the Mac mount script's `uninstall`/`install` test; review the ~80
-pre-deployment records for gaps in what a measurement record carries (findings → issues on
-`Deployment`); restore drill #2 on 2026-10-31 (#133).
+**Agent, next session:** Step 6c goal 2 needs ADR 0075 accepted or amended before deliverables 7–8, so
+either (a) the human decides ADR 0075 and the agent starts deliverable 7 (`operations.py` slice:
+`ChannelLimit`, `StandState`, `QueuedRun`; limits enforced on levels and compile, refuse never clamp), or
+(b) without that decision, deliverable 14 (#112: a documented local Postgres for the Postgres-parametrized
+tests without Docker; Appendix A of the runbook is the start) and 15 (#114: `corepack pnpm` documented for
+the lab PC) — housekeeping that needs no decision. Branch `step-6c/<short-name>`. Blockers from the human's
+machines first, if any appear.
+**Human:** merge the PR; send plan §9 to IT (fill the placeholders); decide ADR 0075 (stand state, server
+queue) and ADR 0077 (discovery); when the lab PC exists, run the runbook a second time there, then
+`bench/test_l1_remote_read.py` from a desk (Part 8 step 6); review the ~80 pre-deployment records for gaps
+(findings → issues on `Deployment`); restore drill #2 on 2026-10-31 (#133).
 
 ## Direction recorded (human)
+- **2026-10-25 (session 30):** "the mac mount script was confirmed by me last night" (the `uninstall`/
+  `install` test of `deploy/qdt-db/mac-payload-mount.sh`, 2026-10-24). "Otherwise continue."
 - **2026-10-24 (session 29):** ran Parts 6–10 of the runbook. "For the purpose of this demonstration, I
   don't have a third workstation or NAS to serve as backup, so then the host will have to be the database
   PC (`qdt-db`) but on a different drive." On the missing-dash fault: "there's no need to add that to the
@@ -92,5 +96,6 @@ pre-deployment records for gaps in what a measurement record carries (findings �
 
 ## Decisions pending
 All are `decision` issues (`gh issue list --label decision`), plus Step 6c's remaining open decisions:
-ADR 0075 (before deliverables 7–8), ADR 0077 (before 9–10), the LAN probe range (with deliverable 6).
-How a script gets payload bytes is settled: HTTP from the read server (ADR 0081).
+ADR 0075 (before deliverables 7–8), ADR 0077 (before 9–10), the LAN probe range (now asked of IT in plan
+§9 row 9, with deliverable 6). How a script gets payload bytes is settled: HTTP from the read server
+(ADR 0081).
