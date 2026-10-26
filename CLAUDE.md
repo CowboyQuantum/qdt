@@ -50,6 +50,18 @@ Run `/session-check` before claiming anything is done.
 - **Docs are generated where possible** (mkdocs + mkdocstrings; schema docs from field descriptions; TS types from JSON Schema). Do not hand-write what can be generated.
 - **Never** `DROP TABLE`, delete a migration, edit a merged ADR, or append to STATUS.md.
 
+## Writing for the human (replies, STATUS, ADRs, runbooks, issues, pull requests)
+
+Everything an agent writes is read by a person who did not watch the work and may be reading on a phone.
+- Write complete, explicit sentences. A list item is a sentence that says what the thing is and why it
+  matters, never a bare noun.
+- Expand every acronym the first time it appears in a reply or a document, however common it seems:
+  "Server Message Block (SMB)", "multicast Domain Name System (mDNS)", "Virtual Local Area Network (VLAN)".
+- Do not compress ideas into comma-separated triplets of bare terms or commands, such as "reorder, remove,
+  abort" or "mDNS, LXI, VISA". Give each item its own clause that says what it does.
+- When the human corrects how something is written, record the correction here, not only in a session's
+  memory, so every context inherits it.
+
 ## Commands
 
 ```
