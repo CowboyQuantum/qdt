@@ -84,8 +84,10 @@ class SweepWidget {
   /** The last compile: what Run runs unless the editors changed since (then it compiles again first). */
   private compiled: { plan: ExecutionPlan; definition: SweepDefinition; options: Record<string, string | number | boolean> } | null = null;
   private stale = false;
-  /** Every run this widget started, by id; the server queues them (one executes at a time). */
+  /** Every run this widget's queue entries became, by id (one executes at a time). */
   private readonly runs = new Map<string, Run>();
+  /** Queue entries this widget submitted that have not become a run yet (ADR 0086). */
+  private readonly entries = new Set<string>();
   private starting = false;
   private readonly form: HTMLFormElement;
   private readonly capture: HTMLFieldSetElement;
@@ -165,6 +167,7 @@ class SweepWidget {
     this.head.replaceChildren();
     this.ctx.bus.emit("run:next", { summary: "" });
     this.runs.clear();
+    this.entries.clear();
   }
 
   private async init(): Promise<void> {
@@ -515,23 +518,57 @@ class SweepWidget {
     }
   }
 
-  /** The strip's Run: what is compiled, compiled again first when the editors changed since. The server
-   * queues runs (one executes at a time), so Run is never refused while one is live (ADR 0061). */
+  /** The strip's Run: what is compiled, compiled again first when the editors changed since, added to
+   * the stand's queue (ADR 0075, 0086), so Run is never refused while one is live. The entry becomes a
+   * run when its turn comes; the widget follows it from there. */
   private async runNow(): Promise<void> {
     if (this.starting) return;
     this.starting = true;
     try {
       const compiled = this.compiled && !this.stale ? this.compiled : await this.compile();
       if (!compiled) return;
-      const run = await this.ctx.api.startRun({ definition: compiled.definition, options: compiled.options });
-      this.setRun(run);
-      const live = [...this.runs.values()].filter((r) => !TERMINAL.has(r.state)).length;
-      this.say(`run ${short(run.run_id)} queued${live > 1 ? ` (${live - 1} ahead of it)` : ""}`);
-      void this.follow(run.run_id);
+      const entry = await this.ctx.api.enqueue({ definition: compiled.definition, options: compiled.options });
+      this.entries.add(entry.queue_id);
+      const ahead = entry.position ?? 0;
+      this.say(`queued ${compiled.definition.name}${ahead ? ` (${ahead} ahead of it)` : ""}`);
+      void this.followEntry(entry.queue_id);
     } catch (e) {
       this.say(describe(e), true);
     } finally {
       this.starting = false;
+    }
+  }
+
+  /** Wait for a queue entry to become a run, then follow the run. An entry removed from the queue, or
+   * one that failed before it started (the stand state changed), ends here with a message. */
+  private async followEntry(queueId: string): Promise<void> {
+    while (this.entries.has(queueId)) {
+      await new Promise((r) => setTimeout(r, 500));
+      let entry;
+      try {
+        entry = (await this.ctx.api.queue()).entries?.find((e) => e.queue_id === queueId);
+      } catch (e) {
+        this.say(describe(e), true);
+        return;
+      }
+      if (!this.entries.has(queueId)) return; // the widget went away
+      if (!entry) {
+        this.entries.delete(queueId);
+        return this.say(`queue entry ${short(queueId)} was removed before it ran`);
+      }
+      if (entry.run_id) {
+        this.entries.delete(queueId);
+        try {
+          this.setRun(await this.ctx.api.run(entry.run_id));
+        } catch (e) {
+          return this.say(describe(e), true);
+        }
+        return this.follow(entry.run_id);
+      }
+      if (entry.state !== "queued" && entry.state !== "running") {
+        this.entries.delete(queueId);
+        return this.say(`${entry.request.definition.name} ${entry.state}${entry.message ? `: ${entry.message}` : ""}`, entry.state === "failed");
+      }
     }
   }
 

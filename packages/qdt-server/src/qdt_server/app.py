@@ -24,18 +24,19 @@ from qdt_lab.simulated import SimulatedWaveformSense, exponential_decay
 from qdt_lab.stream import PayloadSource, StreamServer
 from qdt_registry import Registry
 from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
-from qdt_schemas.control import ChannelLevel, MethodSpec, Run, TuneUp
+from qdt_schemas.control import ChannelLevel, MethodSpec, Run, RunRequest, TuneUp
 from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import AnalysisResult, CalibrationNode, NodeOutcome, SimScenario
-from qdt_schemas.operations import ChannelLimit, StandState
+from qdt_schemas.operations import ChannelLimit, QueuedRun, StandQueue, StandState
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_sim.dot import DoubleDotModel
 from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
 
 from . import catalogue
 from .auth import command_token, commander, read_tokens
+from .run_queue import QueueError, RunQueue
 from .runs import BackendFactory, RunManager
 from .tuning import TuneUpManager
 
@@ -142,17 +143,11 @@ class Settings:
         return self.tokens if self.tokens is not None else self.root / "tokens"
 
 
-class RunRequest(BaseModel):
-    """Start a run: the experiment and its options."""
+class QueueMove(BaseModel):
+    """Move a waiting queue entry (ADR 0086)."""
 
-    definition: SweepDefinition = Field(description="The sweep to compile and run on the stand.")
-    options: dict[str, AttrValue] = Field(
-        default_factory=dict,
-        description=(
-            "Backend and recording options: seed (int), noise (bool), campaign (str), any scalar "
-            "field of the simulated model, e.g. sensor_width_v (float) for a colder sensor, and the "
-            "simulated scope's tau_s, droop_v and scope_noise_v (floats)."
-        ),
+    position: int = Field(
+        ge=0, description="Its new place among the waiting entries; 0 runs next."
     )
 
 
@@ -307,6 +302,8 @@ def create_app(settings: Settings) -> FastAPI:
                 settings.root / "outbox",
             )
             app.state.tuneups = TuneUpManager(app.state.runs)
+            app.state.queue = RunQueue(app.state.runs, registry, settings.stand.stand_id)
+            app.state.queue.start()
             app.state.runs.sync_later()  # what an earlier session left in the cache (ADR 0080)
             if not read_tokens(settings.token_file):
                 log.info(
@@ -314,7 +311,10 @@ def create_app(settings: Settings) -> FastAPI:
                     "'python -m qdt_server --add-token <label>' makes one (ADR 0074)",
                     settings.token_file,
                 )
-            yield
+            try:
+                yield
+            finally:
+                await app.state.queue.stop()
 
     # one schema per model (no -Input/-Output pairs): the UI's generated types mirror qdt-schemas 1:1
     app = FastAPI(
@@ -335,6 +335,9 @@ def create_app(settings: Settings) -> FastAPI:
 
     def tuneups(request: Request) -> TuneUpManager:
         return request.app.state.tuneups
+
+    def queue(request: Request) -> RunQueue:
+        return request.app.state.queue
 
     # A read server answers from the registry server; a stand server from its own cache (ADR 0074).
     remote = settings.read_only
@@ -478,6 +481,59 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(404, f"no run {run_id!r}") from None
         except ValueError as e:
             raise HTTPException(409, str(e)) from None
+
+    # --- the run queue (ADR 0075, 0086): ordered, persisted, one run at a time ------------------------
+    # async: every queue route runs in the event loop, as the queue's worker does, so none races it
+
+    @stand.get("/queue", response_model=StandQueue)
+    async def get_queue(request: Request) -> StandQueue:
+        """The running entry, the waiting ones in order, then the latest finished; and whether it is
+        paused (after a restart with entries waiting, until a person resumes it)."""
+        return queue(request).view()
+
+    @stand.post("/queue", response_model=QueuedRun, status_code=201)
+    async def submit(body: RunRequest, request: Request) -> QueuedRun:
+        """Add a run at the end of the queue. Compiled now: a sweep the stand cannot run, or one beyond
+        a limit, is refused (400) before it waits; checked again when it starts."""
+        try:
+            return queue(request).submit(body, by=commander(request))
+        except (ValueError, KeyError) as e:
+            raise HTTPException(400, str(e)) from None
+
+    def _queue_call(request: Request, call) -> StandQueue:
+        try:
+            return call(queue(request))
+        except KeyError as e:
+            raise HTTPException(404, e.args[0]) from None
+        except QueueError as e:
+            raise HTTPException(409, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+
+    @stand.post("/queue/pause", response_model=StandQueue)
+    async def pause_queue(request: Request) -> StandQueue:
+        """Start no further entry; the one running finishes."""
+        return _queue_call(request, lambda q: q.pause(by=commander(request)))
+
+    @stand.post("/queue/resume", response_model=StandQueue)
+    async def resume_queue(request: Request) -> StandQueue:
+        """Run the waiting entries again, in order."""
+        return _queue_call(request, lambda q: q.resume())
+
+    @stand.post("/queue/{queue_id}/move", response_model=StandQueue)
+    async def move_entry(queue_id: str, body: QueueMove, request: Request) -> StandQueue:
+        """Move a waiting entry; 409 for one that has started, 400 for a position out of range."""
+        return _queue_call(request, lambda q: q.move(queue_id, body.position))
+
+    @stand.delete("/queue/{queue_id}", response_model=StandQueue)
+    async def remove_entry(queue_id: str, request: Request) -> StandQueue:
+        """Remove a waiting entry: it never runs. 409 for one that has started."""
+        return _queue_call(request, lambda q: q.remove(queue_id))
+
+    @stand.post("/queue/{queue_id}/abort", response_model=StandQueue)
+    async def abort_entry(queue_id: str, request: Request) -> StandQueue:
+        """Abort the running entry: its run stops between frames and is recorded as aborted."""
+        return _queue_call(request, lambda q: q.abort(queue_id))
 
     @app.get("/records", response_model=list[MeasurementRecord])
     def find_records(

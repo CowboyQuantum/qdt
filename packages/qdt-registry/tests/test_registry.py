@@ -421,3 +421,39 @@ def test_a_new_cache_continues_the_stands_history_from_the_server(tmp_path, serv
     clash.add_stand_state(stand_state(1, reason="a second cache claims the stand"))
     with pytest.raises(ValueError, match="different body"):
         clash.pull_stand_states("sim-stand")
+
+
+def test_the_run_queue_is_cache_local_mutable_and_never_synced(tmp_path, server):
+    """ADR 0086: queue entries are operating state, rewritten as they move, kept across a restart of
+    the client, and never sent to the registry server."""
+    from qdt_schemas.control import RunRequest
+    from qdt_schemas.operations import QueuedRun
+    from qdt_sim.scenarios import stability
+
+    dsn, store = server
+    reg = Registry(tmp_path / "client", remote_dsn=dsn, remote_store=store)
+    t0 = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
+    waiting = QueuedRun(
+        queue_id="ab" * 16,
+        stand_id="sim-stand",
+        position=0,
+        request=RunRequest(definition=stability(4, 4)),
+        submitted_by="local",
+        submitted_at=t0,
+        state="queued",
+    )
+    other = waiting.model_copy(update={"queue_id": "cd" * 16, "stand_id": "other-stand"})
+    reg.queue_put(waiting, other)
+    assert reg.queue_entries("sim-stand") == [waiting]
+    running = waiting.model_copy(
+        update={"state": "running", "position": None, "run_id": "ef" * 16, "started_at": t0}
+    )
+    reg.queue_put(running)  # rewritten in place
+    assert Registry(tmp_path / "client").queue_entries("sim-stand") == [running]  # kept on disk
+    reg.queue_drop(running.queue_id)
+    assert reg.queue_entries("sim-stand") == [] and reg.queue_entries("other-stand") == [other]
+    assert "run_queue" not in reg.unsynced()
+    reg.sync()
+    from sqlalchemy import create_engine, inspect
+
+    assert "run_queue" not in inspect(create_engine(dsn)).get_table_names()  # never on the server

@@ -6,17 +6,25 @@ one, the coupling matrix Flight Deck edits for coupled axes (ADR 0049), and the 
 on every level it sets and every sweep it compiles, and writes every change as a new version with who
 made it, when and why. Versions are append-only registry records; the latest one is in force.
 
-`QueuedRun` (ADR 0075) enters with the run queue it describes (Step 6c deliverable 8), in the same
-commit as its consumer; the discovery types of ADR 0077 enter with discovery. The slice is frozen at
-the step's exit by an ADR.
+A `QueuedRun` is one entry in a stand's run queue (ADR 0075, 0086): a run as asked for, waiting its
+turn, then running, then finished, with who submitted it and the run and record it became. The stand
+server keeps its queue in its own cache, so a restart keeps it; a `StandQueue` is the queue as the
+server reports it, entries in order, and whether it is paused. The discovery types of ADR 0077 enter
+with discovery. The slice is frozen at the step's exit by an ADR.
 """
 
 import math
+from typing import Literal
 
 from pydantic import AwareDatetime, Field, model_validator
 
 from ._base import QdtModel
 from .activity import FixedLevel
+from .control import RunRequest
+
+QueueState = Literal["queued", "running", "done", "aborted", "failed"]
+"""queued → running → done | aborted | failed (ADR 0075). Removing a queued entry deletes it: it never
+ran, so nothing is left to keep."""
 
 
 class ChannelLimit(QdtModel):
@@ -140,3 +148,84 @@ class StandState(QdtModel):
                 levels = f"{low:g}" if low == high else f"{low:g} to {high:g}"
                 out.append(f"{channel} would reach {levels}, beyond its limit {lim.describe()}")
         return out
+
+
+class QueuedRun(QdtModel):
+    """One entry in a stand's run queue (ADR 0075, 0086). The stand server runs the entry at position 0
+    when the stand is free and the queue is not paused; one run at a time, in order."""
+
+    queue_id: str = Field(
+        pattern=r"^[0-9a-f]{32}$", description="Server-minted UUID4 as 32 lowercase hex digits."
+    )
+    stand_id: str = Field(min_length=1, description="The stand whose queue holds the entry.")
+    position: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Place among the waiting entries, 0 for the one that runs next; None once it has left the "
+            "queue (running or finished)."
+        ),
+    )
+    request: RunRequest = Field(description="The run as it was asked for: its sweep and its options.")
+    submitted_by: str = Field(
+        min_length=1,
+        description="Who submitted it: the command token's label, or 'local' (as StandState.set_by).",
+    )
+    submitted_at: AwareDatetime = Field(description="When the stand server accepted it.")
+    state: QueueState = Field(description="queued → running → done | aborted | failed.")
+    run_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{32}$",
+        description="The Run it started, once it left the queue; None while it waits.",
+    )
+    record_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{32}$",
+        description="The MeasurementRecord its run produced (done, or aborted after some data).",
+    )
+    started_at: AwareDatetime | None = Field(default=None, description="When it left the queue.")
+    finished_at: AwareDatetime | None = Field(
+        default=None, description="When its run reached an end."
+    )
+    message: str = Field(
+        default="", description="Why it failed or was aborted; empty otherwise."
+    )
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "QueuedRun":
+        waiting = self.state == "queued"
+        if waiting != (self.position is not None):
+            raise ValueError("a queued entry has a position, and only a queued entry has one")
+        if waiting and (self.run_id or self.started_at or self.finished_at):
+            raise ValueError("a queued entry has not started")
+        if self.state in ("done", "aborted", "failed") and self.finished_at is None:
+            raise ValueError(f"a {self.state} entry says when it finished")
+        if self.state == "failed" and not self.message:
+            raise ValueError("a failed entry says why")
+        return self
+
+
+class StandQueue(QdtModel):
+    """A stand's run queue as the stand server reports it (ADR 0086): the running entry, then the
+    waiting ones in order, then the most recent finished ones, newest first."""
+
+    stand_id: str = Field(min_length=1, description="The stand this queue runs on.")
+    paused: bool = Field(
+        description=(
+            "True while the server starts no waiting entry: a person paused it, or the server "
+            "restarted with entries waiting and a person has not resumed it."
+        )
+    )
+    note: str = Field(default="", description="Why it is paused; empty when it is not.")
+    entries: tuple[QueuedRun, ...] = Field(
+        default=(), description="Running, then waiting by position, then finished, newest first."
+    )
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "StandQueue":
+        positions = [e.position for e in self.entries if e.state == "queued"]
+        if positions != list(range(len(positions))):
+            raise ValueError("the waiting entries hold positions 0, 1, 2, … in order")
+        if sum(e.state == "running" for e in self.entries) > 1:
+            raise ValueError("one run at a time: at most one entry is running")
+        return self

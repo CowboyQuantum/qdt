@@ -178,6 +178,11 @@ section ADR 0082 asks for. **ADR 0075 accepted 2026-10-25 (ADR 0084).** **Delive
 2026-10-27; ADR 0085):** `ChannelLimit` and `StandState` in `qdt_schemas.operations`; versions in the
 registry's `stand_states` table (DDL 4); the stand server loads the latest at start, refuses a level, a
 compile, a submission or the start of a queued run beyond a limit, and offers the held point after a
-restart until a person confirms or discards it; the L0 row "StandState" is green. `QueuedRun` and Flight
-Deck's switch to these routes (Levels, Virtual gates, the confirmation prompt) come with deliverable 8.
-Deliverables 8–11, 13–16 not started.
+restart until a person confirms or discards it; the L0 row "StandState" is green. **Deliverable 8 in L0
+(session 32, 2026-10-27; ADR 0086):** `QueuedRun` and `StandQueue` in `qdt_schemas.operations`, `RunRequest`
+moved to `qdt_schemas.control`; the run queue in the stand server, kept in the cache's `run_queue` table,
+one run at a time, move and remove while waiting, abort while running, pause and resume, paused after a
+restart with entries waiting; Flight Deck's Queue widget, Run through the queue, the Levels widget's
+limits and restart prompt, and the Virtual gates matrix saved to the stand. The L0 rows "Queue" and
+"Flight Deck e2e" are green (`e2e/queue.test.ts`; commands absent on a read server, `e2e/readonly.test.ts`).
+Tune-ups are not queue entries yet (ADR 0086 §6). Deliverables 9–11, 13–16 not started.

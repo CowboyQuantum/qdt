@@ -1,0 +1,93 @@
+{
+  "finished_at": "2026-10-13T12:00:00Z",
+  "message": "",
+  "position": null,
+  "queue_id": "00000000000000000000000000000005",
+  "record_id": "00000000000000000000000000000001",
+  "request": {
+    "definition": {
+      "attrs": {},
+      "axes": [
+        {
+          "channel": "P1",
+          "name": "P1",
+          "num": 4,
+          "schema_version": 1,
+          "start": -0.05,
+          "stop": 0.1
+        },
+        {
+          "channel": "P2_pulse",
+          "name": "P2",
+          "num": 5,
+          "schema_version": 1,
+          "start": -0.05,
+          "stop": 0.1
+        }
+      ],
+      "name": "fixture stability 4x5",
+      "repeats": 1,
+      "schema_version": 1,
+      "sensed": [],
+      "stage": {
+        "axes": [
+          "P2"
+        ],
+        "bindings": [
+          {
+            "axis": "P2",
+            "schema_version": 1,
+            "symbol": "v_p2",
+            "value": null
+          }
+        ],
+        "instrument": "dot",
+        "parameters": [],
+        "program": null,
+        "reduce": {
+          "I_sensor": "mean"
+        },
+        "schema_version": 1,
+        "sequence": {
+          "attrs": {},
+          "body": [
+            {
+              "channel": "P2_pulse",
+              "duration": 500,
+              "level": {
+                "name": "v_p2",
+                "schema_version": 1,
+                "unit": "V"
+              },
+              "op": "step",
+              "schema_version": 1
+            },
+            {
+              "channel": "sensor",
+              "duration": 2000,
+              "op": "measure",
+              "result": "I_sensor",
+              "schema_version": 1
+            }
+          ],
+          "name": "read sensor at a P2 pulse level",
+          "schema_version": 1,
+          "segments": []
+        },
+        "shots": 2
+      }
+    },
+    "options": {
+      "campaign": "fixture",
+      "seed": 3
+    },
+    "schema_version": 1
+  },
+  "run_id": "00000000000000000000000000000006",
+  "schema_version": 1,
+  "stand_id": "simulated-double-dot",
+  "started_at": "2026-10-13T12:00:00Z",
+  "state": "done",
+  "submitted_at": "2026-10-13T12:00:00Z",
+  "submitted_by": "local"
+}

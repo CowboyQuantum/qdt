@@ -12,11 +12,15 @@ import type {
   MethodRequest,
   MethodSpec,
   NodeOutcome,
+  QueuedRun,
   ReplayRequest,
   Run,
   RunRequest,
   ServerInfo,
   StandConfig,
+  StandQueue,
+  StandState,
+  StandStateChange,
   StreamInfo,
   SweepDefinition,
   TuneUp,
@@ -137,6 +141,49 @@ export class ApiClient {
   }
   clearLevels(): Promise<FixedLevel[]> {
     return this.call("DELETE", "/levels");
+  }
+  /** The held point offered after a restart, not re-applied until a person confirms it (ADR 0085). */
+  pendingLevels(): Promise<FixedLevel[]> {
+    return this.call("GET", "/levels/pending");
+  }
+  /** Re-apply the offered held point and hold it; returns the operating point. */
+  confirmLevels(): Promise<FixedLevel[]> {
+    return this.call("POST", "/levels/pending/confirm");
+  }
+  /** Do not re-apply the offered held point; the stand state's next version holds nothing. */
+  discardLevels(): Promise<FixedLevel[]> {
+    return this.call("DELETE", "/levels/pending");
+  }
+  /** The stand state in force (ADR 0075, 0085): limits, couplings, the held point, who and why. */
+  standState(): Promise<StandState> {
+    return this.call("GET", "/stand/state");
+  }
+  /** Change the limits and/or the couplings: the next stand state version. */
+  changeStandState(change: StandStateChange): Promise<StandState> {
+    return this.call("POST", "/stand/state", change);
+  }
+  /** The stand's run queue (ADR 0086): running, waiting in order, recent finished; paused or not. */
+  queue(): Promise<StandQueue> {
+    return this.call("GET", "/queue");
+  }
+  /** Add a run at the end of the queue; refused (400) when the stand cannot run it or a limit refuses it. */
+  enqueue(request: RunRequest): Promise<QueuedRun> {
+    return this.call("POST", "/queue", request);
+  }
+  moveEntry(queueId: string, position: number): Promise<StandQueue> {
+    return this.call("POST", `/queue/${encodeURIComponent(queueId)}/move`, { position });
+  }
+  removeEntry(queueId: string): Promise<StandQueue> {
+    return this.call("DELETE", `/queue/${encodeURIComponent(queueId)}`);
+  }
+  abortEntry(queueId: string): Promise<StandQueue> {
+    return this.call("POST", `/queue/${encodeURIComponent(queueId)}/abort`);
+  }
+  pauseQueue(): Promise<StandQueue> {
+    return this.call("POST", "/queue/pause");
+  }
+  resumeQueue(): Promise<StandQueue> {
+    return this.call("POST", "/queue/resume");
   }
   /** The calibration nodes this server offers, built for its stand's sequencer (ADR 0050). */
   nodes(): Promise<CalibrationNode[]> {

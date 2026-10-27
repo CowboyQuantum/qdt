@@ -82,6 +82,7 @@ class RunManager:
         self.registry, self.stream, self.outbox = registry, stream, outbox
         self.runs: dict[str, Run] = {}
         self._stops: dict[str, threading.Event] = {}
+        self._ended: dict[str, asyncio.Event] = {}
         self._lock = asyncio.Lock()
         self.book = StandBook(registry, stand)
         self._live: Mapping[str, Any] | None = None
@@ -309,6 +310,7 @@ class RunManager:
         )
         self.runs[run.run_id] = run
         self._stops[run.run_id] = threading.Event()
+        self._ended[run.run_id] = asyncio.Event()
         asyncio.create_task(self._execute(run.run_id, plan, options))
         return run
 
@@ -323,9 +325,19 @@ class RunManager:
             return self._set(run_id, state="aborted", finished_at=datetime.now(UTC))
         return run
 
+    async def wait(self, run_id: str) -> Run:
+        """The run once it has reached an end (completed, aborted or failed). KeyError for an
+        unknown run. The run queue waits here before it starts the next entry (ADR 0086)."""
+        run = self.runs[run_id]
+        if run.state not in TERMINAL:
+            await self._ended[run_id].wait()
+        return self.runs[run_id]
+
     def _set(self, run_id: str, **update: Any) -> Run:
         run = self.runs[run_id].model_copy(update=update)
         self.runs[run_id] = run
+        if run.state in TERMINAL and run_id in self._ended:
+            self._ended[run_id].set()
         return run
 
     async def _execute(

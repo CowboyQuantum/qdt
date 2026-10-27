@@ -20,6 +20,7 @@ import { historyWidget } from "./widgets/history";
 import { levelsWidget } from "./widgets/levels";
 import { plotWidget } from "./widgets/plot";
 import { pulseWidget } from "./widgets/pulse";
+import { queueWidget } from "./widgets/queue";
 import { scriptWidget } from "./widgets/script";
 import { sweepWidget } from "./widgets/sweep";
 import { tuneupWidget } from "./widgets/tuneup";
@@ -41,7 +42,7 @@ const datasets = new Datasets();
 // the strip's Run are absent, not disabled; an unreachable server is treated as a stand server.
 const readOnly = (await api.server().catch(() => null))?.read_only === true;
 const registry = new WidgetRegistry().register(plotWidget).register(emptyWidget).register(historyWidget);
-if (!readOnly) registry.register(sweepWidget).register(pulseWidget).register(levelsWidget).register(gatesWidget).register(analysisWidget).register(tuneupWidget).register(scriptWidget);
+if (!readOnly) registry.register(sweepWidget).register(pulseWidget).register(levelsWidget).register(queueWidget).register(gatesWidget).register(analysisWidget).register(tuneupWidget).register(scriptWidget);
 const layoutKey = readOnly ? READ_ONLY_LAYOUT_KEY : LAYOUT_KEY;
 
 const themes = new ThemeManager(safeStorage(), applyTheme, matchMedia("(prefers-color-scheme: light)").matches);

@@ -14,7 +14,8 @@ qdt_registry/
 ## Rules
 - Append-only. Rows are inserted once, keyed by a client-minted id or a content hash, and never updated
   or deleted. Writing a different body under an existing key is an error, not an overwrite. The only
-  mutable state is the cache-local `sync_state` table.
+  mutable state is in two cache-local tables, never synced: `sync_state` and the stand server's
+  `run_queue` (ADR 0086).
 - The `body` column is the truth. Other columns are indexes derived from it (or from the payload), and
   every read goes through `qdt_schemas.migrations.load`.
 - A table change bumps `DDL_VERSION`, regenerates the DDL export, adds an additive migration, and needs an

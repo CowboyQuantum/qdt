@@ -25,12 +25,13 @@ import {
   type Layout,
 } from "../src/workspace/layout";
 
-const KNOWN = ["plot", "empty", "history", "sweep", "pulse", "levels", "gates", "analysis", "tuneup", "script"];
+const KNOWN = ["plot", "empty", "history", "sweep", "pulse", "levels", "queue", "gates", "analysis", "tuneup", "script"];
 /** The default layout with one pane per column: the split/close arithmetic reads best from there. */
 const single = () => {
   let l = defaultLayout();
   l = close(l, l.left[2]!.id);
   l = close(l, l.left[1]!.id);
+  l = close(l, l.right[3]!.id);
   l = close(l, l.right[2]!.id);
   l = close(l, l.right[1]!.id);
   return l;
@@ -39,16 +40,16 @@ const sum = (panes: { size: number }[]) => panes.reduce((a, p) => a + p.size, 0)
 const TALL = 10 * MIN_PANE_HEIGHT;
 
 describe("default layout", () => {
-  it("is sweep + analysis + tune-up left, one plot centre, pulse + levels + history right, sides narrower than the centre", () => {
+  it("is sweep + analysis + tune-up left, one plot centre, pulse + levels + queue + history right, sides narrower than the centre", () => {
     const l = defaultLayout();
     expect(l.left.map((p) => p.widget)).toEqual(["sweep", "analysis", "tuneup"]);
     expect(l.center.map((p) => p.widget)).toEqual(["plot"]);
-    expect(l.right.map((p) => p.widget)).toEqual(["pulse", "levels", "history"]);
+    expect(l.right.map((p) => p.widget)).toEqual(["pulse", "levels", "queue", "history"]);
     expect(l.widths.left + l.widths.right).toBeLessThan(0.6);
     expect(sum(l.left)).toBeCloseTo(1);
     expect(sum(l.right)).toBeCloseTo(1);
     const ids = [...l.left, ...l.center, ...l.right].map((p) => p.id);
-    expect(new Set(ids).size).toBe(7);
+    expect(new Set(ids).size).toBe(8);
   });
 });
 
@@ -206,7 +207,7 @@ describe("persistence", () => {
       },
     };
     expect(() => saveLayout(l, broken)).not.toThrow();
-    expect(loadLayout(KNOWN, broken).right).toHaveLength(3);
+    expect(loadLayout(KNOWN, broken).right).toHaveLength(4);
     expect(loadLayout(KNOWN, null).center).toHaveLength(1);
   });
 });
