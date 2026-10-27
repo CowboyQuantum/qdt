@@ -13,14 +13,15 @@ qdt_server/
   tuning.py     # run_node / run_tuneup (direct); TuneUpManager: tune-ups through the RunManager, TuneUp lifecycle, outcomes to the registry (ADR 0048–0050)
   auth.py       # the command token (ADR 0074, 0082): token file, loopback test, the stand router's dependency; who sent a command
   state.py      # StandBook: the StandState in force (ADR 0075, 0085), its versions in the registry, the held point offered after a restart
+  run_queue.py  # RunQueue: the stand's run queue (ADR 0075, 0086), kept in the cache; a worker runs one entry at a time through the RunManager
   __main__.py   # python -m qdt_server --root <registry> [--host --port --stream-port --ui <dist> --read-only --tokens <file>] | --add-token <label>
 ```
 
 ## Rules
 - Every request and response body is a schema object (`SweepDefinition`, `ExecutionPlan`, `Run`,
   `MeasurementRecord`, `MethodSpec`, `AnalysisResult`, `CalibrationNode`, `TuneUp`, `NodeOutcome`,
-  `StandState`) or a list of them. No ad-hoc JSON shapes: the OpenAPI document is generated from them
-  and the UI's client is generated from that (ADR 0034).
+  `StandState`, `RunRequest`, `QueuedRun`, `StandQueue`) or a list of them. No ad-hoc JSON shapes:
+  the OpenAPI document is generated from them and the UI's client is generated from that (ADR 0034).
 - The server never defines schema objects (that is `qdt-schemas`) and never computes an analysis itself
   (that is `qdt-analysis`): it compiles, executes, stores, serves.
 - `GET /levels/state` (ADR 0057) reports every level-setting or level-sensing channel's setpoint, held level and readback (null where the instrument refuses the channel) from one live instrument set the `RunManager` builds once and keeps; on the simulator that set is separate from a run's seeded device.
@@ -36,6 +37,13 @@ qdt_server/
   beyond them, never clamped (`qdt_lab.experiment.check_limits`). After a restart the held point is
   offered at `GET /levels/pending` and applied only by `POST /levels/pending/confirm`; until then
   nothing is held and no sweep inherits it.
+- The run queue (ADR 0075, 0086) is `run_queue.RunQueue`: entries in the registry cache's `run_queue`
+  table, run one at a time through `RunManager.start` (so the limits are checked again when an entry
+  starts) by a worker in the event loop; every `/queue` route is `async` so none races it. Move and
+  remove apply to waiting entries, abort to the running one (409 otherwise). After a restart with
+  entries waiting the queue is paused until a person resumes it; an entry running at the stop is
+  recorded as aborted. `POST /runs` stays for scripts, the bench rows and tune-ups and shares the
+  `RunManager`'s lock, so one run at a time holds for both. Tune-ups are not queue entries yet.
 - Step 4b wires the `simulated` backend only. Real drivers (Step 5) enter through `build_backends` with
   their factories; the API does not change. The simulated stand is `qdt_sim`'s double dot plus a
   simulated scope (`scope`, channel `scope1`, ADR 0047) whose record is a droop set by the run options
