@@ -24,6 +24,11 @@ Run `/session-check` before claiming anything is done.
 3. write an ADR for any decision a future session could reasonably ask "why?" about (`/adr`)
 4. commit. A session that ends uncommitted did not happen.
 5. push the branch and open a pull request against `main` with a review-focus list. The human merges from the PR (often from a phone); never push `main` yourself.
+6. arm a watcher on every pull request an agent opens, in the same turn it is opened (human, 2026-10-27).
+   Subscribe the session to the pull request's activity (`subscribe_pr_activity`), so CI results and
+   review comments wake it, and schedule a safety-net check-in about 50 minutes out (`send_later`), for
+   the events that do not wake it. The watch lasts until the pull request is merged or closed. A session
+   that cannot arm one says so in its reply to the human, naming the pull request left unwatched.
 
 ## Hard rules (violations fail CI; see `scripts/`)
 

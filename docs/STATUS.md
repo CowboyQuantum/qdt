@@ -8,8 +8,8 @@
 deliverables 2 (code half), 3, 4, 5, 6 and 12 done, deliverable 1 rehearsed on the human's personal PC and
 Mac (`bench/reports/2026-10-24-step6c.md`), the L1 rows scripted (`bench/test_l1_remote_read.py`). Goal 2:
 **deliverable 7 in L0 this session (ADR 0085).** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
-**Branch:** `step-6c/stand-state`, built on `step-6c/phantom-cutover-analysis` (PR #143, Analysis 0007),
-so its pull request carries #143's two commits; merging #143 first leaves this one's own diff.
+**Branch:** `step-6c/stand-state`, restarted from `main` after #143 (Analysis 0007) and #144 (deliverable
+7) were merged on 2026-10-27; it now carries only the watcher rule (root `CLAUDE.md`, End step 6).
 **Last session:** 2026-10-27 (session 31), no bench.
 
 ## Done this session
@@ -35,7 +35,7 @@ so its pull request carries #143's two commits; merging #143 first leaves this o
   green; e2e not run here (#135).
 
 ## In flight
-- PR #143 (Analysis 0007) and the PR for `step-6c/stand-state` await the human's merge.
+- The pull request for the watcher rule awaits the human's merge; it is watched (End step 6).
 - **The Phantom cutover, queued, not started** (Analysis 0007; qdt #140, #141, #142; Phantom #40, #41).
   Before any qdt code it needs a step file (ADR 0071), with #141 as its first deliverable.
 - Flight Deck still keeps its own limit and coupling matrix in the browser; the server's limits hold
@@ -55,7 +55,7 @@ reorder and remove while queued, abort while running; Flight Deck's queue, Level
 on the server's routes, with a prompt to confirm or discard an offered held point; the L0 rows "Queue" and
 "Flight Deck e2e" in the step file. Closes #78 and #79. Branch `step-6c/<short-name>`. Blockers from the
 human's machines first, if any appear.
-**Human:** merge PR #143, then this PR. Then, on the rehearsal `qdt-db`, update the repository and run
+**Human:** merge the watcher-rule pull request. On the rehearsal `qdt-db`, update the repository and run
 `uv run python -m qdt_registry init` with the admin role (runbook Part 4): the layout is now version 4,
 and until then the laptop's sync and the read server stop with a message saying so. Still open from before:
 send plan §9 to IT; `ipconfig` on the measurement PC for #80; the rest of ADR 0077 before deliverables
@@ -64,7 +64,9 @@ pre-deployment records; restore drill #2 on 2026-10-31 (#133).
 
 ## Direction recorded (human)
 - **2026-10-27 (session 31):** asked for notes on making qdt compatible with Phantom (they are Analysis
-  0007 on PR #143, and issues #140–#142), then: "Ok then continue with deliverable 7."
+  0007, PR #143, and issues #140–#142), then: "Ok then continue with deliverable 7." After #144 was
+  opened: "Yes, make sure all agent submitted PRs have a watcher armed going forward" → root `CLAUDE.md`,
+  End step 6, and `.claude/commands/session-end.md` step 6.
 - **2026-10-27 (session 30, detour):** asked for the Phantom cutover to be laid out; answered Analysis
   0007's questions: "move the sequencer interpreter into qdt lab as you say. device file makes more sense.
   Let's hold off on deciding the release cadence. I don't see a decision needed for the simulated stand."
