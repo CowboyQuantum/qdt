@@ -1,9 +1,13 @@
 """Registry client (ADR 0024, 0026): ingest validates, queries answer the Step 3 exit question offline,
 sync is idempotent and append-only, and the server answers the same query."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from qdt_registry import Registry
+from qdt_schemas.activity import FixedLevel
+from qdt_schemas.operations import ChannelLimit, StandState
 
 
 def test_full_loop_sweep_record_query_sync(tmp_path, server, device, recorded_run):
@@ -26,6 +30,7 @@ def test_full_loop_sweep_record_query_sync(tmp_path, server, device, recorded_ru
         "records": 1,
         "analysis_results": 0,
         "tuning_outcomes": 0,
+        "stand_states": 0,
     }
 
     report = reg.sync()
@@ -37,6 +42,7 @@ def test_full_loop_sweep_record_query_sync(tmp_path, server, device, recorded_ru
         "records": 0,
         "analysis_results": 0,
         "tuning_outcomes": 0,
+        "stand_states": 0,
     }
     assert reg.find(**by, remote=True) == [record]
     assert reg.find(stand_id=stand.stand_id, definition_name=plan.definition.name, remote=True) == [
@@ -180,8 +186,35 @@ def test_a_version_1_server_is_upgraded_by_adding_tables_only(tmp_path):
     assert reg.find(remote=True) == []
     with engine.connect() as conn:
         version = conn.execute(select(registry_meta.c.value)).scalar_one()
-    assert version == "3" and "analysis_results" in metadata.tables
+    assert version == "4" and "analysis_results" in metadata.tables
     assert "tuning_outcomes" in metadata.tables  # DDL v3 (ADR 0050)
+    assert "stand_states" in metadata.tables  # DDL v4 (ADR 0085)
+
+
+def test_a_version_3_server_gains_stand_states_and_keeps_its_rows(tmp_path, device, recorded_run):
+    """ADR 0085: v3 → v4 only adds `stand_states`; a v3 server with records keeps them and takes
+    the stand's state on the next sync."""
+    from sqlalchemy import create_engine, inspect, select
+
+    from qdt_registry.tables import metadata, registry_meta, stand_states
+
+    dsn = f"sqlite:///{(tmp_path / 'v3.sqlite').as_posix()}"
+    engine = create_engine(dsn)
+    metadata.create_all(engine, tables=[t for t in metadata.sorted_tables if t is not stand_states])
+    with engine.begin() as conn:
+        conn.execute(registry_meta.insert().values(key="ddl_version", value="3"))
+    assert "stand_states" not in inspect(engine).get_table_names()
+    reg = Registry(tmp_path / "client", remote_dsn=dsn, remote_store=tmp_path / "store")
+    reg.register_device(device)
+    record, path, _, _ = recorded_run(tmp_path)
+    reg.ingest(record, path)
+    reg.add_stand_state(stand_state(1))
+    report = reg.sync()
+    assert (report.records, report.stand_states) == (1, 1)
+    with engine.connect() as conn:
+        assert conn.execute(select(registry_meta.c.value)).scalar_one() == "4"
+    assert reg.find(remote=True) == [record]
+    assert reg.stand_state("sim-stand", remote=True) == stand_state(1)
 
 
 def test_node_outcomes_are_stored_queried_and_synced(tmp_path, server, device, recorded_run):
@@ -248,7 +281,9 @@ def test_node_outcomes_are_stored_queried_and_synced(tmp_path, server, device, r
     assert reg.sync().tuning_outcomes == 0
 
 
-def test_a_server_down_at_the_first_sync_is_prepared_when_it_answers(tmp_path, device, recorded_run):
+def test_a_server_down_at_the_first_sync_is_prepared_when_it_answers(
+    tmp_path, device, recorded_run
+):
     """ADR 0080: the stand server retries after every record, so a connection that failed must not
     leave a half-made engine behind: the first sync that reaches the server still creates its tables."""
     server = tmp_path / "server"  # not created yet: the server is down
@@ -285,7 +320,10 @@ def test_a_reader_with_only_the_servers_address_reads_devices_records_and_payloa
     assert reader.devices() == [] and reader.devices(remote=True) == [device]
     assert reader.find(remote=True) == [record]
     assert reader.payload_file(record.record_id, remote=True) == store / record.payload.path
-    assert reader.payload(record.record_id, remote=True).dataset == writer.payload(record.record_id).dataset
+    assert (
+        reader.payload(record.record_id, remote=True).dataset
+        == writer.payload(record.record_id).dataset
+    )
     with pytest.raises(KeyError):
         reader.payload(record.record_id)  # not in the reader's own cache or store
     with pytest.raises(RuntimeError, match="QDT_PAYLOAD_STORE"):
@@ -298,3 +336,88 @@ def test_init_server_prepares_an_empty_server_once(tmp_path, server):
     reg = Registry(tmp_path / "admin", remote_dsn=dsn, remote_store=store)
     assert reg.init_server() == reg.init_server()  # idempotent
     assert Registry(tmp_path / "reader", remote_dsn=dsn).find(remote=True) == []
+
+
+def test_a_role_that_cannot_add_tables_is_told_to_run_the_schema_step(tmp_path):
+    """ADR 0085: DDL 4 adds a table. The writer and the reader may not create one (ADR 0074), so a
+    client meeting a version 3 server through them says to run `init` as the admin. A read-only
+    SQLite file stands in for those roles (ADR 0081)."""
+    from sqlalchemy import create_engine
+
+    from qdt_registry.tables import metadata, registry_meta, stand_states
+
+    db = tmp_path / "v3.sqlite"
+    engine = create_engine(f"sqlite:///{db.as_posix()}")
+    metadata.create_all(engine, tables=[t for t in metadata.sorted_tables if t is not stand_states])
+    with engine.begin() as conn:
+        conn.execute(registry_meta.insert().values(key="ddl_version", value="3"))
+    engine.dispose()
+    reader = Registry(
+        tmp_path / "reader", remote_dsn=f"sqlite:///file:{db.as_posix()}?mode=ro&uri=true"
+    )
+    with pytest.raises(
+        RuntimeError, match=r"ddl_version 3; this client expects 4.*qdt_registry init"
+    ):
+        reader.find(remote=True)
+
+
+def stand_state(version: int, **update) -> StandState:
+    base = {
+        "stand_id": "sim-stand",
+        "version": version,
+        "limits": (ChannelLimit(channel="P1", min_v=-0.5, max_v=0.5),),
+        "held": (FixedLevel(channel="P1", value=0.01 * version),),
+        "set_by": "local",
+        "set_at": datetime(2026, 10, 27, 12, version, tzinfo=UTC),
+        "reason": f"change {version}",
+    }
+    return StandState(**(base | update))
+
+
+def test_stand_states_are_versioned_append_only_and_synced(tmp_path, server):
+    """ADR 0075, 0085 (L0 row "StandState": versions round-trip; the latest is in force)."""
+    dsn, store = server
+    reg = Registry(tmp_path / "client", remote_dsn=dsn, remote_store=store)
+    with pytest.raises(KeyError):
+        reg.stand_state("sim-stand")
+    with pytest.raises(ValueError, match="leaves a gap"):
+        reg.add_stand_state(stand_state(2))  # a stand's first version is 1
+    v1, v2 = stand_state(1), stand_state(2)
+    assert reg.add_stand_state(v1) == v1
+    reg.add_stand_state(v1)  # idempotent
+    reg.add_stand_state(v2)
+    with pytest.raises(ValueError, match="different body"):
+        reg.add_stand_state(stand_state(2, reason="another writer"))
+    with pytest.raises(ValueError, match="leaves a gap"):
+        reg.add_stand_state(stand_state(4))
+    reg.add_stand_state(stand_state(1, stand_id="other-stand"))
+    assert reg.stand_state("sim-stand") == v2  # the latest is in force
+    assert reg.stand_state("sim-stand", 1) == v1
+    assert reg.stand_states("sim-stand") == [v1, v2]
+    assert [s.stand_id for s in reg.stand_states()] == ["other-stand", "sim-stand", "sim-stand"]
+    assert reg.unsynced()["stand_states"] == 3
+    assert reg.sync().stand_states == 3 and reg.unsynced()["stand_states"] == 0
+    assert reg.stand_states("sim-stand", remote=True) == [v1, v2]
+    assert reg.sync().stand_states == 0
+
+
+def test_a_new_cache_continues_the_stands_history_from_the_server(tmp_path, server):
+    """ADR 0085: a stand server on a rebuilt computer pulls the stand's versions before writing its
+    own, so its next version follows the server's latest instead of colliding with version 1."""
+    dsn, store = server
+    first = Registry(tmp_path / "first", remote_dsn=dsn, remote_store=store)
+    first.add_stand_state(stand_state(1))
+    first.add_stand_state(stand_state(2))
+    first.sync()
+    rebuilt = Registry(tmp_path / "rebuilt", remote_dsn=dsn, remote_store=store)
+    assert rebuilt.pull_stand_states("sim-stand") == 2
+    assert rebuilt.pull_stand_states("sim-stand") == 0
+    assert rebuilt.unsynced()["stand_states"] == 0  # what came from the server is not sent back
+    assert rebuilt.stand_state("sim-stand").version == 2
+    rebuilt.add_stand_state(stand_state(3))
+    assert rebuilt.sync().stand_states == 1
+    assert [s.version for s in first.stand_states("sim-stand", remote=True)] == [1, 2, 3]
+    clash = Registry(tmp_path / "clash", remote_dsn=dsn, remote_store=store)
+    clash.add_stand_state(stand_state(1, reason="a second cache claims the stand"))
+    with pytest.raises(ValueError, match="different body"):
+        clash.pull_stand_states("sim-stand")

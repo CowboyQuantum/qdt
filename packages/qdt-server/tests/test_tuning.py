@@ -363,6 +363,9 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
     # ADR 0062: the wing node holds the sensor gate where it decided; a retune alone re-centres on it
     held = {lv["channel"]: lv["value"] for lv in client.get("/levels").json()}
     assert held["SG"] == pytest.approx(wing.outputs["sg_operating_v"])
+    state = client.get("/stand/state").json()  # ADR 0085: a version under the tune-up's name
+    assert state["set_by"] == f"tune-up {tuneup.tuneup_id}"
+    assert "'sensor-wing' accepted" in state["reason"]
     r = client.post("/tuneups", json={"node_ids": ["sensor-wing"], "scenario": COLD.model_dump(mode="json")})
     assert r.status_code == 202, r.text
     retune = wait_tuneup(client, r.json()["tuneup_id"])

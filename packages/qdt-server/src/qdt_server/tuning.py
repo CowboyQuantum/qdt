@@ -358,7 +358,9 @@ class TuneUpManager:
                     # about the held level, a lattice at the fitted wing), not the template
                     self._set(
                         tuneup_id,
-                        nodes=tuple(bound if n.node_id == node.node_id else n for n in tuneup.nodes),
+                        nodes=tuple(
+                            bound if n.node_id == node.node_id else n for n in tuneup.nodes
+                        ),
                     )
                     tuneup = self.tuneups[tuneup_id]
                     run = await self.runs.start(bound.definition, options)
@@ -391,8 +393,13 @@ class TuneUpManager:
                             for ch, name in node.holds.items()
                             if name in outcome.outputs
                         ]
-                        if levels:
-                            self.runs.set_levels(levels)
+                        if levels:  # a level beyond a limit fails the tune-up (ADR 0085)
+                            self.runs.set_levels(
+                                levels,
+                                by=f"tune-up {tuneup_id}",
+                                reason=f"node {node.node_id!r} accepted: holds "
+                                + ", ".join(f"{lv.channel} = {lv.value:g}" for lv in levels),
+                            )
                 finish("completed")
             except Exception as e:  # noqa: BLE001 — the tune-up reports its failure
                 finish("failed", f"{type(e).__name__}: {e}")

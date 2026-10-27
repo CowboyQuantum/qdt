@@ -29,12 +29,13 @@ from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import AnalysisResult, CalibrationNode, NodeOutcome, SimScenario
+from qdt_schemas.operations import ChannelLimit, StandState
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_sim.dot import DoubleDotModel
 from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
 
 from . import catalogue
-from .auth import command_token, read_tokens
+from .auth import command_token, commander, read_tokens
 from .runs import BackendFactory, RunManager
 from .tuning import TuneUpManager
 
@@ -155,6 +156,29 @@ class RunRequest(BaseModel):
     )
 
 
+class StandStateChange(BaseModel):
+    """Change a stand's limits and/or couplings (ADR 0075, 0085): the next `StandState` version. The
+    held point changes through /levels, where it is applied; what is not given carries over."""
+
+    limits: list[ChannelLimit] | None = Field(
+        default=None,
+        description=(
+            "The stand's limits after the change, every one of them (a channel left out has none); "
+            "null leaves the limits as they are."
+        ),
+    )
+    couplings: dict[str, dict[str, float]] | None = Field(
+        default=None,
+        description=(
+            "The coupling matrix after the change (axis channel → channel → volts per volt); null "
+            "leaves it as it is, {} clears it."
+        ),
+    )
+    reason: str = Field(
+        min_length=1, description="Why the stand's state changes; kept with the version."
+    )
+
+
 class MethodRequest(BaseModel):
     """Run a curated method on a record."""
 
@@ -232,6 +256,28 @@ def _register_or_reuse(registry: Registry, device: DeviceRecord) -> None:
         )
 
 
+PULL_TIMEOUT_S = 10.0
+"""How long a starting stand server waits for the registry server's stand states (ADR 0085)."""
+
+
+async def _pull_stand_states(registry: Registry, stand_id: str) -> None:
+    """Before the stand state is loaded: copy the registry server's versions of this stand that the
+    cache lacks, so a new cache continues the stand's history (ADR 0085). The registry server being
+    unreachable or slow is logged and the cache's own history is used, as for a sync (ADR 0080)."""
+    if not registry.remote_dsn:
+        return
+    try:
+        copied = await asyncio.wait_for(
+            asyncio.to_thread(registry.pull_stand_states, stand_id), PULL_TIMEOUT_S
+        )
+        if copied:
+            log.info(
+                "took %d stand state version(s) of %r from the registry server", copied, stand_id
+            )
+    except Exception as e:  # noqa: BLE001 — the cache's history stands; a conflict shows on sync
+        log.warning("stand states of %r not read from the registry server: %s", stand_id, e)
+
+
 def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -248,6 +294,7 @@ def create_app(settings: Settings) -> FastAPI:
                 yield
             return
         _register_or_reuse(registry, settings.device)
+        await _pull_stand_states(registry, settings.stand.stand_id)
         async with StreamServer(settings.stream_host, settings.stream_port) as stream:
             app.state.registry = registry
             app.state.stream = stream
@@ -332,9 +379,11 @@ def create_app(settings: Settings) -> FastAPI:
 
     @stand.post("/levels", response_model=list[FixedLevel])
     def set_levels(body: list[FixedLevel], request: Request) -> list[FixedLevel]:
-        """Set these channels now and hold them; returns the whole operating point."""
+        """Set these channels now and hold them; returns the whole operating point. A level beyond
+        its channel's limit is refused (400) and nothing is set (ADR 0075). Each change is the next
+        stand state version, with who sent it."""
         try:
-            return runs(request).set_levels(body)
+            return runs(request).set_levels(body, by=commander(request))
         except KeyError as e:
             raise HTTPException(400, f"no channel {e.args[0]!r} on the stand") from None
         except (ValueError, RuntimeError) as e:
@@ -343,7 +392,57 @@ def create_app(settings: Settings) -> FastAPI:
     @stand.delete("/levels", response_model=list[FixedLevel])
     def clear_levels(request: Request) -> list[FixedLevel]:
         """Forget the held operating point; the stand stays where it is."""
-        return runs(request).clear_levels()
+        return runs(request).clear_levels(by=commander(request))
+
+    @stand.get("/levels/pending", response_model=list[FixedLevel])
+    def pending_levels(request: Request) -> list[FixedLevel]:
+        """The held point of the latest stand state, offered after a restart and not re-applied
+        until a person confirms it (ADR 0075); empty when nothing waits."""
+        return runs(request).pending_levels()
+
+    @stand.post("/levels/pending/confirm", response_model=list[FixedLevel])
+    def confirm_levels(request: Request) -> list[FixedLevel]:
+        """Re-apply the offered held point and hold it; returns the operating point. 409 when
+        nothing is offered, 400 when the stand no longer fits it."""
+        try:
+            return runs(request).confirm_levels()
+        except LookupError as e:
+            if isinstance(e, KeyError):
+                raise HTTPException(400, f"no channel {e.args[0]!r} on the stand") from None
+            raise HTTPException(409, str(e)) from None
+        except (ValueError, RuntimeError) as e:
+            raise HTTPException(400, str(e)) from None
+
+    @stand.delete("/levels/pending", response_model=list[FixedLevel])
+    def discard_levels(request: Request) -> list[FixedLevel]:
+        """Do not re-apply the offered held point: the next version holds nothing and says so."""
+        manager = runs(request)
+        if not manager.pending_levels():
+            raise HTTPException(409, "no held point is waiting for confirmation")
+        return manager.clear_levels(by=commander(request))
+
+    # --- the stand's state (ADR 0075, 0085): limits, couplings, the held point, versioned ---------
+
+    @stand.get("/stand/state", response_model=StandState)
+    def get_stand_state(request: Request) -> StandState:
+        """The stand state in force: the latest version, whose limits every level and sweep meets."""
+        return runs(request).state
+
+    @stand.post("/stand/state", response_model=StandState, status_code=201)
+    def change_stand_state(body: StandStateChange, request: Request) -> StandState:
+        """Change the limits and/or the couplings; returns the new version. 400 for a channel the
+        stand lacks or cannot drive, or a held level the new limits would put out of bounds."""
+        try:
+            return runs(request).set_state(
+                by=commander(request),
+                reason=body.reason,
+                limits=body.limits,
+                couplings=body.couplings,
+            )
+        except KeyError as e:
+            raise HTTPException(400, f"no channel {e.args[0]!r} on the stand") from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
 
     @stand.post("/sweeps/compile", response_model=ExecutionPlan)
     def compile_sweep_route(definition: SweepDefinition, request: Request) -> ExecutionPlan:
@@ -409,13 +508,21 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(404, f"no record {record_id!r}") from None
         path = reg.payload_file(record_id, remote=remote)
         if not path.is_file():
-            raise HTTPException(404, f"payload of record {record_id!r} is not in this server's store")
+            raise HTTPException(
+                404, f"payload of record {record_id!r} is not in this server's store"
+            )
         return FileResponse(
             path,
             media_type="application/x-hdf5",
             filename=path.name,
             headers={"X-Content-SHA256": record.payload.sha256},
         )
+
+    @app.get("/stand-states", response_model=list[StandState])
+    def list_stand_states(request: Request, stand_id: str | None = None) -> list[StandState]:
+        """Every stored stand state version, by stand then version, oldest first: the audit trail.
+        A read server answers from the registry server, a stand server from its own cache."""
+        return registry(request).stand_states(stand_id, remote=remote)
 
     @app.get("/methods", response_model=list[MethodSpec])
     def list_methods() -> list[MethodSpec]:

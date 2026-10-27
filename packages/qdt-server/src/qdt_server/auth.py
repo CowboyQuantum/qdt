@@ -6,6 +6,9 @@ desk or person it was given to); blank lines and `#` comments are ignored. A tok
 deleting its line, and the file is read on every command, so a revocation needs no restart. A missing
 file means every command from elsewhere is refused. `python -m qdt_server --add-token <label>` appends a
 fresh token and prints it once.
+
+A command that passes the check carries who sent it (`commander`): the token's label, `local` for a
+command from this computer. The stand state records it as `set_by` (ADR 0085).
 """
 
 import hmac
@@ -14,6 +17,11 @@ import secrets
 from pathlib import Path
 
 from fastapi import HTTPException, Request
+
+LOCAL = "local"
+"""Who a command from this computer (loopback) is from: it carries no token, so no label."""
+UNLABELLED = "a desk with an unlabelled token"
+"""Who a command is from when its token has no label in the token file."""
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 """Reads, and the browser's CORS preflight: never challenged (ADR 0074: reads need only the network)."""
@@ -62,7 +70,22 @@ def new_token(path: Path, label: str) -> str:
 
 def accepted(path: Path, presented: str) -> bool:
     """True when `presented` is one of the tokens in `path`, compared in constant time."""
-    return any(hmac.compare_digest(presented, t) for t in read_tokens(path))
+    return label_of(path, presented) is not None
+
+
+def label_of(path: Path, presented: str) -> str | None:
+    """The label of `presented` in `path` (`UNLABELLED` when its line has none), or None when it is
+    not a token there. Every token is compared, in constant time."""
+    found = None
+    for token, label in read_tokens(path).items():
+        if hmac.compare_digest(presented, token):
+            found = label or UNLABELLED
+    return found
+
+
+def commander(request: Request) -> str:
+    """Who sent the command `request` carries, as the stand router's check recorded it."""
+    return getattr(request.state, "commander", LOCAL)
 
 
 def command_token(path: Path):
@@ -73,6 +96,7 @@ def command_token(path: Path):
         if request.method in SAFE_METHODS:
             return
         if request.client is not None and is_loopback(request.client.host):
+            request.state.commander = LOCAL
             return
         scheme, _, token = request.headers.get("authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not token.strip():
@@ -82,11 +106,13 @@ def command_token(path: Path):
                 "with a token from this server's token file (ADR 0074)",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if not accepted(path, token.strip()):
+        label = label_of(path, token.strip())
+        if label is None:
             raise HTTPException(
                 401,
                 "token not accepted: it is not in this server's token file, or its line was removed",
                 headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
             )
+        request.state.commander = label
 
     return check

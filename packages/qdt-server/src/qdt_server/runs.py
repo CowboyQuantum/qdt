@@ -1,6 +1,9 @@
 """Run lifecycle (ADR 0034): accept a definition, compile it, execute it on a backend in the stream
-server's worker thread, record it, ingest it. `Run` objects and the held operating point (ADR 0053) are
-the only state; records are durable and carry the operating point they ran at.
+server's worker thread, record it, ingest it. `Run` objects live in memory; the stand state (the held
+operating point of ADR 0053, the limits and couplings of ADR 0075) is versioned in the registry through
+`StandBook` (ADR 0085); records are durable and carry the operating point they ran at.
+Every level set and every sweep compiled is checked against the limits in force, and refused beyond
+them; a queued run is checked again when it starts, so a limit tightened meanwhile still holds.
 A run may be aborted: queued, it never starts; running, it stops between frames and what it streamed
 is recorded with outcome `aborted`."""
 
@@ -13,13 +16,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from qdt_lab.experiment import Executor, QuaEmitter, RunRecorder, SimulatedEmitter, compile_sweep
+from qdt_lab.experiment import (
+    Executor,
+    LimitError,
+    QuaEmitter,
+    RunRecorder,
+    SimulatedEmitter,
+    check_limits,
+    compile_sweep,
+)
 from qdt_lab.stream import Frame, Source, StreamServer
 from qdt_registry import Registry, SyncReport
 from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
 from qdt_schemas.control import ChannelLevel, Run
 from qdt_schemas.data import AttrValue, Dataset
+from qdt_schemas.operations import ChannelLimit, StandState
 from qdt_schemas.stand import StandConfig
+
+from .state import SERVER, StandBook, describe
 
 BackendFactory = Callable[[dict[str, AttrValue]], Mapping[str, Any]]
 """Builds the backends for one run from the run's options (seed, noise, ...)."""
@@ -69,7 +83,7 @@ class RunManager:
         self.runs: dict[str, Run] = {}
         self._stops: dict[str, threading.Event] = {}
         self._lock = asyncio.Lock()
-        self._levels: dict[str, float] = {}
+        self.book = StandBook(registry, stand)
         self._live: Mapping[str, Any] | None = None
         self._sync_lock = asyncio.Lock()
         self._syncs: set[asyncio.Task[SyncReport | None]] = set()
@@ -112,6 +126,7 @@ class RunManager:
         its readback; None where the instrument has no such capability or refuses the channel."""
         out: list[ChannelLevel] = []
         backends = self.live_backends()
+        held = self.book.held
         for channel in self.stand.channels:
             caps = self.stand.instrument(channel.instrument).capabilities
             if "level_source" not in caps and "level_sense" not in caps:
@@ -134,41 +149,120 @@ class RunManager:
                     instrument=channel.instrument,
                     quantity=channel.quantity,
                     setpoint=setpoint,
-                    held=self._levels.get(channel.logical),
+                    held=held.get(channel.logical),
                     readback=readback,
                 )
             )
         return out
 
+    @property
+    def state(self) -> StandState:
+        """The stand state in force: the latest version (ADR 0075, 0085)."""
+        return self.book.state
+
     def levels(self) -> list[FixedLevel]:
         """The operating point the server holds for the stand: DC levels every sweep inherits unless
-        it sets, sweeps, couples, senses or captures the channel itself."""
-        return [FixedLevel(channel=c, value=v) for c, v in sorted(self._levels.items())]
+        it sets, sweeps, couples, senses or captures the channel itself. Empty while a held point
+        offered after a restart awaits confirmation."""
+        return [FixedLevel(channel=c, value=v) for c, v in sorted(self.book.held.items())]
 
-    def set_levels(self, levels: Sequence[FixedLevel]) -> list[FixedLevel]:
-        """Hold `levels` (merged over the current ones) and apply them on the stand now. Raises KeyError
-        for a channel the stand lacks, ValueError for one whose instrument is not a LevelSource."""
+    def pending_levels(self) -> list[FixedLevel]:
+        """The held point of the latest version, offered after a restart and not yet confirmed."""
+        return list(self.book.pending)
+
+    def _check_settable(self, levels: Sequence[FixedLevel]) -> None:
+        """Raise KeyError for a channel the stand lacks, ValueError for one whose instrument is not a
+        LevelSource, `LimitError` for a level beyond its limit: before anything is applied."""
         for lv in levels:
             channel = self.stand.channel(lv.channel)  # KeyError for an unknown channel
             if "level_source" not in self.stand.instrument(channel.instrument).capabilities:
                 raise ValueError(
                     f"channel {lv.channel!r} is on {channel.instrument!r}, which is not a LevelSource"
                 )
+        beyond = self.state.violations({lv.channel: (lv.value, lv.value) for lv in levels})
+        if beyond:
+            raise LimitError(
+                f"refused by stand state version {self.state.version}: " + "; ".join(beyond)
+            )
+
+    def _apply(self, levels: Sequence[FixedLevel]) -> None:
         backends = self.live_backends()
         for lv in levels:
             channel = self.stand.channel(lv.channel)
             backends[channel.instrument].set(channel.channel, lv.value)
-            self._levels[lv.channel] = lv.value
+
+    def set_levels(
+        self, levels: Sequence[FixedLevel], *, by: str = SERVER, reason: str | None = None
+    ) -> list[FixedLevel]:
+        """Hold `levels` (merged over the current ones), apply them on the stand now and write the
+        new held point as the next stand state version. Raises KeyError for a channel the stand
+        lacks, ValueError for one whose instrument is not a LevelSource, and `LimitError` for a
+        level beyond its limit; a refusal applies and writes nothing. Before a held point offered
+        after a restart is confirmed, it is discarded: the new version holds only `levels`."""
+        self._check_settable(levels)
+        discarded = self.book.pending
+        merged = self.book.held | {lv.channel: lv.value for lv in levels}
+        self._apply(levels)
+        why = reason or f"levels set: {describe(levels)}"
+        if discarded:
+            why += f"; the held point offered after the restart ({describe(discarded)}) was not re-applied"
+        self.book.write(
+            by=by,
+            reason=why,
+            held=[FixedLevel(channel=c, value=v) for c, v in sorted(merged.items())],
+        )
+        self.book.confirmed = True
         return self.levels()
 
-    def clear_levels(self) -> list[FixedLevel]:
-        """Forget the held operating point (the stand keeps whatever it is at)."""
-        self._levels.clear()
+    def clear_levels(self, *, by: str = SERVER, reason: str | None = None) -> list[FixedLevel]:
+        """Forget the held operating point (the stand keeps whatever it is at) and write that as the
+        next version; a held point offered after a restart is discarded the same way."""
+        if self.state.held:
+            discarded = self.book.pending
+            why = reason or (
+                f"the held point offered after the restart ({describe(discarded)}) was not re-applied"
+                if discarded
+                else f"held point released ({describe(self.state.held)})"
+            )
+            self.book.write(by=by, reason=why, held=())
+        self.book.confirmed = True
         return []
+
+    def confirm_levels(self) -> list[FixedLevel]:
+        """Apply the held point offered after a restart and hold it (ADR 0075: only a person's
+        confirmation re-applies it). The state does not change, so no version is written. Raises
+        LookupError when nothing is offered; KeyError, ValueError or `LimitError` when the stand no
+        longer has a channel, or the held point no longer fits it."""
+        pending = self.book.pending
+        if not pending:
+            raise LookupError("no held point is waiting for confirmation")
+        self._check_settable(pending)
+        self._apply(pending)
+        self.book.confirmed = True
+        log.info(
+            "held point of stand state v%d re-applied: %s", self.state.version, describe(pending)
+        )
+        return self.levels()
+
+    def set_state(
+        self,
+        *,
+        by: str,
+        reason: str,
+        limits: Sequence[ChannelLimit] | None = None,
+        couplings: dict[str, dict[str, float]] | None = None,
+    ) -> StandState:
+        """Write the next version with new limits and/or couplings; the held point (offered or held)
+        carries over and must fit the new limits. Raises KeyError for an unknown channel and
+        ValueError for a limit on a channel nothing drives, a coupling off a LevelSource, or a held
+        level beyond a new limit (lower or release it first)."""
+        self.book.check_channels(limits or (), couplings)
+        return self.book.write(by=by, reason=reason, limits=limits, couplings=couplings)
 
     def with_operating_point(self, definition: SweepDefinition) -> SweepDefinition:
         """`definition` with the held levels added for every channel it does not touch itself."""
-        if not self._levels:
+        held = self.book.held
+        if not held:
             return definition
         touched = (
             {a.channel for a in definition.axes}
@@ -178,21 +272,21 @@ class RunManager:
             | {lv.channel for lv in definition.levels}
         )
         extra = tuple(
-            FixedLevel(channel=c, value=v)
-            for c, v in sorted(self._levels.items())
-            if c not in touched
+            FixedLevel(channel=c, value=v) for c, v in sorted(held.items()) if c not in touched
         )
         if not extra:
             return definition
         return definition.model_copy(update={"levels": (*definition.levels, *extra)})
 
     def compile(self, definition: SweepDefinition) -> ExecutionPlan:
-        """Raises ValueError for a definition the stand cannot run. The held operating point is merged
-        in first (ADR 0053), so the plan and the record carry it."""
+        """Raises ValueError for a definition the stand cannot run, `LimitError` for one beyond the
+        limits in force (ADR 0075). The held operating point is merged in first (ADR 0053), so the
+        plan and the record carry it."""
         return compile_sweep(
             self.with_operating_point(definition),
             self.stand,
             {"simulated": SimulatedEmitter(), "qua": QuaEmitter()},
+            stand_state=self.state,
         )
 
     async def start(
@@ -239,6 +333,11 @@ class RunManager:
     ) -> None:
         async with self._lock:
             if self.runs[run_id].state == "aborted":  # aborted while queued
+                return
+            try:  # compiled against the state when it was queued; the state may have changed since
+                check_limits(plan.definition, self.stand, self.state)
+            except LimitError as e:
+                self._set(run_id, state="failed", finished_at=datetime.now(UTC), error=str(e))
                 return
             campaign = options.get("campaign")
             recorder = RunRecorder(

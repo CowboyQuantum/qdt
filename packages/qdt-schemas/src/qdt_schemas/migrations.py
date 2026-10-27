@@ -19,6 +19,7 @@ from .data import Annotation, Dataset
 from .envelope import MeasurementRecord
 from .identity import DeviceRecord
 from .modeling import AnalysisResult, NodeOutcome
+from .operations import StandState
 from .stand import StandConfig
 
 Migration = Callable[[dict[str, Any]], dict[str, Any]]
@@ -34,6 +35,7 @@ PERSISTED: dict[str, type[QdtModel]] = {
         MeasurementRecord,
         NodeOutcome,
         StandConfig,
+        StandState,
         SweepDefinition,
     )
 }

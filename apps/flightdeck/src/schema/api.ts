@@ -11,6 +11,7 @@ export interface QdtControlApi {
   Capture?: Capture;
   CapturedWaveform?: CapturedWaveform;
   ChannelLevel?: ChannelLevel;
+  ChannelLimit?: ChannelLimit;
   ChannelMap?: ChannelMap;
   DataVariable?: DataVariable;
   Dataset?: Dataset;
@@ -53,6 +54,8 @@ export interface QdtControlApi {
   SimScenario?: SimScenario;
   SourceDescriptor?: SourceDescriptor;
   StandConfig?: StandConfig;
+  StandState?: StandState;
+  StandStateChange?: StandStateChange;
   Step?: Step;
   StreamInfo?: StreamInfo;
   StreamedCoordinate?: StreamedCoordinate;
@@ -1112,6 +1115,30 @@ export interface ChannelLevel {
   setpoint?: number | null;
 }
 /**
+ * The range one logical channel may be set to. A level outside it is refused, never clamped.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "ChannelLimit".
+ */
+export interface ChannelLimit {
+  /**
+   * Logical channel (ChannelMap.logical) the limit applies to.
+   */
+  channel: string;
+  /**
+   * Highest level allowed, inclusive, in the same unit as `min_v`; not below it.
+   */
+  max_v: number;
+  /**
+   * Lowest level allowed, inclusive, in the SI unit of the channel's quantity: volts for a voltage channel (the name's suffix), amperes for a current channel.
+   */
+  min_v: number;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
  * Maps a logical channel name to a physical instrument channel.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -2011,6 +2038,80 @@ export interface StandConfig {
    * Stand id; generic, never a site name (rule 7).
    */
   stand_id: string;
+}
+/**
+ * One version of a stand's safety and operating state (ADR 0075). Append-only: a change writes
+ * the next version, and the highest version of a stand is the one in force.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "StandState".
+ */
+export interface StandState {
+  /**
+   * The coupling matrix (ADR 0049): for the channel an axis steps, the volts per volt each other channel moves with it. The row of an axis's channel is what the Sweep widget puts in SweepAxis.couplings. No channel couples to itself; empty means no couplings.
+   */
+  couplings?: {
+    [k: string]: {
+      [k: string]: number;
+    };
+  };
+  /**
+   * The held operating point (ADR 0053): the DC levels the stand server applies and every sweep inherits on channels it does not touch, at most one per channel and each within its channel's limit. After a restart it is offered, and applied only once a person confirms it.
+   */
+  held?: FixedLevel[];
+  /**
+   * Per-channel limits, at most one per channel. A channel without one is not limited by the stand state (its instrument's own range still applies).
+   */
+  limits?: ChannelLimit[];
+  /**
+   * Why it changed, in the words of the person who changed it or of the server.
+   */
+  reason: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * When the stand server wrote this version.
+   */
+  set_at: string;
+  /**
+   * Who made the change: the label of the command token it came with, 'local' for a command from the stand server's own computer, or the server itself (e.g. a tune-up).
+   */
+  set_by: string;
+  /**
+   * StandConfig.stand_id of the stand this state belongs to.
+   */
+  stand_id: string;
+  /**
+   * 1 for a stand's first state, then one more for every change; the registry refuses a gap or a second body under a version it holds.
+   */
+  version: number;
+}
+/**
+ * Change a stand's limits and/or couplings (ADR 0075, 0085): the next `StandState` version. The
+ * held point changes through /levels, where it is applied; what is not given carries over.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "StandStateChange".
+ */
+export interface StandStateChange {
+  /**
+   * The coupling matrix after the change (axis channel → channel → volts per volt); null leaves it as it is, {} clears it.
+   */
+  couplings?: {
+    [k: string]: {
+      [k: string]: number;
+    };
+  } | null;
+  /**
+   * The stand's limits after the change, every one of them (a channel left out has none); null leaves the limits as they are.
+   */
+  limits?: ChannelLimit[] | null;
+  /**
+   * Why the stand's state changes; kept with the version.
+   */
+  reason: string;
 }
 /**
  * Where Flight Deck connects for data.

@@ -10,11 +10,13 @@ import pathlib
 from datetime import UTC, datetime
 
 from qdt_lab.experiment import SimulatedEmitter, compile_sweep
+from qdt_schemas.activity import FixedLevel
 from qdt_schemas.data import Annotation
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import PERSISTED, current_version
 from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel, NodeOutcome
+from qdt_schemas.operations import ChannelLimit, StandState
 from qdt_sim.scenarios import DEVICE_ID, default_stand, stability
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-schemas/tests/fixtures"
@@ -53,6 +55,16 @@ def examples() -> dict[str, object]:
             created_at=T0,
         ),
         "StandConfig": stand,
+        "StandState": StandState(
+            stand_id=stand.stand_id,
+            version=2,
+            limits=(ChannelLimit(channel="P1", min_v=-0.5, max_v=0.5),),
+            couplings={"P1": {"P2": -0.2}},
+            held=(FixedLevel(channel="P1", value=0.05), FixedLevel(channel="SG", value=-0.04)),
+            set_by="local",
+            set_at=T0,
+            reason="limit P1 to half a volt either way",
+        ),
         "SweepDefinition": definition,
         "ExecutionPlan": plan,
         "Dataset": plan.dataset,
