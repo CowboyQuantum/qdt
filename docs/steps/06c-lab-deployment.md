@@ -174,5 +174,10 @@ server addressed off loopback; runbook Part 8 step 6 runs it. R-1 … R-3 passed
 scripted run on the lab PC is still to come. **Deliverable 6 written** (plan §9, 2026-10-25), to be sent by
 the human. **Deliverable 12 done** (ADR 0083: reports file under the planning step; closes #77). Remaining
 for deliverable 1: the second run of the same runbook on the lab PC (ADR 0080), which also gets the token
-section ADR 0082 asks for. **ADR 0075 accepted 2026-10-25 (ADR 0084):** deliverable 7 is next. Deliverables
-7–11, 13–16 not started.
+section ADR 0082 asks for. **ADR 0075 accepted 2026-10-25 (ADR 0084).** **Deliverable 7 in L0 (session 31,
+2026-10-27; ADR 0085):** `ChannelLimit` and `StandState` in `qdt_schemas.operations`; versions in the
+registry's `stand_states` table (DDL 4); the stand server loads the latest at start, refuses a level, a
+compile, a submission or the start of a queued run beyond a limit, and offers the held point after a
+restart until a person confirms or discards it; the L0 row "StandState" is green. `QueuedRun` and Flight
+Deck's switch to these routes (Levels, Virtual gates, the confirmation prompt) come with deliverable 8.
+Deliverables 8–11, 13–16 not started.
