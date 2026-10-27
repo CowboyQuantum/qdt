@@ -7,6 +7,7 @@
     reg.add_result(result, output)                    # an AnalysisResult (+ its output payload, ADR 0031)
     reg.results(record_id=...); reg.output(result_id) # ... and back
     reg.add_outcome(outcome); reg.outcomes(tuneup_id=...)  # a calibration node's verdict (ADR 0050)
+    reg.add_stand_state(state); reg.stand_state(stand_id)  # a stand's limits and held point (ADR 0085)
     reg.sync()                                        # needs remote_dsn + remote_store (or the env vars)
 
 Every write is insert-if-absent keyed by a client-minted id or a content hash, so a sync can be retried
@@ -21,14 +22,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, Table, and_, create_engine, event, select
+from sqlalchemy import Engine, String, Table, and_, cast, create_engine, event, func, select
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.sql import ColumnElement
 
 from qdt_schemas import QdtModel
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import load
 from qdt_schemas.modeling import AnalysisResult, NodeOutcome
+from qdt_schemas.operations import StandState
 from qdt_schemas.payload_hdf5 import PAYLOAD_TYPE, Payload, read_payload, write_payload
 
 from .tables import (
@@ -41,6 +45,7 @@ from .tables import (
     objects,
     records,
     registry_meta,
+    stand_states,
     sync_state,
     tuning_outcomes,
 )
@@ -81,8 +86,26 @@ def _insert_absent(conn: Connection, table: Table, row: dict[str, Any]) -> bool:
 
 
 def _prepare(engine: Engine) -> None:
-    """Create missing tables (never alters or drops) and check the DDL version."""
-    metadata.create_all(engine)
+    """Create missing tables (never alters or drops) and check the DDL version. A role that may not
+    create tables (the writer and the reader, ADR 0074) meeting a server whose tables are older than
+    this client is told to run the schema step as the admin, instead of a bare permission error."""
+    try:
+        metadata.create_all(engine)
+    except DBAPIError as e:
+        try:
+            with engine.connect() as conn:
+                found = conn.execute(
+                    select(registry_meta.c.value).where(registry_meta.c.key == "ddl_version")
+                ).scalar_one_or_none()
+        except DBAPIError:
+            found = None
+        if found is not None and int(found) < DDL_VERSION:
+            raise RuntimeError(
+                f"registry at {engine.url!r} has ddl_version {found}; this client expects "
+                f"{DDL_VERSION}, and this role may not add the new tables: on the registry server, "
+                "run `python -m qdt_registry init` with the admin role (deploy/qdt-db/README.md)"
+            ) from e
+        raise
     with engine.begin() as conn:
         row = conn.execute(
             select(registry_meta.c.value).where(registry_meta.c.key == "ddl_version")
@@ -124,6 +147,7 @@ class SyncReport:
     payload_bytes: int
     analysis_results: int = 0
     tuning_outcomes: int = 0
+    stand_states: int = 0
 
 
 class Registry:
@@ -436,16 +460,71 @@ class Registry:
             raise KeyError(outcome_id)
         return load("NodeOutcome", body)
 
+    def add_stand_state(self, state: StandState) -> StandState:
+        """Store the next version of a stand's state (ADR 0075, 0085; append-only, idempotent): 1 for
+        a stand this cache holds none of, otherwise one more than the latest it holds. Raises
+        ValueError for a version that leaves a gap, or for a different body under a stored version
+        (two writers raced, or two caches claim the same stand). Returns the stored state."""
+        with self._cache.begin() as conn:
+            latest = conn.execute(
+                select(func.max(stand_states.c.version)).where(
+                    stand_states.c.stand_id == state.stand_id
+                )
+            ).scalar_one_or_none()
+            if state.version > (latest or 0) + 1:
+                raise ValueError(
+                    f"stand state {state.stand_id!r} version {state.version} leaves a gap: the "
+                    f"latest stored is {latest or 'none'}"
+                )
+            if _insert_absent(conn, stand_states, _stand_state_row(state)):
+                self._mark(conn, "stand_states", f"{state.stand_id}/{state.version}", False)
+        return state
+
+    def stand_state(
+        self, stand_id: str, version: int | None = None, *, remote: bool = False
+    ) -> StandState:
+        """One version of a stand's state, by default the latest (the one in force). KeyError when
+        there is none."""
+        q = select(stand_states.c.body).where(stand_states.c.stand_id == stand_id)
+        if version is None:
+            q = q.order_by(stand_states.c.version.desc()).limit(1)
+        else:
+            q = q.where(stand_states.c.version == version)
+        with self._engine(remote).connect() as conn:
+            body = conn.execute(q).scalar_one_or_none()
+        if body is None:
+            raise KeyError(f"no stand state for {stand_id!r}" + (f" v{version}" if version else ""))
+        return load("StandState", body)
+
+    def stand_states(
+        self, stand_id: str | None = None, *, remote: bool = False
+    ) -> list[StandState]:
+        """Every stored version, by stand then version, oldest first: the stand's audit trail."""
+        q = select(stand_states.c.body).order_by(stand_states.c.stand_id, stand_states.c.version)
+        if stand_id is not None:
+            q = q.where(stand_states.c.stand_id == stand_id)
+        with self._engine(remote).connect() as conn:
+            return [load("StandState", b) for b in conn.execute(q).scalars()]
+
+    def pull_stand_states(self, stand_id: str) -> int:
+        """Copy the server's versions of `stand_id` that this cache lacks into it, marked synced, and
+        return how many: a stand server whose cache is new (a rebuilt computer, a second machine for
+        the same stand) continues the stand's history instead of starting a conflicting one
+        (ADR 0085). Raises what the server raises when it is unreachable, and ValueError when the
+        two hold different bodies under one version."""
+        theirs = self.stand_states(stand_id, remote=True)
+        copied = 0
+        with self._cache.begin() as conn:
+            for state in theirs:
+                if _insert_absent(conn, stand_states, _stand_state_row(state)):
+                    copied += 1
+                self._mark(conn, "stand_states", f"{state.stand_id}/{state.version}", True)
+        return copied
+
     def unsynced(self) -> dict[str, int]:
         with self._cache.connect() as conn:
             rows = conn.execute(select(sync_state.c.table_name).where(~sync_state.c.synced))
-            out = {
-                "devices": 0,
-                "objects": 0,
-                "records": 0,
-                "analysis_results": 0,
-                "tuning_outcomes": 0,
-            }
+            out = dict.fromkeys(SYNCED, 0)
             for (t,) in rows:
                 out[t] += 1
             return out
@@ -466,22 +545,10 @@ class Registry:
         if not self.remote_dsn or self.remote_store is None:
             raise RuntimeError(f"sync needs a server: set {DSN_ENV} and {STORE_ENV}")
         remote = self._engine(True)
-        counts = {
-            "devices": 0,
-            "objects": 0,
-            "records": 0,
-            "analysis_results": 0,
-            "tuning_outcomes": 0,
-        }
+        counts = dict.fromkeys(SYNCED, 0)
         sent_bytes = 0
-        for name, table, key in (
-            ("devices", devices, "device_id"),
-            ("objects", objects, "sha256"),
-            ("records", records, "record_id"),
-            ("analysis_results", analysis_results, "result_id"),
-            ("tuning_outcomes", tuning_outcomes, "outcome_id"),
-        ):
-            for row in self._pending(name, table, key):
+        for name, table in SYNCED.items():
+            for row in self._pending(name, table):
                 payload = None
                 if name == "records":
                     payload = (row["payload_path"], row["payload_sha256"])
@@ -495,7 +562,7 @@ class Registry:
                 with remote.begin() as conn:
                     counts[name] += _insert_absent(conn, table, row)
                 with self._cache.begin() as conn:
-                    self._mark(conn, name, row[key], True)
+                    self._mark(conn, name, _sync_key(table, row), True)
         return SyncReport(**counts, payload_bytes=sent_bytes)
 
     # --- internals -------------------------------------------------------------------------------
@@ -511,7 +578,7 @@ class Registry:
             self._remote = engine
         return self._remote
 
-    def _pending(self, name: str, table: Table, key: str) -> list[dict[str, Any]]:
+    def _pending(self, name: str, table: Table) -> list[dict[str, Any]]:
         """Rows of `table` not yet confirmed by the server, read in one go (SQLite: no open reader
         while sync writes the flags)."""
         with self._cache.connect() as conn:
@@ -519,7 +586,7 @@ class Registry:
                 select(table)
                 .join(
                     sync_state,
-                    and_(sync_state.c.key == table.c[key], sync_state.c.table_name == name),
+                    and_(sync_state.c.key == _key_column(table), sync_state.c.table_name == name),
                 )
                 .where(~sync_state.c.synced)
             )
@@ -578,6 +645,46 @@ class Registry:
             "schema_version": r.schema_version,
             "body": _body(r),
         }
+
+
+SYNCED: dict[str, Table] = {
+    "devices": devices,
+    "objects": objects,
+    "records": records,
+    "analysis_results": analysis_results,
+    "tuning_outcomes": tuning_outcomes,
+    "stand_states": stand_states,
+}
+"""What `sync` uploads, in order: every row after the rows it points at; stand states last, so a
+stand that two caches claim cannot hold back the records."""
+
+
+def _key_column(table: Table) -> ColumnElement:
+    """The `sync_state.key` of a row of `table`, as SQL: its primary key, or for a stand state
+    `<stand_id>/<version>` (the version is the last part, so a '/' in a stand id is unambiguous)."""
+    if table is stand_states:
+        return stand_states.c.stand_id + "/" + cast(stand_states.c.version, String)
+    (column,) = table.primary_key.columns
+    return column
+
+
+def _sync_key(table: Table, row: dict[str, Any]) -> str:
+    """`_key_column` for a row already read."""
+    if table is stand_states:
+        return f"{row['stand_id']}/{row['version']}"
+    (column,) = table.primary_key.columns
+    return row[column.name]
+
+
+def _stand_state_row(state: StandState) -> dict[str, Any]:
+    return {
+        "stand_id": state.stand_id,
+        "version": state.version,
+        "set_by": state.set_by,
+        "set_at": state.set_at,
+        "schema_version": state.schema_version,
+        "body": _body(state),
+    }
 
 
 def _place(source: Path, target: Path, sha256: str) -> bool:

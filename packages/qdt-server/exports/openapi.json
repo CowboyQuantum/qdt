@@ -595,6 +595,41 @@
         "title": "ChannelLevel",
         "type": "object"
       },
+      "ChannelLimit": {
+        "additionalProperties": false,
+        "description": "The range one logical channel may be set to. A level outside it is refused, never clamped.",
+        "properties": {
+          "channel": {
+            "description": "Logical channel (ChannelMap.logical) the limit applies to.",
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "max_v": {
+            "description": "Highest level allowed, inclusive, in the same unit as `min_v`; not below it.",
+            "title": "Max V",
+            "type": "number"
+          },
+          "min_v": {
+            "description": "Lowest level allowed, inclusive, in the SI unit of the channel's quantity: volts for a voltage channel (the name's suffix), amperes for a current channel.",
+            "title": "Min V",
+            "type": "number"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "min_v",
+          "max_v"
+        ],
+        "title": "ChannelLimit",
+        "type": "object"
+      },
       "ChannelMap": {
         "additionalProperties": false,
         "description": "Maps a logical channel name to a physical instrument channel.",
@@ -3306,6 +3341,135 @@
         "title": "StandConfig",
         "type": "object"
       },
+      "StandState": {
+        "additionalProperties": false,
+        "description": "One version of a stand's safety and operating state (ADR 0075). Append-only: a change writes\nthe next version, and the highest version of a stand is the one in force.",
+        "properties": {
+          "couplings": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "description": "The coupling matrix (ADR 0049): for the channel an axis steps, the volts per volt each other channel moves with it. The row of an axis's channel is what the Sweep widget puts in SweepAxis.couplings. No channel couples to itself; empty means no couplings.",
+            "title": "Couplings",
+            "type": "object"
+          },
+          "held": {
+            "default": [],
+            "description": "The held operating point (ADR 0053): the DC levels the stand server applies and every sweep inherits on channels it does not touch, at most one per channel and each within its channel's limit. After a restart it is offered, and applied only once a person confirms it.",
+            "items": {
+              "$ref": "#/components/schemas/FixedLevel"
+            },
+            "title": "Held",
+            "type": "array"
+          },
+          "limits": {
+            "default": [],
+            "description": "Per-channel limits, at most one per channel. A channel without one is not limited by the stand state (its instrument's own range still applies).",
+            "items": {
+              "$ref": "#/components/schemas/ChannelLimit"
+            },
+            "title": "Limits",
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why it changed, in the words of the person who changed it or of the server.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "set_at": {
+            "description": "When the stand server wrote this version.",
+            "format": "date-time",
+            "title": "Set At",
+            "type": "string"
+          },
+          "set_by": {
+            "description": "Who made the change: the label of the command token it came with, 'local' for a command from the stand server's own computer, or the server itself (e.g. a tune-up).",
+            "minLength": 1,
+            "title": "Set By",
+            "type": "string"
+          },
+          "stand_id": {
+            "description": "StandConfig.stand_id of the stand this state belongs to.",
+            "minLength": 1,
+            "title": "Stand Id",
+            "type": "string"
+          },
+          "version": {
+            "description": "1 for a stand's first state, then one more for every change; the registry refuses a gap or a second body under a version it holds.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stand_id",
+          "version",
+          "set_by",
+          "set_at",
+          "reason"
+        ],
+        "title": "StandState",
+        "type": "object"
+      },
+      "StandStateChange": {
+        "description": "Change a stand's limits and/or couplings (ADR 0075, 0085): the next `StandState` version. The\nheld point changes through /levels, where it is applied; what is not given carries over.",
+        "properties": {
+          "couplings": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The coupling matrix after the change (axis channel \u2192 channel \u2192 volts per volt); null leaves it as it is, {} clears it.",
+            "title": "Couplings"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChannelLimit"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stand's limits after the change, every one of them (a channel left out has none); null leaves the limits as they are.",
+            "title": "Limits"
+          },
+          "reason": {
+            "description": "Why the stand's state changes; kept with the version.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "StandStateChange",
+        "type": "object"
+      },
       "Step": {
         "additionalProperties": false,
         "description": "Hold `channel` at `level` for `duration`.",
@@ -4059,7 +4223,7 @@
         "summary": "Get Levels"
       },
       "post": {
-        "description": "Set these channels now and hold them; returns the whole operating point.",
+        "description": "Set these channels now and hold them; returns the whole operating point. A level beyond\nits channel's limit is refused (400) and nothing is set (ADR 0075). Each change is the next\nstand state version, with who sent it.",
         "operationId": "set_levels_levels_post",
         "requestBody": {
           "content": {
@@ -4102,6 +4266,73 @@
           }
         },
         "summary": "Set Levels"
+      }
+    },
+    "/levels/pending": {
+      "delete": {
+        "description": "Do not re-apply the offered held point: the next version holds nothing and says so.",
+        "operationId": "discard_levels_levels_pending_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedLevel"
+                  },
+                  "title": "Response Discard Levels Levels Pending Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Discard Levels"
+      },
+      "get": {
+        "description": "The held point of the latest stand state, offered after a restart and not re-applied\nuntil a person confirms it (ADR 0075); empty when nothing waits.",
+        "operationId": "pending_levels_levels_pending_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedLevel"
+                  },
+                  "title": "Response Pending Levels Levels Pending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pending Levels"
+      }
+    },
+    "/levels/pending/confirm": {
+      "post": {
+        "description": "Re-apply the offered held point and hold it; returns the operating point. 409 when\nnothing is offered, 400 when the stand no longer fits it.",
+        "operationId": "confirm_levels_levels_pending_confirm_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FixedLevel"
+                  },
+                  "title": "Response Confirm Levels Levels Pending Confirm Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Confirm Levels"
       }
     },
     "/levels/state": {
@@ -4772,6 +5003,113 @@
           }
         },
         "summary": "Get Stand"
+      }
+    },
+    "/stand-states": {
+      "get": {
+        "description": "Every stored stand state version, by stand then version, oldest first: the audit trail.\nA read server answers from the registry server, a stand server from its own cache.",
+        "operationId": "list_stand_states_stand_states_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "stand_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stand Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StandState"
+                  },
+                  "title": "Response List Stand States Stand States Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Stand States"
+      }
+    },
+    "/stand/state": {
+      "get": {
+        "description": "The stand state in force: the latest version, whose limits every level and sweep meets.",
+        "operationId": "get_stand_state_stand_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Stand State"
+      },
+      "post": {
+        "description": "Change the limits and/or the couplings; returns the new version. 400 for a channel the\nstand lacks or cannot drive, or a held level the new limits would put out of bounds.",
+        "operationId": "change_stand_state_stand_state_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandStateChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Stand State"
       }
     },
     "/stream": {

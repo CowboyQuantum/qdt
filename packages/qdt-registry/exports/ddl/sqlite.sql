@@ -1,4 +1,4 @@
--- qdt registry DDL, ddl_version 3, dialect sqlite. Generated; do not edit.
+-- qdt registry DDL, ddl_version 4, dialect sqlite. Generated; do not edit.
 
 CREATE TABLE devices (
 	device_id VARCHAR(255) NOT NULL, 
@@ -25,6 +25,17 @@ CREATE TABLE registry_meta (
 	"key" VARCHAR(64) NOT NULL, 
 	value TEXT NOT NULL, 
 	PRIMARY KEY ("key")
+);
+
+CREATE TABLE stand_states (
+	stand_id VARCHAR(255) NOT NULL, 
+	version INTEGER NOT NULL, 
+	set_by VARCHAR(255) NOT NULL, 
+	set_at DATETIME NOT NULL, 
+	schema_version INTEGER NOT NULL, 
+	body JSON NOT NULL, 
+	PRIMARY KEY (stand_id, version), 
+	CONSTRAINT ck_stand_states_version CHECK (version >= 1)
 );
 
 CREATE TABLE records (

@@ -632,7 +632,7 @@ def _stand_server_that_measured_once(tmp_path, monkeypatch):
     with TestClient(create_app(Settings(root=tmp_path / "laptop", stream_port=0)), client=LOOPBACK) as c:
         run = wait_for(c, c.post("/runs", json={"definition": definition()}).json()["run_id"])
         assert run.state == "completed" and run.record_id, run.error
-        assert _until(lambda: c.app.state.registry.unsynced()["records"] == 0)
+        assert _until(lambda: not any(c.app.state.registry.unsynced().values()))
     return dsn, store, run
 
 
@@ -642,6 +642,11 @@ STAND_ROUTES = [
     ("GET", "/levels/state"),
     ("POST", "/levels"),
     ("DELETE", "/levels"),
+    ("GET", "/levels/pending"),
+    ("POST", "/levels/pending/confirm"),
+    ("DELETE", "/levels/pending"),
+    ("GET", "/stand/state"),
+    ("POST", "/stand/state"),
     ("POST", "/sweeps/compile"),
     ("POST", "/runs"),
     ("GET", "/runs"),
@@ -671,6 +676,9 @@ def test_a_read_server_serves_the_registry_and_has_no_command(tmp_path, monkeypa
         assert r.content == (store / rec["payload"]["path"]).read_bytes()
         assert c.get("/records/" + "0" * 32 + "/payload").status_code == 404
         assert c.get("/results").json() == [] and c.get("/outcomes").json() == []
+        # the stand's state history, from the registry server (ADR 0075, 0085: the read server reads)
+        [first] = c.get("/stand-states").json()
+        assert (first["version"], first["set_by"]) == (1, "qdt-server")
         # replay works: the record goes on this server's own stream
         url = c.get("/stream").json()["url"]
         assert c.post("/stream/replay", json={"record_id": run.record_id}).status_code == 202

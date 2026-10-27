@@ -447,6 +447,42 @@
       "title": "CapturedWaveform",
       "type": "object"
     },
+    "ChannelLimit": {
+      "additionalProperties": false,
+      "description": "The range one logical channel may be set to. A level outside it is refused, never clamped.",
+      "properties": {
+        "channel": {
+          "description": "Logical channel (ChannelMap.logical) the limit applies to.",
+          "minLength": 1,
+          "title": "Channel",
+          "type": "string"
+        },
+        "max_v": {
+          "description": "Highest level allowed, inclusive, in the same unit as `min_v`; not below it.",
+          "title": "Max V",
+          "type": "number"
+        },
+        "min_v": {
+          "description": "Lowest level allowed, inclusive, in the SI unit of the channel's quantity: volts for a voltage channel (the name's suffix), amperes for a current channel.",
+          "title": "Min V",
+          "type": "number"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "channel",
+        "min_v",
+        "max_v"
+      ],
+      "title": "ChannelLimit",
+      "type": "object"
+    },
     "ChannelMap": {
       "additionalProperties": false,
       "description": "Maps a logical channel name to a physical instrument channel.",
@@ -2555,6 +2591,90 @@
         "attrs"
       ],
       "title": "StandConfig",
+      "type": "object"
+    },
+    "StandState": {
+      "additionalProperties": false,
+      "description": "One version of a stand's safety and operating state (ADR 0075). Append-only: a change writes\nthe next version, and the highest version of a stand is the one in force.",
+      "properties": {
+        "couplings": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "description": "The coupling matrix (ADR 0049): for the channel an axis steps, the volts per volt each other channel moves with it. The row of an axis's channel is what the Sweep widget puts in SweepAxis.couplings. No channel couples to itself; empty means no couplings.",
+          "title": "Couplings",
+          "type": "object"
+        },
+        "held": {
+          "default": [],
+          "description": "The held operating point (ADR 0053): the DC levels the stand server applies and every sweep inherits on channels it does not touch, at most one per channel and each within its channel's limit. After a restart it is offered, and applied only once a person confirms it.",
+          "items": {
+            "$ref": "#/$defs/FixedLevel"
+          },
+          "title": "Held",
+          "type": "array"
+        },
+        "limits": {
+          "default": [],
+          "description": "Per-channel limits, at most one per channel. A channel without one is not limited by the stand state (its instrument's own range still applies).",
+          "items": {
+            "$ref": "#/$defs/ChannelLimit"
+          },
+          "title": "Limits",
+          "type": "array"
+        },
+        "reason": {
+          "description": "Why it changed, in the words of the person who changed it or of the server.",
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "set_at": {
+          "description": "When the stand server wrote this version.",
+          "format": "date-time",
+          "title": "Set At",
+          "type": "string"
+        },
+        "set_by": {
+          "description": "Who made the change: the label of the command token it came with, 'local' for a command from the stand server's own computer, or the server itself (e.g. a tune-up).",
+          "minLength": 1,
+          "title": "Set By",
+          "type": "string"
+        },
+        "stand_id": {
+          "description": "StandConfig.stand_id of the stand this state belongs to.",
+          "minLength": 1,
+          "title": "Stand Id",
+          "type": "string"
+        },
+        "version": {
+          "description": "1 for a stand's first state, then one more for every change; the registry refuses a gap or a second body under a version it holds.",
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "stand_id",
+        "version",
+        "limits",
+        "couplings",
+        "held",
+        "set_by",
+        "set_at",
+        "reason"
+      ],
+      "title": "StandState",
       "type": "object"
     },
     "Step": {

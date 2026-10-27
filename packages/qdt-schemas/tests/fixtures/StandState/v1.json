@@ -1,0 +1,33 @@
+{
+  "couplings": {
+    "P1": {
+      "P2": -0.2
+    }
+  },
+  "held": [
+    {
+      "channel": "P1",
+      "schema_version": 1,
+      "value": 0.05
+    },
+    {
+      "channel": "SG",
+      "schema_version": 1,
+      "value": -0.04
+    }
+  ],
+  "limits": [
+    {
+      "channel": "P1",
+      "max_v": 0.5,
+      "min_v": -0.5,
+      "schema_version": 1
+    }
+  ],
+  "reason": "limit P1 to half a volt either way",
+  "schema_version": 1,
+  "set_at": "2026-10-13T12:00:00Z",
+  "set_by": "local",
+  "stand_id": "simulated-double-dot",
+  "version": 2
+}

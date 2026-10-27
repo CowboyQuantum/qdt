@@ -9,6 +9,9 @@ captured waveforms `record` (when records > 1) and each capture's time axis. A s
 the stepped axes; a stage result over every axis; a capture over the stepped axes plus its own time; a
 shot capture (ADR 0060) over the stepped axes, `shot` when shots are kept, and its own time from 0; a
 capture on the sequencer's own input (ADR 0069) has the same layout and is a result of the program.
+
+Given the stand's `StandState` (ADR 0075, 0085), the compiler refuses a sweep that would program any
+channel beyond its limit: `check_limits` raises `LimitError` and nothing is clamped.
 """
 
 import uuid
@@ -31,6 +34,8 @@ from qdt_schemas.data import (
     LinearCoordinate,
     SourceDescriptor,
 )
+from qdt_schemas.operations import StandState
+from qdt_schemas.pulse import Affine, Drive, Ramp, Step, Value, symbol_of
 from qdt_schemas.stand import QUANTITY_UNIT, Capability, StandConfig
 
 from .emit import Emitter, TriggeredStep, once_results
@@ -38,6 +43,91 @@ from .emit import Emitter, TriggeredStep, once_results
 REPEAT_DIM = "repeat"
 SHOT_DIM = "shot"
 RECORD_DIM = "record"
+
+
+class LimitError(ValueError):
+    """A level or a sweep that the stand state's limits refuse (ADR 0075): refused, never clamped."""
+
+
+def driven_extents(definition: SweepDefinition) -> dict[str, tuple[float, float]]:
+    """The lowest and highest level `definition` programs on each channel it drives (ADR 0085).
+
+    Counted: the operating point (`levels`); every stepped axis from `start` to `stop` on its channel;
+    each coupled companion from its origin (its level in `levels`, else 0) plus the coupling times the
+    axis's range, as the executor moves it (ADR 0049); and in a stage's pulse sequence every `step`
+    level, both ends of every `ramp` and plus or minus every `drive` amplitude, each symbol taken over
+    the range its binding gives (an axis from `start` to `stop`, or its constant). Every value is
+    linear in its axis, so the extremes are exact. A stage axis's own channel is not counted: its value
+    reaches a channel only through the symbols bound to it. A hand-written program (`stage.program`)
+    declares no levels and is checked by `check_limits` instead.
+    """
+    out: dict[str, tuple[float, float]] = {}
+
+    def add(channel: str, *values: float) -> None:
+        low, high = min(values), max(values)
+        if channel in out:
+            low, high = min(low, out[channel][0]), max(high, out[channel][1])
+        out[channel] = (low, high)
+
+    origin = {lv.channel: lv.value for lv in definition.levels}
+    for lv in definition.levels:
+        add(lv.channel, lv.value)
+    for a in definition.stepped_axes():
+        add(a.channel, a.start, a.stop)
+        for companion, per_volt in a.couplings.items():
+            base = origin.get(companion, 0.0)
+            add(companion, base + per_volt * a.start, base + per_volt * a.stop)
+    stage = definition.stage
+    if stage is not None and stage.sequence is not None:
+        ranges: dict[str, tuple[float, float]] = {}
+        for b in stage.bindings:
+            if b.axis is not None:
+                axis = definition.axis(b.axis)
+                ranges[b.symbol] = (axis.start, axis.stop)
+            else:
+                ranges[b.symbol] = (b.value, b.value)
+
+        def values(v: Value) -> tuple[float, ...]:
+            sym = symbol_of(v)
+            if sym is None:
+                return (float(v),)
+            low, high = ranges[sym.name]
+            return (v.of(low), v.of(high)) if isinstance(v, Affine) else (low, high)
+
+        for op in stage.sequence.expand():
+            if isinstance(op, Step):
+                add(op.channel, *values(op.level))
+            elif isinstance(op, Ramp):
+                add(op.channel, *values(op.start), *values(op.stop))
+            elif isinstance(op, Drive):
+                peak = max(abs(x) for x in values(op.amplitude))
+                add(op.channel, -peak, peak)
+    return out
+
+
+def check_limits(definition: SweepDefinition, stand: StandConfig, state: StandState) -> None:
+    """Raise `LimitError` when `definition` would program a channel beyond its limit in `state`, naming
+    every such channel; a hand-written program on a sequencer that carries a limited channel is
+    refused too, because its levels cannot be read from it (ADR 0085)."""
+    beyond = state.violations(driven_extents(definition))
+    stage = definition.stage
+    if stage is not None and stage.program is not None:
+        limited = sorted(
+            lim.channel
+            for lim in state.limits
+            if lim.channel in {c.logical for c in stand.channels}
+            and stand.channel(lim.channel).instrument == stage.instrument
+        )
+        if limited:
+            beyond.append(
+                f"a hand-written program on {stage.instrument!r} declares no levels, so its "
+                f"limited channels {limited} cannot be checked"
+            )
+    if beyond:
+        raise LimitError(
+            f"refused by stand state version {state.version} of {state.stand_id!r}: "
+            + "; ".join(beyond)
+        )
 
 
 def resolve_pacing(definition: SweepDefinition, stand: StandConfig) -> tuple[AxisPacing, ...]:
@@ -113,10 +203,12 @@ def compile_sweep(
     *,
     plan_id: str | None = None,
     created_at: datetime | None = None,
+    stand_state: StandState | None = None,
 ) -> ExecutionPlan:
     """Resolve channels and capabilities, emit the stage program, declare the Dataset.
 
-    Raises ValueError for a channel used in two roles, a missing capability, or an unbound parameter.
+    Raises ValueError for a channel used in two roles, a missing capability, or an unbound parameter,
+    and `LimitError` (a ValueError) for a level beyond a limit of `stand_state` (ADR 0075, 0085).
     """
     roles: dict[str, Capability] = {}
 
@@ -152,6 +244,9 @@ def compile_sweep(
         resolve(s.channel, "level_sense")
     for c in definition.captured:  # time-resolved records (ADR 0047)
         resolve(c.channel, "waveform_sense")
+
+    if stand_state is not None:  # before any program is emitted: a refused sweep compiles nothing
+        check_limits(definition, stand, stand_state)
 
     program: SequencerProgram | None = None
     bindings: tuple[ParameterBinding, ...] = ()

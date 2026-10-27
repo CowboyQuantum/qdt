@@ -23,12 +23,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-DDL_VERSION = 3
+DDL_VERSION = 4
 """Bumps with every table change; a change is an ADR plus an additive migration, never a DROP."""
 
 ADDITIVE_UPGRADES: dict[int, str] = {
     1: "adds analysis_results (Step 4, ADR 0029)",
     2: "adds tuning_outcomes (Step 6, ADR 0050)",
+    3: "adds stand_states (Step 6c, ADR 0075, 0085)",
 }
 """From-version → what the next version adds, for upgrades that only create new tables. A client may
 upgrade a server across these with `create_all`; any other change needs a real migration (ADR 0026)."""
@@ -133,6 +134,22 @@ tuning_outcomes = Table(
     Index("ix_tuning_outcomes_tuneup", "tuneup_id", "created_at"),
     Index("ix_tuning_outcomes_node", "node_id", "created_at"),
     comment="NodeOutcome rows: a calibration node's verdict and decided quantities, pointing at its record and result (Step 6, ADR 0050).",
+)
+
+stand_states = Table(
+    "stand_states",
+    metadata,
+    Column("stand_id", String(255), primary_key=True),
+    Column("version", Integer, primary_key=True),
+    Column("set_by", String(255), nullable=False),
+    Column("set_at", Timestamp, nullable=False),
+    Column("schema_version", Integer, nullable=False),
+    Column("body", Body, nullable=False, comment="StandState, canonical JSON."),
+    CheckConstraint("version >= 1", name="ck_stand_states_version"),
+    comment=(
+        "StandState versions: a stand's limits, couplings and held operating point; the highest "
+        "version of a stand is in force (Step 6c, ADR 0075, 0085)."
+    ),
 )
 
 cache_metadata = MetaData()
