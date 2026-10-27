@@ -16,6 +16,7 @@ nav:
       - analysis/0004-pulse-scope-and-custom-isa.md
       - analysis/0005-system-snapshot.md
       - analysis/0006-agent-tuneup-roadmap.md
+      - analysis/0007-phantom-as-the-simulation-backend.md
   - Probes: probes/01-stream-semantics.md
   - Tutorials: tutorials/README.md
   - API: api.md
