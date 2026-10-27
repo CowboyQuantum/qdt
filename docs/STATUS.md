@@ -8,10 +8,11 @@
 deliverables 2 (code half), 3, 4, 5 in L0; **deliverable 1 rehearsed end to end** on the human's personal
 PC and Mac (runbook Parts 1–10, 2026-10-23/24, `bench/reports/2026-10-24-step6c.md`); **this session: the
 L1 rows scripted (`bench/test_l1_remote_read.py`), deliverable 6 (plan §9) written, deliverable 12 (#77)
-done, ADR 0075 accepted (ADR 0084).** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
-**Branch:** `step-6c/l1-remote-read` (PR against `main`; the human merges). Merged before this session:
-#134, #136 (the command token).
-**Last session:** 2026-10-25 (session 30), no bench.
+done, ADR 0075 accepted (ADR 0084); a detour on 2026-10-27: Analysis 0007, Phantom as the simulation
+backend, with issues in both repositories.** Steps 0–6 and 6b are DONE. Milestone `Deployment`.
+**Branch:** `step-6c/phantom-cutover-analysis` (PR against `main`; the human merges). Merged in this
+session: #138 (L1 remote read), #139 (ADR 0084).
+**Last session:** 2026-10-25 to 2026-10-27 (session 30), no bench.
 
 ## Done this session
 - **`bench/test_l1_remote_read.py`** (`PLANNED_BY` the step file): the runbook's Part 8 as a pytest run.
@@ -42,7 +43,17 @@ done, ADR 0075 accepted (ADR 0084).** Steps 0–6 and 6b are DONE. Milestone `De
   cache; tracked files are clean). `check_bench_rows` needs `PYTHONUTF8=1` on Windows (cp1252 default).
 
 ## In flight
-- PR for `step-6c/l1-remote-read` awaits the human's merge.
+- PR for `step-6c/phantom-cutover-analysis` (Analysis 0007) awaits the human's merge.
+- **The Phantom cutover, queued, not started.** `docs/analysis/0007-phantom-as-the-simulation-backend.md`
+  lays out both sides. Phantom: CowboyQuantum/phantom#40 (its Step 8, the consumer contract, plus six
+  additions qdt needs: the sensor's source–drain bias in `sense`, a noise seed apart from the device seed,
+  holding voltages for a duration, what one sample is, truth under the names qdt's nodes recover, knowable
+  fields versus truth) and CowboyQuantum/phantom#41 (spin driven by voltages over time, later). qdt: #140
+  (the cutover: ADR, adapter under 300 lines, stand from the device, sweeps relative to it, run options,
+  provenance, regenerated fixtures), #141 (the sequencer interpreter moves from `qdt_sim.device` into
+  `qdt_lab.simulated` behind a small physics protocol; changes no output; can land before Phantom tags),
+  #142 (`SimScenario` names a committed device file by name and SHA-256). Before any qdt code: a step file
+  for the cutover (ADR 0071), with #141 as its first deliverable.
 - The token is not yet in the runbook: ADR 0082's "must now" puts a token section where a stand server
   is first bound off loopback (the lab PC, deliverable 13).
 - Open UI findings: #130, #122, #120, #119. Pre-existing local e2e failures in `workspace.test.ts`: #135.
@@ -70,6 +81,13 @@ the ~80 pre-deployment records for gaps (findings → issues on `Deployment`); r
 (#133).
 
 ## Direction recorded (human)
+- **2026-10-27 (session 30, detour):** "now that phantom is more built out, I want you to prepare for using
+  that as the backend simulation rather than qdt-sim. Take a look at that repo and lay out what needs to be
+  done (in qdt and phantom from an interface perspective)." Then, on the four open questions: "move the
+  sequencer interpreter into qdt lab as you say. device file makes more sense. Let's hold off on deciding
+  the release cadence. I don't see a decision needed for the simulated stand. write this up as an analysis
+  note with matching issues in both repositories." Recorded as Analysis 0007's answers; the cutover's ADR
+  turns them into decisions.
 - **2026-10-25 (session 30):** "the mac mount script was confirmed by me last night" (the `uninstall`/
   `install` test of `deploy/qdt-db/mac-payload-mount.sh`, 2026-10-24). "Otherwise continue." On ADR 0075:
   "I think it makes sense for the voltage limits and the voltage state of the instruments to belong to the
@@ -119,3 +137,4 @@ All are `decision` issues (`gh issue list --label decision`), plus Step 6c's rem
 ADR 0077 (before deliverables 9–10; its discovery scope is already narrowed by ADR 0084 — direct
 connections now, a configured probe range later once the rack's isolation is known, #80). Settled: ADR
 0075 (ADR 0084, 2026-10-25); how a script gets payload bytes — HTTP from the read server (ADR 0081).
+Held by the human (2026-10-27): Phantom's release cadence against qdt's pin (Analysis 0007, answer 3).
