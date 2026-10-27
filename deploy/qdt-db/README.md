@@ -366,8 +366,13 @@ client, which protects you from silent mismatches (ADR 0026).
    uv run python -m qdt_registry init
    ```
 
-   It prints `server ready, ddl_version 3` (the number is the current table-layout version). Close the
+   It prints `server ready, ddl_version 4` (the number is the current table-layout version). Close the
    PowerShell window afterwards so the admin password is not left in a live variable.
+
+   Run this step again, the same way, after every update of the repository on `qdt-db` that raises the
+   table-layout version. The writer and the reader may not add tables, so until the admin has run it,
+   the stand server's sync and the read server fail with a message that says to run it. Version 4
+   (ADR 0085) adds the table of stand states: the limits and the held operating point of each stand.
 
 **What changed.** The database `qdt` now contains the project's tables, all empty.
 
@@ -967,7 +972,7 @@ few seconds before falling back.
 | `psql`, Python | `connection refused` | The server is not listening on that address: `listen_addresses` not changed, service not restarted, or the wrong host name. |
 | `psql`, Python | `timeout expired` / a long wait then an error | The firewall is blocking the port, or `qdt-db` does not resolve to the right address. Use `Test-NetConnection qdt-db -Port 5432` from the laptop. |
 | Python | `permission denied for table records` | A write was attempted as `qdt_reader`. Scripts read; only the measurement PC writes, as `qdt_writer`. |
-| Python | `registry at … has ddl_version 2; this client expects 3` | The database's tables are from an older version of the software than the program connecting to it. Update the repository on `qdt-db` and run `python -m qdt_registry init` again as the admin; update the other machines too. |
+| Python | `registry at … has ddl_version 3; this client expects 4` (with or without "this role may not add the new tables") | The database's tables are from an older version of the software than the program connecting to it. Update the repository on `qdt-db` and run `python -m qdt_registry init` again as the admin; update the other machines too. |
 | stand server log | `registry sync failed; records stay in the local cache: …` | `qdt-db` or the share was unreachable when a measurement finished. Nothing is lost; the record is copied with the next successful sync. The text after the colon says which of the two it was. |
 | File Explorer | `Windows cannot access \\qdt-db\qdt-payloads` | The network profile is *Public* (over Tailscale: no port-445 rule for the Tailscale adapter), the share permission is missing, or the credentials were not stored. Part 5, steps 3–5. |
 | Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
