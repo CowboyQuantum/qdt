@@ -1,8 +1,8 @@
 """The registry's tables (ADR 0026): one SQLAlchemy Core metadata for the local cache (SQLite) and the
 server (Postgres), so a row means the same thing on both sides of a sync (ADR 0024).
 
-Every table is append-only: rows are inserted once and never updated, except the cache-local `synced`
-flags, which exist only in the cache. Bodies are the schema object's canonical JSON, so a row can always
+Every table is append-only: rows are inserted once and never updated, except the two cache-local
+tables, which exist only in the cache: the `synced` flags and the stand server's run queue (ADR 0086). Bodies are the schema object's canonical JSON, so a row can always
 be re-validated through `qdt_schemas.migrations.load`. Columns beside the body are indexes, never a
 second source of truth.
 """
@@ -161,4 +161,17 @@ sync_state = Table(
     Column("key", String(255), primary_key=True),
     Column("synced", Boolean, nullable=False, default=False),
     comment="Cache only: which rows (and record payloads) the server has confirmed.",
+)
+
+run_queue = Table(
+    "run_queue",
+    cache_metadata,
+    Column("queue_id", String(32), primary_key=True),
+    Column("stand_id", String(255), nullable=False),
+    Column("body", Body, nullable=False, comment="QueuedRun, canonical JSON; rewritten as it moves."),
+    Index("ix_run_queue_stand", "stand_id"),
+    comment=(
+        "Cache only: the stand server's run queue (ADR 0086). Operating state, mutable like "
+        "sync_state and never synced; what a queued run produces is the durable record."
+    ),
 )

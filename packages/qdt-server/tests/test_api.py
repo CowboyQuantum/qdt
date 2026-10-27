@@ -647,6 +647,13 @@ STAND_ROUTES = [
     ("DELETE", "/levels/pending"),
     ("GET", "/stand/state"),
     ("POST", "/stand/state"),
+    ("GET", "/queue"),
+    ("POST", "/queue"),
+    ("POST", "/queue/pause"),
+    ("POST", "/queue/resume"),
+    ("POST", "/queue/x/move"),
+    ("DELETE", "/queue/x"),
+    ("POST", "/queue/x/abort"),
     ("POST", "/sweeps/compile"),
     ("POST", "/runs"),
     ("GET", "/runs"),
@@ -687,7 +694,7 @@ def test_a_read_server_serves_the_registry_and_has_no_command(tmp_path, monkeypa
         for method, path in STAND_ROUTES:
             assert c.request(method, path, json={}).status_code in (404, 405), (method, path)
         paths = c.get("/openapi.json").json()["paths"]
-        assert not any(p in paths for p in ("/stand", "/runs", "/levels", "/tuneups", "/nodes"))
+        assert not any(p in paths for p in ("/stand", "/runs", "/levels", "/tuneups", "/nodes", "/queue"))
         assert not hasattr(c.app.state, "runs")  # nothing that could sync or run
         assert c.app.state.registry.unsynced()["records"] == 0  # its own cache holds nothing
 
@@ -707,4 +714,4 @@ def test_a_stand_server_says_what_it_drives_and_serves_its_own_payloads(client):
     assert r.status_code == 200
     assert hashlib.sha256(r.content).hexdigest() == r.headers["x-content-sha256"]
     for method, path in STAND_ROUTES:  # present here: a stand server has every route
-        assert client.request(method, path, json={}).status_code not in (404, 405) or "/x/" in path
+        assert client.request(method, path, json={}).status_code not in (404, 405) or "/x" in path

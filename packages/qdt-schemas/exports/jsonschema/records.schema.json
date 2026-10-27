@@ -1945,6 +1945,151 @@
       "title": "PulseSequence",
       "type": "object"
     },
+    "QueuedRun": {
+      "additionalProperties": false,
+      "description": "One entry in a stand's run queue (ADR 0075, 0086). The stand server runs the entry at position 0\nwhen the stand is free and the queue is not paused; one run at a time, in order.",
+      "properties": {
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When its run reached an end.",
+          "title": "Finished At"
+        },
+        "message": {
+          "default": "",
+          "description": "Why it failed or was aborted; empty otherwise.",
+          "title": "Message",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Place among the waiting entries, 0 for the one that runs next; None once it has left the queue (running or finished).",
+          "title": "Position"
+        },
+        "queue_id": {
+          "description": "Server-minted UUID4 as 32 lowercase hex digits.",
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Queue Id",
+          "type": "string"
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The MeasurementRecord its run produced (done, or aborted after some data).",
+          "title": "Record Id"
+        },
+        "request": {
+          "$ref": "#/$defs/RunRequest",
+          "description": "The run as it was asked for: its sweep and its options."
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Run it started, once it left the queue; None while it waits.",
+          "title": "Run Id"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "stand_id": {
+          "description": "The stand whose queue holds the entry.",
+          "minLength": 1,
+          "title": "Stand Id",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When it left the queue.",
+          "title": "Started At"
+        },
+        "state": {
+          "description": "queued \u2192 running \u2192 done | aborted | failed.",
+          "enum": [
+            "queued",
+            "running",
+            "done",
+            "aborted",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "submitted_at": {
+          "description": "When the stand server accepted it.",
+          "format": "date-time",
+          "title": "Submitted At",
+          "type": "string"
+        },
+        "submitted_by": {
+          "description": "Who submitted it: the command token's label, or 'local' (as StandState.set_by).",
+          "minLength": 1,
+          "title": "Submitted By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "queue_id",
+        "stand_id",
+        "position",
+        "request",
+        "submitted_by",
+        "submitted_at",
+        "state",
+        "run_id",
+        "record_id",
+        "started_at",
+        "finished_at",
+        "message"
+      ],
+      "title": "QueuedRun",
+      "type": "object"
+    },
     "Ramp": {
       "additionalProperties": false,
       "description": "Ramp `channel` linearly from `start` to `stop` over `duration`.",
@@ -2103,6 +2248,50 @@
         "role"
       ],
       "title": "ResolvedChannel",
+      "type": "object"
+    },
+    "RunRequest": {
+      "additionalProperties": false,
+      "description": "A run as asked for: the experiment and its options. `POST /runs` starts one; a queue entry keeps\none until its turn (ADR 0075, 0086).",
+      "properties": {
+        "definition": {
+          "$ref": "#/$defs/SweepDefinition",
+          "description": "The sweep to compile and run on the stand."
+        },
+        "options": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Backend and recording options: seed (int), noise (bool), campaign (str), and the options the stand's backends take (on the simulated stand, the model's scalar fields and the simulated scope's tau_s, droop_v and scope_noise_v).",
+          "title": "Options",
+          "type": "object"
+        },
+        "schema_version": {
+          "default": 1,
+          "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "definition",
+        "options"
+      ],
+      "title": "RunRequest",
       "type": "object"
     },
     "Segment": {

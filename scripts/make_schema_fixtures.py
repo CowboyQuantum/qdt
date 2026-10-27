@@ -11,12 +11,13 @@ from datetime import UTC, datetime
 
 from qdt_lab.experiment import SimulatedEmitter, compile_sweep
 from qdt_schemas.activity import FixedLevel
+from qdt_schemas.control import RunRequest
 from qdt_schemas.data import Annotation
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import PERSISTED, current_version
 from qdt_schemas.modeling import AnalysisResult, Estimate, FitModel, NodeOutcome
-from qdt_schemas.operations import ChannelLimit, StandState
+from qdt_schemas.operations import ChannelLimit, QueuedRun, StandState
 from qdt_sim.scenarios import DEVICE_ID, default_stand, stability
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-schemas/tests/fixtures"
@@ -55,6 +56,18 @@ def examples() -> dict[str, object]:
             created_at=T0,
         ),
         "StandConfig": stand,
+        "QueuedRun": QueuedRun(
+            queue_id="0" * 31 + "5",
+            stand_id=stand.stand_id,
+            request=RunRequest(definition=definition, options={"seed": 3, "campaign": "fixture"}),
+            submitted_by="local",
+            submitted_at=T0,
+            state="done",
+            run_id="0" * 31 + "6",
+            record_id="0" * 31 + "1",
+            started_at=T0,
+            finished_at=T0,
+        ),
         "StandState": StandState(
             stand_id=stand.stand_id,
             version=2,

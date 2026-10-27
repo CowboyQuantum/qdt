@@ -131,7 +131,14 @@
       .chip.on { border-color: var(--sel); color: var(--text); background: color-mix(in srgb, var(--sel) 14%, transparent); }
       .dc .offer { padding: 4px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .dc .offer:empty { display: none; }
-      .dc .tbl { flex: 1; min-height: 0; overflow: auto; }
+      .dc .pending { padding: 6px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--line); color: var(--warn); }
+      .dc .pending:empty { display: none; }
+      .dc .limits { padding: 4px 10px; border-top: 1px solid var(--line); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+      .dc .limits input[type="number"] { width: 5.5em; }
+      .dc .limits input[type="text"] { flex: 1; min-width: 10em; }
+      .dc .limits .glabel { color: var(--text-3); font-size: 0.86em; }
+      .dc .tbl { flex: 1; min-height: 6em; overflow: auto; }
+      .dc .foot .stand-state { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
       table.dct { border-collapse: collapse; width: 100%; }
       table.dct th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 500; color: var(--text-2); padding: 4px 6px; border-bottom: 1px solid var(--line); cursor: pointer; white-space: nowrap; user-select: none; }
       table.dct th.sorted { color: var(--sel); }
@@ -157,6 +164,18 @@
       .matrix .cell input { width: 100%; background: transparent; border: none; text-align: center; padding: 4px 0; }
       .matrix .lab { color: var(--text-2); display: flex; align-items: center; justify-content: center; padding: 2px; }
       .matrix .lab.stage { color: var(--text-3); text-decoration: line-through; }
+      .matrix .save { display: flex; gap: 6px; align-items: center; }
+      .matrix .save input { flex: 1; min-width: 10em; }
+
+      /* ---- widget: queue ---- */
+      .queue { display: flex; flex-direction: column; height: 100%; font-size: 0.93em; }
+      .queue .qnote { padding: 6px 10px; color: var(--warn); border-bottom: 1px solid var(--line); }
+      .queue .tbl { flex: 1; min-height: 6em; overflow: auto; }
+      .queue td.name { color: var(--text); }
+      .queue tr.running td { color: var(--live); }
+      .queue tr.done td, .queue tr.aborted td, .queue tr.failed td { color: var(--text-3); }
+      .queue td button { padding: 0 6px; margin-left: 2px; }
+      .queue .foot { padding: 4px 10px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 0.86em; }
 
       /* ---- widget: script (placeholder) ---- */
       .code { display: grid; grid-template-columns: 1fr 200px; height: 100%; }

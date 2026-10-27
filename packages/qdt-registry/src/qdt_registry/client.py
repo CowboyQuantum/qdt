@@ -8,6 +8,7 @@
     reg.results(record_id=...); reg.output(result_id) # ... and back
     reg.add_outcome(outcome); reg.outcomes(tuneup_id=...)  # a calibration node's verdict (ADR 0050)
     reg.add_stand_state(state); reg.stand_state(stand_id)  # a stand's limits and held point (ADR 0085)
+    reg.queue_put(entry); reg.queue_entries(stand_id)  # the stand server's run queue, cache only (ADR 0086)
     reg.sync()                                        # needs remote_dsn + remote_store (or the env vars)
 
 Every write is insert-if-absent keyed by a client-minted id or a content hash, so a sync can be retried
@@ -32,7 +33,7 @@ from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.migrations import load
 from qdt_schemas.modeling import AnalysisResult, NodeOutcome
-from qdt_schemas.operations import StandState
+from qdt_schemas.operations import QueuedRun, StandState
 from qdt_schemas.payload_hdf5 import PAYLOAD_TYPE, Payload, read_payload, write_payload
 
 from .tables import (
@@ -45,6 +46,7 @@ from .tables import (
     objects,
     records,
     registry_meta,
+    run_queue,
     stand_states,
     sync_state,
     tuning_outcomes,
@@ -520,6 +522,35 @@ class Registry:
                     copied += 1
                 self._mark(conn, "stand_states", f"{state.stand_id}/{state.version}", True)
         return copied
+
+    # --- the run queue (cache only, mutable, never synced; ADR 0086) -------------------------------
+
+    def queue_put(self, *entries: QueuedRun) -> None:
+        """Write these queue entries as they now are, in one transaction: a new entry is added, a
+        known one replaced (the queue is operating state, not a record)."""
+        from sqlalchemy.dialects.sqlite import insert
+
+        with self._cache.begin() as conn:
+            for e in entries:
+                stmt = insert(run_queue).values(
+                    queue_id=e.queue_id, stand_id=e.stand_id, body=_body(e)
+                )
+                conn.execute(
+                    stmt.on_conflict_do_update(
+                        index_elements=["queue_id"], set_={"body": stmt.excluded.body}
+                    )
+                )
+
+    def queue_entries(self, stand_id: str) -> list[QueuedRun]:
+        """Every entry of `stand_id`'s queue this cache holds, in no particular order."""
+        q = select(run_queue.c.body).where(run_queue.c.stand_id == stand_id)
+        with self._cache.connect() as conn:
+            return [load("QueuedRun", b) for b in conn.execute(q).scalars()]
+
+    def queue_drop(self, queue_id: str) -> None:
+        """Forget a queue entry (a waiting one that was removed, or a finished one pruned)."""
+        with self._cache.begin() as conn:
+            conn.execute(run_queue.delete().where(run_queue.c.queue_id == queue_id))
 
     def unsynced(self) -> dict[str, int]:
         with self._cache.connect() as conn:

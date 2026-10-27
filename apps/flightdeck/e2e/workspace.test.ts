@@ -45,7 +45,7 @@ it("lays out the default workspace, wears the slate theme as custom properties, 
   await open(page);
   expect(await widgets(page, "left")).toEqual(["sweep", "analysis", "tuneup"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
-  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "queue", "history"]);
   expect(await page.textContent(".col.center .pane .title")).toBe("Plot 1");
   expect(await page.textContent(".col.center .pane .src")).toMatch(/^live · synthetic/);
   await page.locator(".col.center .pane [data-menu]").click();
@@ -78,13 +78,14 @@ it("lays out the default workspace, wears the slate theme as custom properties, 
 });
 
 it("splits and closes panes, a second plot shows the same Dataset with its own view, and the layout restores after a reload", async () => {
-  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, colorScheme: "dark" });
+  // tall enough for a fifth pane on the right (four by default, each at least MIN_PANE_HEIGHT)
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1200 }, colorScheme: "dark" });
   await open(page);
   const right = page.locator(".col.right .pane");
   expect(await right.first().locator("[data-close]").isDisabled()).toBe(false); // two panes: either may close
   await right.nth(2).locator("[data-split]").click();
-  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history", "empty"]);
-  expect(await page.locator(".col.right .gutter.h").count()).toBe(3);
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "queue", "empty", "history"]);
+  expect(await page.locator(".col.right .gutter.h").count()).toBe(4);
   // the new pane may take any widget that is not a busy single (every form widget is open already)
   const options = await right.nth(3).locator(".picker option").allTextContents();
   expect(options).toEqual(["Empty", "History", "Virtual gates", "Script"]);
@@ -114,7 +115,7 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await page.keyboard.press("Escape");
   await page.reload();
   await page.waitForFunction(() => /\(complete\)/.test(document.querySelector("#status")?.textContent ?? ""));
-  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history", "empty"]);
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "queue", "empty", "history"]);
   expect(await widgets(page, "center")).toEqual(["plot", "plot"]);
   // each pane's view came back with it (ADR 0061): Plot 1 in magma, Plot 2 swapped with its cut
   await page.locator(".col.center .pane [data-menu]").first().click();
@@ -126,10 +127,10 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   await page.keyboard.press("Escape");
   await page.locator(".col.center .pane").nth(1).locator("[data-close]").click();
   await page.locator(".col.right .pane").nth(3).locator("[data-close]").click();
-  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "history"]);
+  expect(await widgets(page, "right")).toEqual(["pulse", "levels", "queue", "history"]);
   expect(await widgets(page, "center")).toEqual(["plot"]);
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v4")!) as { right: unknown[] });
-  expect(stored.right).toHaveLength(3);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("flightdeck.layout.v5")!) as { right: unknown[] });
+  expect(stored.right).toHaveLength(4);
   await page.close();
 });
 

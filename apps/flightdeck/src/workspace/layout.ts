@@ -45,9 +45,10 @@ export function defaultLayout(): Layout {
     ],
     center: [{ id: newPaneId(), widget: PLOT_WIDGET, size: 1 }],
     right: [
-      { id: newPaneId(), widget: "pulse", size: 0.3 },
-      { id: newPaneId(), widget: "levels", size: 0.4 },
-      { id: newPaneId(), widget: "history", size: 0.3 },
+      { id: newPaneId(), widget: "pulse", size: 0.22 },
+      { id: newPaneId(), widget: "levels", size: 0.38 },
+      { id: newPaneId(), widget: "queue", size: 0.2 },
+      { id: newPaneId(), widget: "history", size: 0.2 },
     ],
     widths: { left: 0.3, right: 0.26 },
   };
@@ -189,7 +190,7 @@ export function serializeLayout(layout: Layout): string {
 }
 
 /** Versioned: a new default layout (new widgets) retires the stored one rather than hiding them. */
-export const LAYOUT_KEY = "flightdeck.layout.v4";
+export const LAYOUT_KEY = "flightdeck.layout.v5";
 /** The layout against a read server lives under its own key: one browser may face both kinds of server. */
 export const READ_ONLY_LAYOUT_KEY = "flightdeck.layout.read.v1";
 

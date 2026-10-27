@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from qdt_schemas.activity import FixedLevel
-from qdt_schemas.operations import ChannelLimit, StandState
+from qdt_schemas.activity import FixedLevel, SensedLevel, SweepAxis, SweepDefinition
+from qdt_schemas.control import RunRequest
+from qdt_schemas.operations import ChannelLimit, QueuedRun, StandQueue, StandState
 
 T0 = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
 
@@ -88,3 +89,68 @@ def test_a_state_says_who_set_it_and_why():
         state(version=0)
     with pytest.raises(ValidationError):
         state(set_at=datetime(2026, 10, 27, 12, 0))  # a time without a zone
+
+
+# --- the run queue (ADR 0075, 0086) ----------------------------------------------------------------
+
+
+def request() -> RunRequest:
+    sweep = SweepDefinition(
+        name="queued sweep",
+        axes=(SweepAxis(name="P1", channel="P1", start=0.0, stop=0.1, num=3),),
+        sensed=(SensedLevel(name="I", channel="sensor"),),
+    )
+    return RunRequest(definition=sweep, options={"seed": 1})
+
+
+def entry(**update) -> QueuedRun:
+    base = {
+        "queue_id": "a" * 32,
+        "stand_id": "sim-stand",
+        "position": 0,
+        "request": request(),
+        "submitted_by": "local",
+        "submitted_at": T0,
+        "state": "queued",
+    }
+    return QueuedRun(**(base | update))
+
+
+def test_a_queue_entry_round_trips_and_keeps_its_request():
+    e = entry()
+    assert QueuedRun.model_validate_json(e.model_dump_json()) == e
+    assert e.request.definition.name == "queued sweep" and e.request.options == {"seed": 1}
+    # a request body without schema_version, as scripts send it, is still a RunRequest
+    assert RunRequest.model_validate({"definition": request().definition.model_dump(mode="json")})
+
+
+def test_only_a_waiting_entry_has_a_position_and_a_finished_one_says_when_and_why():
+    with pytest.raises(ValidationError, match="has a position"):
+        entry(position=None)
+    with pytest.raises(ValidationError, match="has a position"):
+        entry(state="running", run_id="b" * 32, started_at=T0)
+    with pytest.raises(ValidationError, match="has not started"):
+        entry(run_id="b" * 32)
+    running = entry(state="running", position=None, run_id="b" * 32, started_at=T0)
+    assert running.position is None
+    with pytest.raises(ValidationError, match="says when it finished"):
+        entry(state="done", position=None, run_id="b" * 32, started_at=T0)
+    with pytest.raises(ValidationError, match="says why"):
+        entry(state="failed", position=None, finished_at=T0)
+
+
+def test_a_stand_queue_holds_positions_in_order_and_one_running_entry():
+    waiting = [entry(queue_id=f"{i:032x}", position=i) for i in range(3)]
+    running = entry(
+        queue_id="f" * 32, state="running", position=None, run_id="b" * 32, started_at=T0
+    )
+    q = StandQueue(stand_id="sim-stand", paused=False, entries=(running, *waiting))
+    assert [e.position for e in q.entries] == [None, 0, 1, 2]
+    with pytest.raises(ValidationError, match="positions 0, 1, 2"):
+        StandQueue(stand_id="sim-stand", paused=False, entries=(waiting[1], waiting[0]))
+    with pytest.raises(ValidationError, match="at most one entry is running"):
+        StandQueue(
+            stand_id="sim-stand",
+            paused=False,
+            entries=(running, running.model_copy(update={"queue_id": "e" * 32})),
+        )

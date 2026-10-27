@@ -142,10 +142,13 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   const held = (await (await page.request.get(`http://127.0.0.1:${API_PORT}/levels`)).json()) as { channel: string; value: number }[];
   expect(held.map((l) => l.channel).sort()).toEqual(["P1", "P2"]);
   for (const l of held) expect(Math.abs(l.value - 0.105)).toBeLessThan(0.01); // the middle of the 0.03..0.18 window
-  // inline set with limit refusal (a browser setting, ±1 by default) and the settling state
+  // inline set with limit refusal and the settling state: the limit is the stand's (ADR 0085), here ±1 V on P1
+  const limited = await page.request.post(`http://127.0.0.1:${API_PORT}/stand/state`, { data: { limits: [{ channel: "P1", min_v: -1, max_v: 1 }], reason: "e2e: P1 within ±1 V" } });
+  expect(limited.status()).toBe(201);
+  await page.waitForFunction(() => document.querySelector(".pane[data-widget=levels] tr[data-channel=P1] td.limit")?.textContent === "[-1, 1] V");
   await levels.locator("tr[data-channel=P1] input[name=set_P1]").fill("5");
   await levels.locator("tr[data-channel=P1] button", { hasText: "set" }).click();
-  expect(await levels.locator("tr[data-channel=P1] .badge").textContent()).toMatch(/beyond the limit/);
+  expect(await levels.locator("tr[data-channel=P1] .badge").textContent()).toMatch(/beyond the stand's limit \[-1, 1\] V/);
   await levels.locator("tr[data-channel=P1] input[name=set_P1]").fill("0.02");
   await levels.locator("tr[data-channel=P1] input[name=set_P1]").press("Enter");
   await page.waitForFunction(() => /held: P1 = 0\.02 V/.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""));

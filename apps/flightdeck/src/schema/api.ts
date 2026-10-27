@@ -39,6 +39,8 @@ export interface QdtControlApi {
   ParameterSpec?: ParameterSpec;
   PayloadRef?: PayloadRef;
   PulseSequence?: PulseSequence;
+  QueueMove?: QueueMove;
+  QueuedRun?: QueuedRun;
   Ramp?: Ramp;
   ReplayRequest?: ReplayRequest;
   ResolvedChannel?: ResolvedChannel;
@@ -54,6 +56,7 @@ export interface QdtControlApi {
   SimScenario?: SimScenario;
   SourceDescriptor?: SourceDescriptor;
   StandConfig?: StandConfig;
+  StandQueue?: StandQueue;
   StandState?: StandState;
   StandStateChange?: StandStateChange;
   Step?: Step;
@@ -1847,6 +1850,96 @@ export interface NodeOutcome {
   tuneup_id?: string | null;
 }
 /**
+ * Move a waiting queue entry (ADR 0086).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "QueueMove".
+ */
+export interface QueueMove {
+  /**
+   * Its new place among the waiting entries; 0 runs next.
+   */
+  position: number;
+}
+/**
+ * One entry in a stand's run queue (ADR 0075, 0086). The stand server runs the entry at position 0
+ * when the stand is free and the queue is not paused; one run at a time, in order.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "QueuedRun".
+ */
+export interface QueuedRun {
+  /**
+   * When its run reached an end.
+   */
+  finished_at?: string | null;
+  /**
+   * Why it failed or was aborted; empty otherwise.
+   */
+  message?: string;
+  /**
+   * Place among the waiting entries, 0 for the one that runs next; None once it has left the queue (running or finished).
+   */
+  position?: number | null;
+  /**
+   * Server-minted UUID4 as 32 lowercase hex digits.
+   */
+  queue_id: string;
+  /**
+   * The MeasurementRecord its run produced (done, or aborted after some data).
+   */
+  record_id?: string | null;
+  request: RunRequest;
+  /**
+   * The Run it started, once it left the queue; None while it waits.
+   */
+  run_id?: string | null;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * The stand whose queue holds the entry.
+   */
+  stand_id: string;
+  /**
+   * When it left the queue.
+   */
+  started_at?: string | null;
+  /**
+   * queued → running → done | aborted | failed.
+   */
+  state: "queued" | "running" | "done" | "aborted" | "failed";
+  /**
+   * When the stand server accepted it.
+   */
+  submitted_at: string;
+  /**
+   * Who submitted it: the command token's label, or 'local' (as StandState.set_by).
+   */
+  submitted_by: string;
+}
+/**
+ * A run as asked for: the experiment and its options. `POST /runs` starts one; a queue entry keeps
+ * one until its turn (ADR 0075, 0086).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "RunRequest".
+ */
+export interface RunRequest {
+  definition: SweepDefinition;
+  /**
+   * Backend and recording options: seed (int), noise (bool), campaign (str), and the options the stand's backends take (on the simulated stand, the model's scalar fields and the simulated scope's tau_s, droop_v and scope_noise_v).
+   */
+  options?: {
+    [k: string]: string | number | boolean;
+  };
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
  * Publish a stored payload on the stream: a record (with its overlays) or a result's output.
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
@@ -1927,21 +2020,6 @@ export interface Run {
    * queued → running → completed | aborted | failed.
    */
   state: "queued" | "running" | "completed" | "aborted" | "failed";
-}
-/**
- * Start a run: the experiment and its options.
- *
- * This interface was referenced by `QdtControlApi`'s JSON-Schema
- * via the `definition` "RunRequest".
- */
-export interface RunRequest {
-  definition: SweepDefinition;
-  /**
-   * Backend and recording options: seed (int), noise (bool), campaign (str), any scalar field of the simulated model, e.g. sensor_width_v (float) for a colder sensor, and the simulated scope's tau_s, droop_v and scope_noise_v (floats).
-   */
-  options?: {
-    [k: string]: string | number | boolean;
-  };
 }
 /**
  * What kind of server answered (ADR 0074): Flight Deck shows no command against a read server.
@@ -2036,6 +2114,35 @@ export interface StandConfig {
   schema_version?: number;
   /**
    * Stand id; generic, never a site name (rule 7).
+   */
+  stand_id: string;
+}
+/**
+ * A stand's run queue as the stand server reports it (ADR 0086): the running entry, then the
+ * waiting ones in order, then the most recent finished ones, newest first.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "StandQueue".
+ */
+export interface StandQueue {
+  /**
+   * Running, then waiting by position, then finished, newest first.
+   */
+  entries?: QueuedRun[];
+  /**
+   * Why it is paused; empty when it is not.
+   */
+  note?: string;
+  /**
+   * True while the server starts no waiting entry: a person paused it, or the server restarted with entries waiting and a person has not resumed it.
+   */
+  paused: boolean;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * The stand this queue runs on.
    */
   stand_id: string;
 }

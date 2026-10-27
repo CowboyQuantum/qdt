@@ -10,6 +10,8 @@ Both are rendered by the UI and never stored in it (`docs/FINISH_LINE.md`). Froz
 by ADR 0036; `TuneUp` (ADR 0050) is added beside them: the lifecycle of a tune-up over calibration
 nodes, the DAG state the finish line asks the UI to render. `ChannelLevel` (ADR 0057, Step 6b) is
 added beside them: one channel's setpoint, held level and readback, the rows of the Levels widget.
+`RunRequest` (Step 6c, ADR 0086) moved here from qdt-server: a run as asked for, which a queue entry
+keeps (`operations.QueuedRun`).
 """
 
 from typing import Literal
@@ -17,6 +19,7 @@ from typing import Literal
 from pydantic import AwareDatetime, Field, model_validator
 
 from ._base import QdtModel
+from .activity import SweepDefinition
 from .data import AttrValue
 from .modeling import CalibrationNode, FitModel, NodeOutcome
 
@@ -123,6 +126,21 @@ class MethodSpec(QdtModel):
     def fit_model(self, given: dict[str, AttrValue]) -> FitModel:
         """The `FitModel` a result of this method with `given` parameters carries."""
         return FitModel(name=self.name, version=self.version, parameters=self.resolve(given))
+
+
+class RunRequest(QdtModel):
+    """A run as asked for: the experiment and its options. `POST /runs` starts one; a queue entry keeps
+    one until its turn (ADR 0075, 0086)."""
+
+    definition: SweepDefinition = Field(description="The sweep to compile and run on the stand.")
+    options: dict[str, AttrValue] = Field(
+        default_factory=dict,
+        description=(
+            "Backend and recording options: seed (int), noise (bool), campaign (str), and the options "
+            "the stand's backends take (on the simulated stand, the model's scalar fields and the "
+            "simulated scope's tau_s, droop_v and scope_noise_v)."
+        ),
+    )
 
 
 class Run(QdtModel):
