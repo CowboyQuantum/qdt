@@ -185,4 +185,12 @@ one run at a time, move and remove while waiting, abort while running, pause and
 restart with entries waiting; Flight Deck's Queue widget, Run through the queue, the Levels widget's
 limits and restart prompt, and the Virtual gates matrix saved to the stand. The L0 rows "Queue" and
 "Flight Deck e2e" are green (`e2e/queue.test.ts`; commands absent on a read server, `e2e/readonly.test.ts`).
-Tune-ups are not queue entries yet (ADR 0086 §6). Deliverables 9–11, 13–16 not started.
+Tune-ups are not queue entries yet (ADR 0086 §6). **The L2 rows are scripted (session 33, 2026-10-28):**
+`bench/test_l2_orchestration.py` runs `qdt-server --stand` itself from `QDT_STAND_FILE`, submits every row as
+a queue entry and reads the scope through records fetched over HTTP; T-1 restarts the server and confirms the
+offered held point; `QDT_L2_ROWS` names the rows cabled now. Checked against the simulated stand
+(`QDT_L2_SIMULATED=1`): T-1, T-2 and T-7 pass, T-3 … T-5 run and skip only their bench oracles, T-6 skips. Two
+oracles differ from the rows as written, pending the human's decision (#147): T-7 checks the scope against
+P1's reported setpoint (the held point is not re-applied after a sweep), and T-5 runs L2-1's DC half (its
+pulse half needs the OPX outside the stand). The bench run is still to come. Deliverables 9–11, 13–16 not
+started.
