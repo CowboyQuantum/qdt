@@ -2892,7 +2892,7 @@
                 }
               ]
             },
-            "description": "Backend and recording options: seed (int), noise (bool), campaign (str), and the options the stand's backends take (on the simulated stand, the model's scalar fields and the simulated scope's tau_s, droop_v and scope_noise_v).",
+            "description": "Backend and recording options: seed (int), noise (bool), campaign (str), and the options the stand's backends take (on the simulated stand, the committed device to load and the simulated scope's tau_s, droop_v and scope_noise_v).",
             "title": "Options",
             "type": "object"
           },
@@ -3303,7 +3303,7 @@
       },
       "SimScenario": {
         "additionalProperties": false,
-        "description": "A reproducible simulated situation: which scalar parameters of the simulated device's model are\noverridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the\ntruth a method must recover; this package holds the recipe only (rule 1).",
+        "description": "A reproducible simulated situation: which committed device file the simulator loads (by name and\nSHA-256, ADR 0088), which noise seed, whether noise is on. `qdt-sim` realizes it into a device and\nderives the truth a method must recover; this package holds the reference only (rule 1).",
         "properties": {
           "attrs": {
             "additionalProperties": {
@@ -3332,30 +3332,21 @@
             "title": "Description",
             "type": "string"
           },
-          "model": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "description": "Scalar overrides of the simulated device's default model, by field name (e.g. sensor_width_v). Matrix parameters are not overridable through a scenario yet.",
-            "title": "Model",
-            "type": "object"
+          "device": {
+            "description": "Name of the committed device file the simulator loads, e.g. 'two-dot-sige-a'.",
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Device",
+            "type": "string"
+          },
+          "device_sha256": {
+            "description": "SHA-256 of that file; the simulator refuses a file that hashes otherwise.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Device Sha256",
+            "type": "string"
           },
           "noise": {
             "default": true,
-            "description": "Whether the device's noise models are on.",
+            "description": "Whether the device's noise is on.",
             "title": "Noise",
             "type": "boolean"
           },
@@ -3366,21 +3357,23 @@
             "type": "string"
           },
           "schema_version": {
-            "default": 1,
-            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "default": 2,
+            "description": "Per-object-type schema version; bumps only on breaking changes. 2: the scenario names a device file instead of overriding a model's scalars, and `seed` is the noise seed (ADR 0088).",
             "title": "Schema Version",
             "type": "integer"
           },
           "seed": {
             "default": 0,
-            "description": "Seed of every random draw in the device.",
+            "description": "Seed of the run's noise realisation; the device's own disorder is in its file.",
             "minimum": 0.0,
             "title": "Seed",
             "type": "integer"
           }
         },
         "required": [
-          "scenario_id"
+          "scenario_id",
+          "device",
+          "device_sha256"
         ],
         "title": "SimScenario",
         "type": "object"
@@ -4264,7 +4257,7 @@
                 "type": "null"
               }
             ],
-            "description": "On the simulated stand: the scenario the backends are built from (seed, noise, model overrides become run options) and the outcomes are tagged with; ignored by a real stand."
+            "description": "On the simulated stand: the scenario the backends are built from (its device, noise seed and noise become run options) and the outcomes are tagged with; ignored by a real stand."
           }
         },
         "required": [

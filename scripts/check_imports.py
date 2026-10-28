@@ -13,6 +13,18 @@ FORBIDDEN = {
     "packages/qdt-server/src": [r"^\s*(from|import)\s+(sqlalchemy|psycopg|h5py)"],  # stores via qdt-registry only
     "packages/qdt-tuning/src": [r"^\s*(from|import)\s+qdt_(?!schemas)"],  # ADR 0048: pure, schemas only
 }
+PHANTOM = r"^\s*(from|import)\s+phantom\b"
+"""ADR 0087: Phantom is qdt-sim's dependency alone, and qdt-sim reaches it through `phantom.api` only."""
+for pkg in sorted((ROOT / "packages").iterdir()):
+    for part in ("src", "tests"):
+        rel = f"packages/{pkg.name}/{part}"
+        if pkg.name == "qdt-sim":
+            FORBIDDEN.setdefault(rel, []).append(r"^\s*(from|import)\s+phantom(?!\.api\b)")
+        else:
+            FORBIDDEN.setdefault(rel, []).append(PHANTOM)
+FORBIDDEN["apps/flightdeck/src"].append(PHANTOM)
+for rel in ("docs/tutorials", "bench"):
+    FORBIDDEN[rel] = [PHANTOM]
 bad = []
 for rel, pats in FORBIDDEN.items():
     base = ROOT / rel

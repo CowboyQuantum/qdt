@@ -128,15 +128,20 @@ def test_a_failing_run_says_why(client):
     assert client.get("/results/" + "0" * 32).status_code == 404
 
 
-def test_diamonds_run_through_the_api_with_a_cold_sensor(client):
+def test_diamonds_run_through_the_api_on_the_device_a_run_names(client):
+    """Run options on the simulated stand (ADR 0088): the noise seed, noise on or off, and the committed
+    device to load; a device that is not committed fails the run, it does not fall back."""
     d = diamonds(64, 64, name="api diamonds").model_dump(mode="json")
-    options = {"noise": False, "sensor_width_v": 0.01, "seed": 2}  # a model field as a run option
+    options = {"noise": False, "device": "two-dot-sige-b", "seed": 2}
     run = Run.model_validate(
         client.post("/runs", json={"definition": d, "options": options}).json()
     )
     run = wait_for(client, run.run_id)
     assert run.state == "completed", run.error
-    assert run.attrs["sensor_width_v"] == 0.01
+    assert run.attrs["device"] == "two-dot-sige-b"
+    other = client.post("/runs", json={"definition": d, "options": {"device": "nope"}}).json()
+    other = wait_for(client, other["run_id"])
+    assert other.state == "failed" and "no committed device" in other.error
     assert SweepDefinition.model_validate(d).sensed[0].name == "I_sensor"
     r = client.post(
         f"/records/{run.record_id}/results",
@@ -715,3 +720,27 @@ def test_a_stand_server_says_what_it_drives_and_serves_its_own_payloads(client):
     assert hashlib.sha256(r.content).hexdigest() == r.headers["x-content-sha256"]
     for method, path in STAND_ROUTES:  # present here: a stand server has every route
         assert client.request(method, path, json={}).status_code not in (404, 405) or "/x" in path
+
+
+def test_the_simulated_device_record_says_which_phantom_made_it_and_truth_stays_out_of_the_api(
+    client,
+):
+    """Step 6d deliverables 10 and 11 (ADR 0087, 0088): the registered device carries Phantom's version,
+    its model versions and the device file's hash; no route or schema in the OpenAPI document carries
+    the device's truth (its lattice, its sensor's peak, its disorder draw)."""
+    from qdt_sim.scenarios import DEVICES
+
+    (device,) = client.get("/devices").json()
+    attrs = device["attrs"]
+    assert attrs["phantom_version"] == "0.2.0" and attrs["device_file"] == "two-dot-sige-a"
+    assert attrs["device_sha256"] == DEVICES["two-dot-sige-a"]
+    assert attrs["phantom.charge.ci"] >= 1 and attrs["phantom.readout.sensor"] >= 1
+    openapi = client.get("/openapi.json").text
+    for truth in (
+        "charge_lattice",
+        "lattice_truth",
+        "sensor_truth",
+        "SensorTruth",
+        "scenario_draw",
+    ):
+        assert truth not in openapi

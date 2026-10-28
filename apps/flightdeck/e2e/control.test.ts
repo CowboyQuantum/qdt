@@ -72,9 +72,12 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=inner_channel]")).toBe("P2_pulse");
   expect((await page.locator(".pane[data-widget=analysis] select[name=method] option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Sensor peak", "Single exponential"]);
 
-  // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region)
+  // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region): P1 about the
+  // simulated device's programmed 0.6 V, the P2 pulse about its DC level (ADR 0088), noise off so the
+  // template's 2 µs reading shows the charge
   await page.fill(".pane[data-widget=sweep] input[name=name]", "e2e stability");
-  for (const [k, v] of [["outer_num", "48"], ["inner_num", "48"]]) await page.fill(`.pane[data-widget=sweep] input[name=${k}]`, v!);
+  for (const [k, v] of [["outer_start", "0.45"], ["outer_stop", "0.75"], ["inner_start", "-0.15"], ["inner_stop", "0.15"], ["outer_num", "48"], ["inner_num", "48"]]) await page.fill(`.pane[data-widget=sweep] input[name=${k}]`, v!);
+  await page.fill(".pane[data-widget=sweep] input[name=options]", '{"seed": 1, "noise": false}');
   // compile first (ADR 0056): the strip shows the plan's identity; an edit marks it stale; Run compiles again
   await page.locator(".pane[data-widget=sweep] [data-compile]").click();
   await page.waitForFunction(() => /^plan [0-9a-f]{8}$/.test(document.querySelector("#plan")?.textContent ?? ""));
@@ -136,12 +139,14 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.waitForFunction(() => /held: P1 = .* · P2 = /.test(document.querySelector(".pane[data-widget=levels] .held-summary")?.textContent ?? ""));
   // the table shows the stand (ADR 0057): P1's setpoint is what was set, its readback is None (a simulated
   // gate is not sensed), the sensor's readback is a current
-  await page.waitForFunction(() => /0\.10/.test(document.querySelector(".pane[data-widget=levels] tr[data-channel=P1] td.setpoint")?.textContent ?? ""));
+  await page.waitForFunction(() => /0\.60/.test(document.querySelector(".pane[data-widget=levels] tr[data-channel=P1] td.setpoint")?.textContent ?? ""));
   expect(await levels.locator("tr[data-channel=P1] td.readback").textContent()).toBe("—");
   expect(await levels.locator("tr[data-channel=sensor] td.readback").textContent()).toMatch(/ A$/);
   const held = (await (await page.request.get(`http://127.0.0.1:${API_PORT}/levels`)).json()) as { channel: string; value: number }[];
   expect(held.map((l) => l.channel).sort()).toEqual(["P1", "P2"]);
-  for (const l of held) expect(Math.abs(l.value - 0.105)).toBeLessThan(0.01); // the middle of the 0.03..0.18 window
+  // P1 at the middle of its 0.45..0.75 window; P2 takes the pulse coordinate clicked (ADR 0053; with a DC
+  // level under the pulse that is not the gate's voltage, issue #150)
+  expect(Math.abs(held.find((l) => l.channel === "P1")!.value - 0.6)).toBeLessThan(0.01);
   // inline set with limit refusal and the settling state: the limit is the stand's (ADR 0085), here ±1 V on P1
   const limited = await page.request.post(`http://127.0.0.1:${API_PORT}/stand/state`, { data: { limits: [{ channel: "P1", min_v: -1, max_v: 1 }], reason: "e2e: P1 within ±1 V" } });
   expect(limited.status()).toBe(201);
@@ -314,8 +319,8 @@ it("runs a three-node tune-up from the UI and shows the DAG state with every nod
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
   await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=tuneup] input[name=node]").length === 4);
   expect(await page.locator(".pane[data-widget=tuneup] .node-id").allTextContents()).toEqual(["sensor-operating-point", "sensor-wing", "charge-lattice", "virtual-lattice"]);
-  // a cold sensor so the diamonds resolve (ADR 0030); the sensor node decides where the stability nodes park SG
-  await page.fill(".pane[data-widget=tuneup] input[name=options]", '{"seed": 2, "noise": false, "sensor_width_v": 0.01}');
+  // noise off, as the sensor nodes need (ADR 0088); the sensor node decides where the stability nodes park SG
+  await page.fill(".pane[data-widget=tuneup] input[name=options]", '{"seed": 2, "noise": false}');
   await page.locator(".pane[data-widget=tuneup] [data-start]").click();
   await page.waitForFunction(() => /queued|running/.test(document.querySelector(".pane[data-widget=tuneup] .tuneup-state")?.textContent ?? ""));
   await page.waitForFunction(() => /· completed/.test(document.querySelector(".pane[data-widget=tuneup] .tuneup-head")?.textContent ?? ""), null, { timeout: 120_000 });

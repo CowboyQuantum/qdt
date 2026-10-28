@@ -1,71 +1,62 @@
-"""`SimScenario` as data (ADR 0048): the simulator realizes it and derives the truth from the model."""
-
-import dataclasses
-import math
+"""`SimScenario` as data (ADR 0048, 0088): the simulator loads the scenario's committed device and takes
+the truth from Phantom's `Device.truth`, renaming only."""
 
 import numpy as np
 import pytest
 
 from qdt_schemas.modeling import SimScenario
-from qdt_sim.scenarios import default_model, device_for, lattice_truth, model_for, sensor_truth
+from qdt_sim.scenarios import (
+    DEVICES,
+    device_for,
+    lattice_truth,
+    load_device,
+    programmed,
+    sensor_truth,
+)
 
 
-def same_model(a, b) -> bool:
-    """Field-wise equality of two models (their matrices are numpy arrays, so `==` is ambiguous)."""
-    for f in dataclasses.fields(a):
-        x, y = getattr(a, f.name), getattr(b, f.name)
-        if isinstance(x, np.ndarray):
-            if not np.array_equal(x, y):
-                return False
-        elif x != y:
-            return False
-    return True
+def scenario(name: str = "two-dot-sige-a", **kwargs) -> SimScenario:
+    return SimScenario(scenario_id="s", device=name, device_sha256=DEVICES[name], **kwargs)
 
 
-def test_a_scenario_overrides_scalars_of_the_default_model_only():
-    plain = SimScenario(scenario_id="plain")
-    assert same_model(model_for(plain), default_model())
-    cold = SimScenario(scenario_id="cold", model={"sensor_width_v": 0.01, "temperature_k": 0.05})
-    m = model_for(cold)
-    assert m.sensor_width_v == 0.01 and m.temperature_k == 0.05
-    assert same_model(
-        m, dataclasses.replace(default_model(), sensor_width_v=0.01, temperature_k=0.05)
+def test_a_scenario_loads_its_committed_device_and_refuses_another_hash():
+    a, b = device_for(scenario()), device_for(scenario("two-dot-sige-b"))
+    assert a.device.seed != b.device.seed and a.device.gate_names == b.device.gate_names
+    wrong = SimScenario(
+        scenario_id="w", device="two-dot-sige-a", device_sha256=DEVICES["two-dot-sige-b"]
     )
-    with pytest.raises(ValueError, match="unknown fields"):
-        model_for(SimScenario(scenario_id="x", model={"nope": 1.0}))
-    with pytest.raises(TypeError, match="not a scalar"):
-        model_for(SimScenario(scenario_id="x", model={"c_gate": 1.0}))
+    with pytest.raises(ValueError, match="hashes to"):
+        device_for(wrong)
 
 
-def test_a_realized_scenario_is_a_seeded_device_and_its_truth_is_the_models_lattice():
-    a = device_for(SimScenario(scenario_id="s", seed=4))
-    b = device_for(SimScenario(scenario_id="s", seed=4))
-    assert a.sense("sensor") == b.sense("sensor")  # same seed, same draw
-    quiet = device_for(SimScenario(scenario_id="q", seed=4, noise=False))
-    assert quiet.sense("sensor") == quiet.sense("sensor")
-    truth = lattice_truth(SimScenario(scenario_id="s"))
-    lattice = default_model().charge_lattice("P1", "P2")
+def test_a_realized_scenario_is_a_seeded_run_and_its_truth_is_phantoms_lattice():
+    a, b = device_for(scenario(seed=4)), device_for(scenario(seed=4))
+    assert a.sense("sensor") == b.sense("sensor")  # same noise seed, same draw
+    quiet = device_for(scenario(seed=4, noise=False))
+    assert np.isfinite(quiet.sense("sensor"))
+    truth = lattice_truth(scenario())
+    lattice = load_device().truth(("P1", "P2")).charge_lattice_e_per_v
     assert set(truth) == {"l_11", "l_12", "l_21", "l_22"}
-    np.testing.assert_allclose(
+    np.testing.assert_array_equal(
         [[truth["l_11"], truth["l_12"]], [truth["l_21"], truth["l_22"]]], lattice
     )
 
 
-def test_the_sensors_truth_is_the_peak_nearest_the_asked_gate_value():
-    t = sensor_truth(SimScenario(scenario_id="s"))
+def test_the_sensors_truth_is_phantoms_peak_nearest_the_programmed_sensor_gate():
+    device = load_device()
+    s = device.truth(near_v=programmed(device)["SG"]).sensor
+    t = sensor_truth(scenario())
     assert t == {
-        "sg_peak_v": -0.06,
-        "period": 0.25,
-        "charging_energy": 1e-3,
-        "lever_arm": pytest.approx(4e-3),
-        # the wing (ADR 0062): atanh(1/√3) widths above the peak, and the slope there
-        "sg_width_v": 0.04,
-        "sg_wing_v": pytest.approx(-0.06 + math.atanh(1 / math.sqrt(3)) * 0.04),
-        "sensitivity_a_per_v": pytest.approx(4 / (3 * math.sqrt(3)) * 1e-9 / 0.04),
+        "sg_peak_v": s.peak_v,
+        "period": s.period_v,
+        "charging_energy": s.charging_energy_ev,
+        "lever_arm": s.lever_arm_ev_per_v,
+        "sg_width_v": s.width_v,
+        "sg_wing_v": s.wing_v,
+        "sensitivity_a_per_v": s.sensitivity_a_per_v,
     }
-    assert sensor_truth(SimScenario(scenario_id="s"), near_v=0.15)["sg_peak_v"] == pytest.approx(
-        0.19
-    )
-    assert sensor_truth(SimScenario(scenario_id="s"), near_v=-0.25)["sg_peak_v"] == pytest.approx(
-        -0.31
-    )
+    # one period further up is the next peak; the sensitivity follows the bias in linear response
+    above = sensor_truth(scenario(), near_v=s.peak_v + s.period_v)["sg_peak_v"]
+    assert above == pytest.approx(s.peak_v + s.period_v, abs=0.05)
+    low = sensor_truth(scenario(), bias_v=10e-6)["sensitivity_a_per_v"]
+    assert low == pytest.approx(t["sensitivity_a_per_v"] * 10e-6 / 50e-6, rel=0.05)

@@ -137,7 +137,7 @@ class RunRequest(QdtModel):
         default_factory=dict,
         description=(
             "Backend and recording options: seed (int), noise (bool), campaign (str), and the options "
-            "the stand's backends take (on the simulated stand, the model's scalar fields and the "
+            "the stand's backends take (on the simulated stand, the committed device to load and the "
             "simulated scope's tau_s, droop_v and scope_noise_v)."
         ),
     )

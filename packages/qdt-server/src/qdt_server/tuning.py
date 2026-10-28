@@ -196,11 +196,16 @@ def run_tuneup(
 def scenario_options(
     scenario: SimScenario | None, options: Mapping[str, AttrValue]
 ) -> dict[str, AttrValue]:
-    """The run options a scenario means for the simulated backends (seed, noise, model overrides),
-    under any options given explicitly."""
+    """The run options a scenario means for the simulated backends (its device and that file's hash,
+    noise seed and noise), under any options given explicitly."""
     base: dict[str, AttrValue] = {}
     if scenario is not None:
-        base = {"seed": scenario.seed, "noise": scenario.noise, **scenario.model}
+        base = {
+            "device": scenario.device,
+            "device_sha256": scenario.device_sha256,
+            "seed": scenario.seed,
+            "noise": scenario.noise,
+        }
     return {**base, **options}
 
 
@@ -211,8 +216,12 @@ class TuneUpManager:
 
     POLL_S = 0.2
 
-    def __init__(self, runs: RunManager) -> None:
+    def __init__(
+        self, runs: RunManager, windows: Mapping[str, Mapping[str, Any]] | None = None
+    ) -> None:
         self.runs = runs
+        self.windows = dict(windows or {})
+        """Per node id, the stand's windows for that node's template (ADR 0088)."""
         self.tuneups: dict[str, TuneUp] = {}
         self._stops: set[str] = set()
         self._lock = asyncio.Lock()
@@ -238,7 +247,7 @@ class TuneUpManager:
             return []
         gate = self.sensor_gate
         return [
-            make(seq, gate)
+            make(seq, gate, **self.windows.get(node_id, {}))
             for node_id, make in TEMPLATES.items()
             if gate is not None or node_id not in ("sensor-operating-point", "sensor-wing")
         ]
@@ -254,7 +263,7 @@ class TuneUpManager:
         if unknown:
             raise KeyError(f"no node templates {unknown} on this stand; have {sorted(offered)}")
         gate = self.sensor_gate
-        return order(TEMPLATES[n](seq, gate) for n in node_ids)
+        return order(TEMPLATES[n](seq, gate, **self.windows.get(n, {})) for n in node_ids)
 
     async def start(
         self,

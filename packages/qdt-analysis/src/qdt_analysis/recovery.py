@@ -1,6 +1,6 @@
 """Injection–recovery scoring of line overlays against a known truth mask, in pixels.
 
-The truth comes from whatever generated the data (a `qdt_sim` model's `diamond_edges`, or the lines a
+The truth comes from whatever generated the data (the simulated device's truth, or the lines a
 synthetic generator injected); the detections are a result's `line` annotations. Both are compared on
 the map's pixel grid: precision is the fraction of detected line length within `tolerance` pixels of a
 truth pixel, recall the fraction of truth pixels within `tolerance` of a detected line. Pure (rule 5).

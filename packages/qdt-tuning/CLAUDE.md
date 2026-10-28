@@ -17,7 +17,9 @@ qdt_tuning/
 ## Rules
 - A node is stand-agnostic: it names logical channels (`P1`, `P2_pulse`, `sensor`; the sensor node `SG`,
   `bias`, `sensor`) and takes the sequencer's instrument id (and the sensor gate, when it holds one) as
-  arguments; the same node runs on the simulator and on the bench.
+  arguments; the same node runs on the simulator and on the bench. Its windows (gate ranges, pixels,
+  integration, flank offset) are the stand's: `TEMPLATES` take them as keywords per node (ADR 0088), and
+  a constructor's defaults are only a starting point.
 - A rule has a dotted name and a `VERSION`, puts every parameter in its `DecisionRule`, and returns a
   `Decision(status, message, outputs)`. A `failed` result is `failed`; a rule that declines a readable
   result is `rejected` with a reason; `outputs` are filled only when `accepted`. Bump `VERSION` whenever

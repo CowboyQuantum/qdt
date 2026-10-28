@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
   "scenario": {
-    "schema_version": 1,
+    "schema_version": 2,
     "scenario_id": "default-occupied-window",
-    "description": "the default double dot with its default noise, seed 1; the charge-lattice node's window",
-    "model": {},
+    "description": "the default device with its noise, noise seed 1; the charge-lattice node's window",
+    "device": "two-dot-sige-a",
+    "device_sha256": "0ac31718688900366d9da58008da15aae834f08f2880476bf6dbc6975e175903",
     "seed": 1,
     "noise": true,
     "attrs": {}
@@ -12,21 +13,21 @@
   "node_id": "virtual-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "b5a9d8f020bb4fbebdad3ddf7264dfbd",
+    "outcome_id": "3d03be1e9346429e870a1b7b8aa18a76",
     "node_id": "virtual-lattice",
-    "tuneup_id": "e264367980f34a9f94887fbcd82dfce9",
+    "tuneup_id": "fe36ea49649a4a6f86f3c6ee1d74e991",
     "scenario_id": "default-occupied-window",
-    "record_id": "012771a625164d898422b137278c8954",
-    "result_id": "0bbc9f080c56475c87b549a303d1e0c7",
+    "record_id": "f6740c0313ca468aafdf3c308ecca58b",
+    "result_id": "9e88da37e55246dbb111cfeefea6bfe3",
     "status": "accepted",
-    "message": "residual cross ratios -0.008, -0.004",
+    "message": "residual cross ratios +0.001, -0.002",
     "outputs": {
-      "residual_a": -0.007565483661913145,
-      "residual_b": -0.004252675618631585,
-      "l_11": 71.45852334111942,
-      "l_22": 68.05812950046698
+      "residual_a": 0.000882477182178151,
+      "residual_b": -0.0018409011434812465,
+      "l_11": 19.082768732153085,
+      "l_22": 24.565775294837337
     },
-    "created_at": "2026-10-16T04:59:09.523066Z",
+    "created_at": "2026-10-28T13:04:00.559351Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.straightened"
@@ -36,51 +37,51 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 71.45852334111942,
+      "value": 19.082768732153085,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": -0.5406182908416781,
+      "value": 0.01684010797890778,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": -0.2894291479763069,
+      "value": -0.04522316383076941,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 68.05812950046698,
+      "value": 24.565775294837337,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": -0.007565483661913145,
+      "value": 0.000882477182178151,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": -0.004252675618631585,
+      "value": -0.0018409011434812465,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "residual_a": -2.48420723718645e-17,
-    "residual_b": -1.0354642640819852e-17,
-    "l_11": 71.5059843965396,
-    "l_22": 68.52656838001712
+    "residual_a": 0.0,
+    "residual_b": 1.013011649059367e-17,
+    "l_11": 19.08836790630017,
+    "l_22": 24.48554193590824
   },
-  "created_at": "2026-10-16T04:59:09.538490Z"
+  "created_at": "2026-10-28T13:04:00.566299Z"
 }

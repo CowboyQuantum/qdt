@@ -1929,7 +1929,7 @@ export interface QueuedRun {
 export interface RunRequest {
   definition: SweepDefinition;
   /**
-   * Backend and recording options: seed (int), noise (bool), campaign (str), and the options the stand's backends take (on the simulated stand, the model's scalar fields and the simulated scope's tau_s, droop_v and scope_noise_v).
+   * Backend and recording options: seed (int), noise (bool), campaign (str), and the options the stand's backends take (on the simulated stand, the committed device to load and the simulated scope's tau_s, droop_v and scope_noise_v).
    */
   options?: {
     [k: string]: string | number | boolean;
@@ -2042,9 +2042,9 @@ export interface ServerInfo {
   stand_id: string | null;
 }
 /**
- * A reproducible simulated situation: which scalar parameters of the simulated device's model are
- * overridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the
- * truth a method must recover; this package holds the recipe only (rule 1).
+ * A reproducible simulated situation: which committed device file the simulator loads (by name and
+ * SHA-256, ADR 0088), which noise seed, whether noise is on. `qdt-sim` realizes it into a device and
+ * derives the truth a method must recover; this package holds the reference only (rule 1).
  *
  * This interface was referenced by `QdtControlApi`'s JSON-Schema
  * via the `definition` "SimScenario".
@@ -2061,13 +2061,15 @@ export interface SimScenario {
    */
   description?: string;
   /**
-   * Scalar overrides of the simulated device's default model, by field name (e.g. sensor_width_v). Matrix parameters are not overridable through a scenario yet.
+   * Name of the committed device file the simulator loads, e.g. 'two-dot-sige-a'.
    */
-  model?: {
-    [k: string]: string | number | boolean;
-  };
+  device: string;
   /**
-   * Whether the device's noise models are on.
+   * SHA-256 of that file; the simulator refuses a file that hashes otherwise.
+   */
+  device_sha256: string;
+  /**
+   * Whether the device's noise is on.
    */
   noise?: boolean;
   /**
@@ -2075,11 +2077,11 @@ export interface SimScenario {
    */
   scenario_id: string;
   /**
-   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   * Per-object-type schema version; bumps only on breaking changes. 2: the scenario names a device file instead of overriding a model's scalars, and `seed` is the noise seed (ADR 0088).
    */
   schema_version?: number;
   /**
-   * Seed of every random draw in the device.
+   * Seed of the run's noise realisation; the device's own disorder is in its file.
    */
   seed?: number;
 }
@@ -2330,7 +2332,7 @@ export interface TuneUpRequest {
     [k: string]: string | number | boolean;
   };
   /**
-   * On the simulated stand: the scenario the backends are built from (seed, noise, model overrides become run options) and the outcomes are tagged with; ignored by a real stand.
+   * On the simulated stand: the scenario the backends are built from (its device, noise seed and noise become run options) and the outcomes are tagged with; ignored by a real stand.
    */
   scenario?: SimScenario | null;
 }

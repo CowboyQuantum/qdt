@@ -15,7 +15,8 @@ qdt's committed simulator outputs are regenerated once, against Phantom, and eve
 ## Schema slice
 `SimScenario` (`qdt_schemas.modeling`, ADR 0048) names a committed Phantom device file by its name and
 SHA-256 instead of carrying overrides of `qdt-sim`'s model, and its `seed` becomes the noise seed only
-(#142). A `schema_version` bump with a migration in `migrations.py`, in one commit with every consumer.
+(#142). A `schema_version` bump (to 2) in one commit with every consumer; no migration, since neither
+`SimScenario` nor `SimResult` is persisted (ADR 0088).
 `qdt-schemas` still knows nothing about Phantom (rule 1): the reference is a file name and a hash.
 
 ## Deliverables
@@ -44,21 +45,28 @@ SHA-256 instead of carrying overrides of `qdt-sim`'s model, and its `seed` becom
 7. `stability()` and `diamonds()` take their default ranges from the device's programmed point.
 8. Run options: the model's scalar fields give way to the noise seed, noise on or off, and the device to
    load (OpenAPI and Flight Deck's help text follow). The cold-sensor scenario becomes a device file
-   compiled colder.
+   compiled colder. *As built (ADR 0088):* Phantom 0.2.0 fixes a sensor's peak width whatever the
+   temperature, and its default sensor resolves the diamonds, so the cold-sensor scenario became
+   `second-device`, a second disorder draw, noise off.
 9. The server loads a device once per stand and opens a fresh session per run; the levels view
    (ADR 0057) and the stand state (ADR 0075, 0085) see the same device.
 10. Provenance: a simulated run's device record carries the Phantom version, the model versions and the
     device file's SHA-256.
 11. Truth never leaves through a server route; tests and committed tune-up results read it.
-12. Device files committed under `packages/qdt-sim/devices/`, written only by a script that compiles
-    them from their recipes with the pinned Phantom; `qdt-sim` refuses a file whose hash does not match
-    its scenario or whose format version Phantom does not read (#142).
+12. Device files committed under `packages/qdt-sim/src/qdt_sim/devices/` (package data), written only by
+    `scripts/make_sim_devices.py`, which compiles them from `qdt_sim/recipes.json` with the pinned Phantom;
+    `qdt-sim` refuses a file whose hash does not match its scenario or whose format version Phantom does
+    not read (#142).
 13. Regenerated once: `packages/qdt-sim/tests/fixtures/stability_24x32.npy`, the seven `SimResult`
     fixtures in `packages/qdt-server/tests/fixtures/`, the schema fixtures, the expectations of tutorials
     02–04; qdt-analysis's injection tests take their truth from Phantom's objects. Step 6c's tests that
     name the simulated stand's channels follow (deliverables 7 and 8, the e2e tests, the L2 rows'
     simulated mode).
-14. `python -m phantom.contract packages/qdt-sim/devices/*.json` runs in qdt's CI.
+14. `python -m phantom.contract packages/qdt-sim/src/qdt_sim/devices/*.json` runs in qdt's CI
+    (`scripts/check_all.sh`, beside `make_sim_devices.py --check`).
+15. *Found while building (ADR 0088):* the tune-up nodes' windows are the stand's. `qdt_tuning.TEMPLATES`
+    take them per node, `Settings.nodes` holds them, and the simulated stand's sit about the device's
+    programmed point; tolerances against truth scale with the device.
 
 ## L0 tests (CI)
 - Interpreter on a stub physics: the level-source and triggered-level-source conformance suites pass
@@ -70,7 +78,7 @@ SHA-256 instead of carrying overrides of `qdt-sim`'s model, and its `seed` becom
   the device's gates; `qdt-sim` holds no physics module and stays under 300 lines; a device file with a
   wrong hash is refused; a simulated record's device carries the Phantom version and the file's hash;
   no truth field appears in the server's OpenAPI document; the tune-up on the simulator reproduces its
-  committed scenario outcomes after regeneration; a stored `SimScenario` v1 loads as its migration says.
+  committed scenario outcomes after regeneration; a `SimScenario` v1 (with `model`) is refused.
 
 ## L1 tests (bench loopback)
 None. The step changes the simulator only; the bench rows of Steps 5–6c run on real instruments through
@@ -90,10 +98,11 @@ None, for the same reason.
   `v0.2.0`, made by the human.
 - Held by the human (2026-10-27): the cadence of Phantom releases against qdt's pin (Analysis 0007,
   answer 3). Each pin bump is its own pull request that regenerates the fixtures.
-- What a stored `SimScenario` v1 (scalar overrides of the old model) becomes under the migration: decided
-  with #142, in its ADR.
+- **Settled (ADR 0088):** a `SimScenario` v1 has no migration. Neither it nor `SimResult` is persisted, the
+  only stored v1 objects were the committed fixtures (regenerated), and its overrides have no counterpart.
 
 ## Status
-IN PROGRESS (session 34, 2026-10-28). Step file and ADR 0087 written. Deliverables 1–3 (#141) done in L0:
-`qdt_lab.simulated.SimulatedInstrument` over `SimulatedPhysics`, `qdt_sim.device` down to 150 lines, outputs
-bit-identical (no fixture regenerated). Next: deliverables 4–14 (#140, #142) in one pull request against `v0.2.0`.
+DONE in L0 (session 35, 2026-10-28), once its pull request's CI is green against the pinned `v0.2.0`.
+Deliverables 1–3 (#141) landed in session 34; deliverables 4–15 (#140, #142) this session, ADR 0088.
+`qdt-sim` is 295 lines over Phantom; the seven tune-up fixtures and the stability fixture regenerated, every
+tune-up accepted on both committed devices. No L1 or L2 rows.
