@@ -85,6 +85,7 @@ Adapters (arbok), site DDL migrations, bootstrap seeds, `deploy/` compose bundle
 | 5 | — | (drivers; no new family) | |
 | 6 | Modeling | `SimScenario`, `SimResult`, `CalibrationNode` | `modeling.py` |
 | 6c | Operations | `ChannelLimit`, `StandState`, `QueuedRun` (ADR 0075); `InstrumentPort`, `InventoryEntry`, `StandVersion` (ADR 0077) | `operations.py` |
+| 6d | Modeling | `SimScenario` names a device file by name and SHA-256 (#142) | `modeling.py` |
 | 7 | Cryo | `CooldownRecord`, `FridgeEvent` (`TelemetryChannel`, `TelemetrySample` deferred — ADR 0051) | `cryo.py` |
 | 8 | Governance | `ContractDefinition` | `contracts.py` |
 
@@ -136,10 +137,11 @@ Prototype on lab PC via Docker Compose (`qdt-diraq/deploy/`); localhost-bound du
 | 6 | Closed-loop tuning | DAG runs unattended against sim; first fridge contact as confirmation | `steps/06-closed-loop-tuning.md` |
 | 6b | Flight Deck workspace | Three columns of widget panes, plots in the centre, one Run (ADR 0054–0059) | `steps/06b-flightdeck-workspace.md` |
 | 6c | Lab deployment (ADR 0073) | Registry on `qdt-db` readable from any lab computer; an enumerated task set orchestrated by the server and verified on the bench through the scope; parameters and scan analysis exercised through Flight Deck | `steps/06c-lab-deployment.md` |
+| 6d | Phantom cutover (ADR 0087) | `qdt-sim` an adapter over a pinned Phantom release with no physics; the sequencer interpreter in `qdt_lab.simulated`; simulator fixtures regenerated once | `steps/06d-phantom-cutover.md` |
 | 7 | Other sources | Cryo context, CI register, internal extension, pilot demo | `steps/07-other-sources.md` |
 | 8 | Frameworks | Governance as data; HTML demoted to renderers | `steps/08-frameworks.md` |
 
-**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 6c (lab deployment, ADR 0073) is inserted before Step 7 the way 4b was before 5; Step 7 is off the critical path; no step is gated by an approval outside the repo (ADR 0072). Steps 6c and 7 can interleave.
+**Sequencing notes.** Steps 0–4b are serial and run entirely against simulated backends on personal hardware (4b inserted by ADR 0032: the full UI demo on the simulator comes before drivers). Step 5 is the first point where instrument reality can push back; the Step 1 probe is the hedge. Step 6c (lab deployment, ADR 0073) is inserted before Step 7 the way 4b was before 5; Step 7 is off the critical path; no step is gated by an approval outside the repo (ADR 0072). Steps 6c and 7 can interleave. Step 6d (the Phantom cutover, ADR 0087) is software only and interleaves with 6c, whose remainder waits on the bench.
 
 ## 8. Flight Deck finish-line sketch
 
