@@ -94,4 +94,6 @@ None, for the same reason.
   with #142, in its ADR.
 
 ## Status
-IN PROGRESS (session 34, 2026-10-28). Step file and ADR 0087 written; #141 in progress.
+IN PROGRESS (session 34, 2026-10-28). Step file and ADR 0087 written. Deliverables 1–3 (#141) done in L0:
+`qdt_lab.simulated.SimulatedInstrument` over `SimulatedPhysics`, `qdt_sim.device` down to 150 lines, outputs
+bit-identical (no fixture regenerated). Next: deliverables 4–14 (#140, #142) in one pull request against `v0.2.0`.
