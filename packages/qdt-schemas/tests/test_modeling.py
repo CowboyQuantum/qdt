@@ -68,8 +68,12 @@ def test_step_6_objects_hold_a_node_its_outcome_and_a_scenario(tmp_path=None):
         SimScenario,
     )
 
-    scenario = SimScenario(scenario_id="s", model={"sensor_width_v": 0.01}, seed=3)
-    assert scenario.noise is True and scenario.model["sensor_width_v"] == 0.01
+    scenario = SimScenario(scenario_id="s", device="two-dot-a", device_sha256="0" * 64, seed=3)
+    assert scenario.noise is True and scenario.schema_version == 2
+    with pytest.raises(ValueError):
+        SimScenario(scenario_id="s", device="../etc/passwd", device_sha256="0" * 64)
+    with pytest.raises(ValueError):
+        SimScenario(scenario_id="s", device="two-dot-a", device_sha256="0" * 64, model={})
     definition = SweepDefinition(
         name="d",
         axes=(SweepAxis(name="g", channel="g", start=0, stop=1, num=4),),

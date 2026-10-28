@@ -142,15 +142,16 @@ class SimulatedInstrument:
         cls,
         instrument: InstrumentConfig,
         channels: tuple[ChannelMap, ...],
-        physics: SimulatedPhysics,
+        connected: object,
         roles: Mapping[str, str] | None = None,
         **kwargs,
     ) -> Self:
-        """`BackendFactory` (ADR 0021) once `physics` is bound. `roles` maps vendor channel → input or
+        """`BackendFactory` (ADR 0021) once `connected` is bound: the constructor's first argument (the
+        physics here; what a subclass builds its physics from). `roles` maps vendor channel → input or
         output (default: the constructor's); every declared channel must have a role, and its
         quantity must match it."""
         cls._check_backend(instrument)
-        return cls(physics, roles, integration_s=cls._integration(channels), **kwargs)._declared(
+        return cls(connected, roles, integration_s=cls._integration(channels), **kwargs)._declared(
             channels
         )
 

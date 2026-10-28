@@ -1,165 +1,158 @@
-"""Named, reproducible scenarios: a device, a stand that wires it, and the sweeps that exercise it.
+"""Scenarios: a committed Phantom device (ADR 0087, 0088; `devices/`, written by
+`scripts/make_sim_devices.py`, pinned by hash in `DEVICES`), the stand that wires it, the sweeps that
+exercise it about its programmed point, and the truth a tune-up must recover."""
 
-The committed fixture `tests/fixtures/stability_24x32.npy` is `stability_fixture()` run on
-`default_device(seed=7)`; `scripts/make_sim_fixtures.py` regenerates it.
-"""
+import functools
+import hashlib
+import pathlib
 
-import dataclasses
-import math
+import phantom.api as phantom
 
-import numpy as np
-
-from qdt_schemas.activity import (
-    SensedLevel,
-    SequencerStage,
-    SweepAxis,
-    SweepDefinition,
-    SymbolBinding,
-)
+from qdt_schemas.activity import SweepDefinition
 from qdt_schemas.modeling import SimScenario
-from qdt_schemas.pulse import Measure, PulseSequence, Step, Symbol
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
+from qdt_tuning import coulomb_diamonds, stability_diagram
 
-from .device import DeviceNoise, SimulatedDevice
-from .dot import DoubleDotModel
-from .noise import OneOverFNoise, TelegraphNoise, WhiteNoise
+from .device import SENSOR, SimulatedDevice, roles
 
 DEVICE_ID = "dot"
+DEFAULT_DEVICE = "two-dot-sige-a"
+DEVICES = {
+    "two-dot-sige-a": "0ac31718688900366d9da58008da15aae834f08f2880476bf6dbc6975e175903",
+    "two-dot-sige-b": "36fb0400267711c4875bbb23a1561edf8c3f23210cae90eb3ead5720a0d91f28",
+}
+"""Committed device file → its SHA-256 (Phantom 0.2.0). A file that differs is refused."""
+LATTICE_SPAN_V = 0.15
+"""Half the plunger window of a stability sweep: about six transitions at the devices' ~20 e/V."""
+SENSOR_WINDOW_V = (-1.2, 0.8)
+"""The sensor-gate window about its programmed level: two peaks of the devices' ~1 V period."""
+MEASURE_NS = 1_000_000
+"""A stability pixel's integration: Phantom's white floor falls as √(1 ms / dwell)."""
+SENSOR_TRUTH = {
+    "sg_peak_v": "peak_v",
+    "period": "period_v",
+    "charging_energy": "charging_energy_ev",
+    "lever_arm": "lever_arm_ev_per_v",
+    "sg_width_v": "width_v",
+    "sg_wing_v": "wing_v",
+    "sensitivity_a_per_v": "sensitivity_a_per_v",
+}
+"""The sensor nodes' output names → Phantom's `SensorTruth` fields."""
 
 
-def default_model() -> DoubleDotModel:
-    return DoubleDotModel()
+@functools.cache
+def load_device(name: str = DEFAULT_DEVICE, sha256: str | None = None) -> phantom.Device:
+    """The committed device `name`, refused unless its file hashes to `sha256` (default `DEVICES`) and
+    the pinned Phantom reads its format."""
+    if name not in DEVICES:
+        raise ValueError(f"no committed device {name!r}; have {sorted(DEVICES)}")
+    text = (pathlib.Path(__file__).parent / "devices" / f"{name}.json").read_bytes()
+    got = hashlib.sha256(text).hexdigest()
+    if got != (sha256 or DEVICES[name]):
+        raise ValueError(f"device file {name!r} hashes to {got}, not {sha256 or DEVICES[name]}")
+    return phantom.Device.loads(text.decode("utf-8"))
 
 
-def default_noise(seed: int = 0) -> DeviceNoise:
-    """Slow 1/f charge noise on the gates, one dominant trap near the sensor, white readout noise."""
-    return DeviceNoise(
-        gate=OneOverFNoise(amplitude=150e-6, f_min=1e-2, f_max=1e4, seed=seed),
-        sensor=TelegraphNoise(amplitude=4e-3, rate_up=0.5, rate_down=0.5, seed=seed + 1),
-        readout=WhiteNoise(sigma=15e-12, seed=seed + 2),
-    )
+def programmed(device: phantom.Device | None = None) -> dict[str, float]:
+    """The device's programmed point by gate: what a person running it knows (`Device.knowable`)."""
+    k = (device or load_device()).knowable()
+    return dict(zip(k.gate_names, k.programmed_point_v))
+
+
+def provenance(name: str = DEFAULT_DEVICE) -> dict[str, str | int]:
+    """What made a simulated record (ADR 0087): Phantom's version, its model versions, the file's hash."""
+    versions = {f"phantom.{k}": v for k, v in phantom.model_versions().items()}
+    attrs = {"phantom_version": phantom.__version__, "device_file": name}
+    return attrs | {"device_sha256": DEVICES[name]} | versions
 
 
 def default_device(
-    seed: int = 0,
+    seed: int | None = 0,
     noise: bool = True,
     stand: StandConfig | None = None,
-    model: DoubleDotModel | None = None,
+    device: phantom.Device | None = None,
     **kwargs,
 ) -> SimulatedDevice:
-    """The default device, built from `stand` (default `default_stand()`) by its factory (ADR 0021).
-    `model` replaces the default model, e.g. `dataclasses.replace(default_model(), sensor_width_v=0.01)`
-    for a colder sensor (ADR 0030)."""
-    stand = stand or default_stand()
+    """A run on `device` (default `load_device()`) with noise seed `seed`, built from `stand` (default
+    `default_stand(device)`) by its factory (ADR 0021)."""
+    device = device or load_device()
+    stand = stand or default_stand(device)
+    instrument, channels = stand.instrument(DEVICE_ID), stand.instrument_channels(DEVICE_ID)
     return SimulatedDevice.from_config(
-        stand.instrument(DEVICE_ID),
-        stand.instrument_channels(DEVICE_ID),
-        model or default_model(),
-        noise=default_noise(seed) if noise else DeviceNoise(),
-        seed=seed,
-        **kwargs,
+        instrument, channels, device, noise=noise, seed=seed, **kwargs
     )
 
 
-def default_stand() -> StandConfig:
-    """One instrument, four roles: DC plungers and sensor gate, pulse lines on the plungers, the
-    sensor's source–drain bias (DC and pulse, ADR 0030), and the sensor."""
+def default_stand(device: phantom.Device | None = None) -> StandConfig:
+    """One instrument wired to every role of the device (`device.roles`): its gates, the pulse lines
+    on the plungers, the sensor's bias (DC and pulse, ADR 0030) and the sensor."""
+    capabilities = ("level_source", "level_sense", "sequencer", "triggered_level_source")
     return StandConfig(
         stand_id="simulated-double-dot",
         instruments=(
-            InstrumentConfig(
-                id=DEVICE_ID,
-                backend="simulated",
-                capabilities=(
-                    "level_source",
-                    "level_sense",
-                    "sequencer",
-                    "triggered_level_source",
-                ),
-            ),
+            InstrumentConfig(id=DEVICE_ID, backend="simulated", capabilities=capabilities),
         ),
-        channels=(
-            ChannelMap(logical="P1", instrument=DEVICE_ID, channel="P1", quantity="voltage"),
-            ChannelMap(logical="P2", instrument=DEVICE_ID, channel="P2", quantity="voltage"),
-            ChannelMap(logical="SG", instrument=DEVICE_ID, channel="SG", quantity="voltage"),
+        channels=tuple(
             ChannelMap(
-                logical="P1_pulse", instrument=DEVICE_ID, channel="P1_pulse", quantity="voltage"
-            ),
-            ChannelMap(
-                logical="P2_pulse", instrument=DEVICE_ID, channel="P2_pulse", quantity="voltage"
-            ),
-            ChannelMap(logical="bias", instrument=DEVICE_ID, channel="bias", quantity="voltage"),
-            ChannelMap(
-                logical="bias_pulse", instrument=DEVICE_ID, channel="bias_pulse", quantity="voltage"
-            ),
-            ChannelMap(
-                logical="sensor", instrument=DEVICE_ID, channel="sensor", quantity="current"
-            ),
+                logical=ch,
+                instrument=DEVICE_ID,
+                channel=ch,
+                quantity="current" if role == SENSOR else "voltage",
+            )
+            for ch, role in roles(device or load_device()).items()
         ),
     )
 
 
-def read_pixel() -> PulseSequence:
-    """Pulse P2 to a level, integrate the sensor."""
-    return PulseSequence(
-        name="read sensor at a P2 pulse level",
-        body=(
-            Step(channel="P2_pulse", level=Symbol(name="v_p2", unit="V"), duration=500),
-            Measure(channel="sensor", duration=2000, result="I_sensor"),
-        ),
-    )
+def about(gate: str, offsets: tuple[float, float]) -> tuple[float, float]:
+    """A window `offsets` about the default device's programmed level of `gate`."""
+    centre = programmed()[gate]
+    return (centre + offsets[0], centre + offsets[1])
 
 
 def stability(
     n_outer: int = 64,
     n_inner: int = 64,
     *,
-    p1: tuple[float, float] = (-0.05, 0.10),
-    p2: tuple[float, float] = (-0.05, 0.10),
+    p1: tuple[float, float] | None = None,
+    p2: tuple[float, float] = (-LATTICE_SPAN_V, LATTICE_SPAN_V),
+    measure_ns: int = MEASURE_NS,
     shots: int = 1,
     reduce: str | None = None,
     repeats: int | None = 1,
     name: str = "simulated stability diagram",
 ) -> SweepDefinition:
-    """P1 stepped by the DC line, P2 swept by pulses inside the sequencer stage."""
-    return SweepDefinition(
+    """`qdt_tuning.stability_diagram` about the programmed point: P1 on its DC line, P2 pulsed about its
+    DC level (a pulse adds to it), with `shots` per pixel, their reduction and `repeats`."""
+    p1 = p1 or about("P1", (-LATTICE_SPAN_V, LATTICE_SPAN_V))
+    d = stability_diagram(
+        instrument=DEVICE_ID,
+        p1=p1,
+        p2=p2,
+        n_outer=n_outer,
+        n_inner=n_inner,
+        measure_ns=measure_ns,
         name=name,
-        axes=(
-            SweepAxis(name="P1", channel="P1", start=p1[0], stop=p1[1], num=n_outer),
-            SweepAxis(name="P2", channel="P2_pulse", start=p2[0], stop=p2[1], num=n_inner),
-        ),
-        stage=SequencerStage(
-            instrument=DEVICE_ID,
-            axes=("P2",),
-            sequence=read_pixel(),
-            bindings=(SymbolBinding(symbol="v_p2", axis="P2"),),
-            shots=shots,
-            reduce={"I_sensor": reduce} if reduce else {},
-        ),
-        repeats=repeats,
-    )
+    ).model_dump()
+    d["stage"] |= {"shots": shots, "reduce": {"I_sensor": reduce} if reduce else {}}
+    return SweepDefinition.model_validate(d | {"repeats": repeats})
 
 
 def diamonds(
     n_outer: int = 64,
     n_inner: int = 64,
     *,
-    sg: tuple[float, float] = (-0.2, 0.2),
+    sg: tuple[float, float] | None = None,
     bias: tuple[float, float] = (-1.5e-3, 1.5e-3),
     repeats: int | None = 1,
     name: str = "simulated Coulomb diamonds",
 ) -> SweepDefinition:
-    """The sensor's Coulomb diamonds (ADR 0030): sensor gate stepped by its DC line, source–drain bias
-    stepped by the `bias` DC line, sensor current sensed at every point. Plungers stay at their DC levels."""
-    return SweepDefinition(
-        name=name,
-        axes=(
-            SweepAxis(name="SG", channel="SG", start=sg[0], stop=sg[1], num=n_outer),
-            SweepAxis(name="V_sd", channel="bias", start=bias[0], stop=bias[1], num=n_inner),
-        ),
-        sensed=(SensedLevel(name="I_sensor", channel="sensor"),),
-        repeats=repeats,
-    )
+    """`qdt_tuning.coulomb_diamonds` (ADR 0030) about the programmed sensor gate: the gate on its DC
+    line against the source–drain bias on the `bias` DC line, the sensor current at every point."""
+    d = coulomb_diamonds(sg=sg or about("SG", SENSOR_WINDOW_V), bias_v=bias, n=n_outer, name=name)
+    d = d.model_dump()
+    d["axes"][1]["num"] = n_inner
+    return SweepDefinition.model_validate(d | {"repeats": repeats})
 
 
 def stability_fixture() -> SweepDefinition:
@@ -167,64 +160,34 @@ def stability_fixture() -> SweepDefinition:
     return stability(24, 32, shots=3, reduce="mean", name="fixture stability 24x32")
 
 
-# --- scenarios as data (Step 6, ADR 0048) -----------------------------------------------------------
+# --- scenarios as data (Step 6, ADR 0048, 0088) ----------------------------------------------------
 
 
-def model_for(scenario: SimScenario) -> DoubleDotModel:
-    """The model a scenario describes: the default with its scalar overrides. Raises ValueError for a
-    field the model does not have, TypeError for one that is not a scalar."""
-    base = default_model()
-    unknown = set(scenario.model) - {f.name for f in dataclasses.fields(base)}
-    if unknown:
-        raise ValueError(
-            f"scenario {scenario.scenario_id!r} overrides unknown fields {sorted(unknown)}"
-        )
-    for name in scenario.model:
-        if isinstance(getattr(base, name), np.ndarray | tuple):
-            raise TypeError(
-                f"scenario {scenario.scenario_id!r}: {name!r} is not a scalar; not overridable"
-            )
-    return dataclasses.replace(base, **scenario.model) if scenario.model else base
+def device_of(scenario: SimScenario) -> phantom.Device:
+    return load_device(scenario.device, scenario.device_sha256)
 
 
 def device_for(scenario: SimScenario, stand: StandConfig | None = None) -> SimulatedDevice:
-    """Realize a scenario: `default_device` with the scenario's model, seed and noise."""
-    return default_device(
-        seed=scenario.seed, noise=scenario.noise, stand=stand, model=model_for(scenario)
-    )
+    """Realize a scenario: a run on its device with its noise seed and noise."""
+    return default_device(scenario.seed, scenario.noise, stand, device_of(scenario))
 
 
 def lattice_truth(
     scenario: SimScenario, x_gate: str = "P1", y_gate: str = "P2"
 ) -> dict[str, float]:
-    """The charge lattice the scenario's model gives, by the names the `charge-lattice` node outputs
-    (`l_ij`, electrons per volt, [dot, gate])."""
-    lattice = model_for(scenario).charge_lattice(x_gate, y_gate)
-    return {f"l_{i + 1}{j + 1}": float(lattice[i, j]) for i in range(2) for j in range(2)}
+    """The charge lattice of the scenario's device (Phantom's truth), by the names the `charge-lattice`
+    node outputs (`l_ij`, electrons per volt, [dot, gate])."""
+    lattice = device_of(scenario).truth((x_gate, y_gate)).charge_lattice_e_per_v
+    return {f"l_{i + 1}{j + 1}": float(lattice[i][j]) for i in range(2) for j in range(2)}
 
 
 def sensor_truth(
-    scenario: SimScenario, near_v: float = 0.0, bias_v: float | None = None
+    scenario: SimScenario, near_v: float | None = None, bias_v: float | None = None
 ) -> dict[str, float]:
-    """The sensor's Coulomb peaks the scenario's model gives, by the names the `sensor-operating-point`
-    and `sensor-wing` nodes output: the peak nearest `near_v` with the plungers at 0 V, the period, the
-    charging energy and the lever arm; the width, the wing and the sensitivity there (ADR 0062), the
-    last at source–drain bias `bias_v` (the model's default bias when None: the peak current scales with
-    the bias in linear response)."""
-    m = model_for(scenario)
-    k = round((near_v - m.sensor_phase_v) / m.sensor_period_v)
-    candidates = [m.sensor_phase_v + (k + d) * m.sensor_period_v for d in (-1, 0, 1)]
-    peak = min(candidates, key=lambda g: abs(g - near_v))
-    # the wing (ADR 0062): the inflection of sech², atanh(1/√3) widths from the peak; the slope there
-    wing_widths = math.atanh(1 / math.sqrt(3))
-    slope_factor = 4 / (3 * math.sqrt(3))
-    height = m.sensor_peak_a * (1.0 if bias_v is None else bias_v / m.sensor_bias_v)
-    return {
-        "sg_peak_v": float(peak),
-        "period": float(m.sensor_period_v),
-        "charging_energy": float(m.sensor_charging_ev),
-        "lever_arm": float(m.sensor_charging_ev / m.sensor_period_v),
-        "sg_width_v": float(m.sensor_width_v),
-        "sg_wing_v": float(peak + wing_widths * m.sensor_width_v),
-        "sensitivity_a_per_v": float(slope_factor * height / m.sensor_width_v),
-    }
+    """The sensor's Coulomb peak nearest `near_v` (default: the programmed sensor gate) with the other
+    gates programmed (Phantom's truth), by the names the `sensor-operating-point` and `sensor-wing`
+    nodes output; the sensitivity at source–drain bias `bias_v` (Phantom's default when None)."""
+    device = device_of(scenario)
+    near_v = programmed(device)["SG"] if near_v is None else near_v
+    truth = device.truth(near_v=near_v, v_sd=bias_v).sensor
+    return {name: getattr(truth, field) for name, field in SENSOR_TRUTH.items()}

@@ -4,71 +4,66 @@
 > A fresh session must be able to continue from this file alone.
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
-**Current step:** **6d — The Phantom cutover** (`docs/steps/06d-phantom-cutover.md`), IN PROGRESS, inserted
-this session beside Step 6c by ADR 0087. Deliverables 1–3 (#141) are done in L0. Step **6c — Lab deployment**
-(`docs/steps/06c-lab-deployment.md`) stays IN PROGRESS: its remaining work waits on the bench and on the human's
-decisions, and the two steps interleave. Steps 0–6 and 6b are DONE.
-**Branch:** `step-6d/cutover-plan-and-interpreter` (pull request against `main`; the human merges).
-**Last session:** 2026-10-28 (session 34), no bench.
+**Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS: what remains waits
+on the bench and on the human's decisions. **Step 6d — the Phantom cutover** (`docs/steps/06d-phantom-cutover.md`)
+is DONE in L0 once this session's pull request is green (ADR 0087, 0088). Steps 0–6 and 6b are DONE.
+**Branch:** `step-6d/phantom-adapter` (pull request against `main`; the human merges).
+**Last session:** 2026-10-28 (session 35), no bench.
 
 ## Done this session
-- **The cutover has a home in the plan.** ADR 0087 inserts Step 6d. Phantom becomes a dependency of `qdt-sim` and
-  of nothing else, pinned by the git tag `v0.2.0` (commit `f72daac`), with only `phantom.api` imported. The seam
-  is a protocol in qdt-lab. ADR 0020's model is superseded when #140 merges, not before. A pin moves in a pull
-  request of its own. The step file lists 14 deliverables; the steps index, plan §7.2 and the ADR index carry
-  the new row.
-- **#141, the sequencer interpreter, now lives in `qdt_lab.simulated.SimulatedInstrument`.**
-  - The interpreter covers channels and roles, the bias tee's sum, triggered lists, captures, shot reduction
-    and stream frames.
-  - It runs over a `SimulatedPhysics` protocol: named inputs, one output, a default level per input, a clock
-    the physics owns, and the two calls `hold` and `sense`.
-  - `LinearPhysics` is the protocol's test double. The level-source and triggered-level-source conformance
-    suites now run on it, and `packages/qdt-lab/tests/test_simulated_instrument.py` runs an emitted shot
-    through the real compile and execute path.
-  - `qdt_sim.device` is now `DoubleDotPhysics` plus a `SimulatedDevice` subclass with the same constructor,
-    attributes and error messages. It went from 479 lines to 150.
-- **Bit-identity proven.**
-  - A pytest plugin hashed every `sense` value, every frame and every clock reading across the qdt-sim,
-    qdt-server, qdt-analysis and tutorial suites: 35,416 readings in 55 tests. The run with the old class and
-    the run with the new one hash equal.
-  - The stability fixture and the seven `SimResult` fixtures regenerate identically from both classes, so none
-    was regenerated.
-  - Regenerating on this machine differs from the committed files only in the last few bits (at most
-    7×10⁻¹⁵ relative). That is cross-platform rounding, within the package's stated `rtol=1e-9`.
-- `uv run pytest`: 543 passed. `bash scripts/check_all.sh`: green.
+- **#140 and #142: `qdt-sim` is an adapter over Phantom `v0.2.0`** (ADR 0088, which supersedes ADR 0020).
+  - Phantom is a git dependency of `qdt-sim` alone, pinned by the tag (`uv.lock` records `f72daac`), and
+    reached only through `phantom.api`. `scripts/check_imports.py` enforces both.
+  - `PhantomPhysics` is one Phantom session per run, behind the `SimulatedPhysics` protocol from #141. The old
+    model (`dot.py`) and noise models (`noise.py`) are deleted. `qdt-sim` is 295 lines, and a test pins it
+    under 300.
+  - Two committed device files, `two-dot-sige-a` and `two-dot-sige-b` (one layout, disorder draws 2 and 5),
+    live in `packages/qdt-sim/src/qdt_sim/devices/`. Only `scripts/make_sim_devices.py` writes them, compiling
+    from `qdt_sim/recipes.json`, and `qdt_sim.scenarios.DEVICES` pins their SHA-256 hashes.
+  - `scripts/check_all.sh` now recompiles the recipes (`make_sim_devices.py --check`) and runs
+    `python -m phantom.contract` on every device file, which takes about 4 s.
+  - `SimScenario` v2 names a device file and its hash; `seed` is the noise seed. There is no migration,
+    because neither `SimScenario` nor `SimResult` is persisted.
+  - The simulated stand has a channel for each of the device's eight gates, plus the pulse lines, the bias
+    and the sensor.
+  - The run options are `seed`, `noise` and `device`, and the server checks a scenario's hash.
+  - The registered device carries Phantom's version, its model versions and the file's hash.
+- **Tune-up windows are now the stand's.** The old node windows were sized for qdt-sim's toy device and
+  cannot find Phantom's, whose plungers sit near 0.6 V at about 20 electrons per volt and whose sensor peaks
+  are 1 V apart.
+  - `qdt_tuning.TEMPLATES` take windows per node, and `Settings.nodes` holds them.
+  - The simulated stand's windows (`SIMULATED_NODES`) sit about the programmed point, at 10 ms per lattice
+    pixel, because Phantom's readout noise is physical.
+  - A real stand gives no windows, so its nodes keep the constructors' defaults.
+- **Fixtures regenerated.** The stability fixture and the seven tune-up fixtures were regenerated, and the
+  `cold-sensor` scenario became `second-device`. Every tune-up is accepted on both devices. Tolerances against
+  truth now scale with the device, and ADR 0088 §9 gives the reasons.
+- **Tests moved to Phantom's truth.** The analysis, tutorial and Flight Deck end-to-end tests take their truth
+  from `Device.truth` and `Device.at`. The diamond overlays are checked against the edge mask as well,
+  because the warm sensor blurs the edges where neighbouring diamonds cross.
+- **#150** (found-by-agent, decision): click-to-set on a pulsed axis sets the DC line to the pulse offset. That
+  was right only while the DC level sat at 0 V, which no longer holds.
+- Checks: `uv run pytest` 534 passed; `bash scripts/check_all.sh` green; Flight Deck unit tests (151) and
+  end-to-end tests (17) green; the L2 rows' simulated mode as before (T-1, T-2 and T-7 pass).
 
 ## In flight
-- The pull request for `step-6d/cutover-plan-and-interpreter` awaits the human's merge; it is watched.
-- **#140 and #142 (step deliverables 4–14), one pull request against `v0.2.0`.** Nothing blocks it. The tag
-  exists, and `CowboyQuantum/phantom` is public, so qdt's CI can fetch it without a token.
+- The pull request for `step-6d/phantom-adapter` awaits the human's merge; it is watched.
 - The token is not yet in the runbook (Step 6c deliverable 13, the lab computer).
-- Open UI findings: #130, #122, #120, #119.
+- Open UI findings: #150, #130, #122, #120, #119.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
 
 ## Next action
-**Agent, next session:** Step 6d deliverables 4–14 (#140 with #142), on a branch `step-6d/<short-name>`. Work in
-this order:
-1. Add Phantom from `git+https://github.com/CowboyQuantum/phantom` at tag `v0.2.0` as a dependency of `qdt-sim`.
-   Extend `scripts/check_imports.py` to fence it: no `phantom` import outside `qdt-sim`, and none but
-   `phantom.api` there.
-2. Implement `SimulatedPhysics` over a Phantom `Session`, with the truth tests need (`lattice_truth`,
-   `sensor_truth`) read from `Device.truth()`.
-3. Commit the device files with their recipes and the script that compiles them, and give `SimScenario` its
-   device reference (name and SHA-256) with a migration.
-4. Build the simulated stand from the device, and replace the run options.
-5. Regenerate every simulator fixture once, delete `dot.py` and `noise.py`, and run `python -m phantom.contract`
-   in CI.
-
-Write the ADR that freezes the `SimScenario` change, and decide in it what a stored v1 scenario becomes.
-Read Analysis 0007 and Phantom's `docs/CONTRACT.md` at the tag first.
-If the human sends the session to Step 6c instead: deliverables 11 (#76), 14 (#112) and 15 (#114).
+**Agent, next session:** back to Step 6c. Work deliverable 11 (#76), then 14 (#112), then 15 (#114), on a branch
+`step-6c/<short-name>`.
 **Human:**
 - Merge this pull request.
-- Decide #147, the two oracles of the L2 rows.
+- Decide #150 (click-to-set on a pulsed axis) and #147 (the two L2 oracles).
 - On `qdt-db`, run `uv run python -m qdt_registry init` as the administrator.
 - Run `bench/test_l2_orchestration.py` on the bench with `QDT_STAND_FILE` set.
+- If you want a cold-sensor scenario back, ask Phantom for a compile parameter for the sensor's peak width.
+  Phantom `v0.2.0` fixes it at 0.04 V of sensor potential, whatever the temperature.
 - Still open from earlier sessions:
   - Send plan §9 to IT.
   - Send the `ipconfig` output for #80.
@@ -78,6 +73,7 @@ If the human sends the session to Step 6c instead: deliverables 11 (#76), 14 (#1
   - Run restore drill #2 on 2026-10-31 (#133).
 
 ## Direction recorded (human)
+- **2026-10-28 (session 35):** after #149 merged and was offered as next: "Start this" → #140 and #142.
 - **2026-10-28 (session 34):** "Phantom cutover now. The tag 0.2.0 has been made" → ADR 0087, Step 6d, #141.
 - **2026-10-28 (session 33):** "Go ahead, but I also didn't realize we drifted off the phantom cutover. Once you
   finish your next task, tell me what's stopping you from completing #140-142."
@@ -92,7 +88,8 @@ If the human sends the session to Step 6c instead: deliverables 11 (#76), 14 (#1
   § Direction recorded, and `git show b94193f:docs/STATUS.md` (sessions ≤ 25).
 
 ## Decisions pending
-- All `decision` issues (`gh issue list --label decision`), now including #147, the two L2 oracles.
+- All `decision` issues (`gh issue list --label decision`), now including #150 (click-to-set on a pulsed
+  axis) and #147 (the two L2 oracles).
 - Step 6c's ADR 0077, needed before deliverables 9 and 10 (#80).
-- Held by the human: the cadence of Phantom releases against qdt's pin (Analysis 0007, answer 3).
-- Decided with #142, in its ADR: what a stored `SimScenario` v1 becomes.
+- Held by the human: the cadence of Phantom releases against qdt's pin (Analysis 0007, answer 3). Each pin
+  bump is its own pull request (ADR 0087).

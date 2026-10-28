@@ -1,8 +1,9 @@
 """Injection–recovery for the sensor peak and its wing (ADR 0062).
 
-Truth is injected two ways: a synthetic sech² peak with a neighbour and noise, and the simulated double
-dot's own sensor current against its sensor gate at linear-response bias (the model of ADR 0030, whose
-width and peak position are the model's fields). The method must find the peak nearest the target, fit
+Truth is injected two ways: a synthetic sech² peak with a neighbour and noise, and the simulated
+device's own sensor current against its sensor gate at linear-response bias (Phantom's noise-free
+`Device.at`, whose truth gives the peak, its width, its wing and its sensitivity). The method must find
+the peak nearest the target, fit
 its width within its standard error, place the wing at atanh(1/√3) widths on the side asked, mark both
 on the gate coordinate, refuse a map and a flat trace, and tolerate missing samples.
 """
@@ -24,7 +25,7 @@ from qdt_analysis.sensor_peak import (
 from qdt_schemas.data import Dataset, DataVariable, Dimension, LinearCoordinate, SourceDescriptor
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.payload_hdf5 import Payload
-from qdt_sim.scenarios import default_model
+from qdt_sim.scenarios import load_device, programmed
 
 
 def record_for(dataset_id: str) -> MeasurementRecord:
@@ -110,19 +111,26 @@ def test_the_method_marks_peak_and_wing_and_takes_the_peak_nearest_the_target():
     assert result.method.name == NAME and result.method.parameters["side"] == "above"
 
 
-def test_the_simulated_sensors_peak_has_the_models_width_and_wing():
-    """The model of ADR 0030 at linear-response bias: the peak at `sensor_phase_v`, width
-    `sensor_width_v`, height `sensor_peak_a` above `sensor_background_a`; the wing follows."""
-    m = default_model()
-    v = np.linspace(-0.2, 0.08, 281)  # one peak at −0.06, the next at +0.19 just outside
-    y = m.sensor_current(v)  # φ_s = SG with the plungers at 0 (the default lever arms)
-    result, _ = fit_sensor_peak(record_for("sg"), trace_payload(y, (-0.2, 0.08)))
+def test_the_simulated_sensors_peak_has_the_devices_width_and_wing():
+    """The default device's sensor at 10 µV, the other gates programmed, the gate stepped between the
+    neighbouring peaks (no dot changes charge there): its truth's peak, width, height and wing.
+    Positions within 1.5 % of the 0.16 V width, as 1 mV was of qdt-sim's 40 mV one."""
+    device = load_device()
+    truth = device.truth(near_v=programmed()["SG"], v_sd=10e-6).sensor
+    lo, hi = truth.peak_v - truth.period_v / 2, truth.peak_v + truth.period_v / 2
+    v = np.broadcast_to(np.array(device.programmed_point_v), (281, len(device.gate_names))).copy()
+    v[:, device.gate_names.index("SG")] = np.linspace(lo, hi, 281)
+    y = device.at(v, v_sd=10e-6).sensor_current_a
+    result, _ = fit_sensor_peak(record_for("sg"), trace_payload(y, (lo, hi)))
     assert result.status == "ok", result.message
-    assert result.estimate("peak_v").value == pytest.approx(m.sensor_phase_v, abs=1e-3)
-    assert result.estimate("width_v").value == pytest.approx(m.sensor_width_v, rel=0.03)
-    assert result.estimate("height_a").value == pytest.approx(m.sensor_peak_a, rel=0.03)
-    assert result.estimate("background_a").value == pytest.approx(m.sensor_background_a, rel=0.5)  # the neighbours' tails
-    assert result.estimate("wing_v").value == pytest.approx(m.sensor_phase_v + WING_WIDTHS * m.sensor_width_v, abs=2e-3)
+    near = 0.015 * truth.width_v
+    height = truth.sensitivity_a_per_v * truth.width_v / SLOPE_FACTOR
+    assert result.estimate("peak_v").value == pytest.approx(truth.peak_v, abs=near)
+    assert result.estimate("width_v").value == pytest.approx(truth.width_v, rel=0.03)
+    assert result.estimate("height_a").value == pytest.approx(height, rel=0.03)
+    assert result.estimate("wing_v").value == pytest.approx(truth.wing_v, abs=near)
+    sensitivity = result.estimate("sensitivity_a_per_v").value
+    assert sensitivity == pytest.approx(truth.sensitivity_a_per_v, rel=0.03)
 
 
 def test_refuses_a_map_a_flat_trace_and_a_bad_side_and_tolerates_missing_samples():

@@ -1,4 +1,5 @@
-"""SimulatedDevice through the real path: compile_sweep + Executor, against the model as oracle."""
+"""SimulatedDevice through the real path: compile_sweep + Executor, against Phantom's noise-free
+`Device.at` as oracle (ADR 0088)."""
 
 import numpy as np
 import pytest
@@ -7,14 +8,37 @@ from qdt_lab.experiment import Executor, SimulatedEmitter, compile_sweep
 from qdt_lab.protocols import LevelSense, LevelSource, Sequencer
 from qdt_lab.stream import assemble
 from qdt_schemas.activity import SequencerParameter, SequencerProgram, SequencerResult
-from qdt_sim import DeviceNoise, SimulatedDevice, WhiteNoise
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_stand, stability
+from qdt_sim import SimulatedDevice
+from qdt_sim.scenarios import (
+    DEVICE_ID,
+    default_device,
+    default_stand,
+    load_device,
+    programmed,
+    stability,
+)
 
 EMITTERS = {"simulated": SimulatedEmitter()}
 
 
 def quiet() -> SimulatedDevice:
     return default_device(seed=0, noise=False, sample_charge=False)
+
+
+def current(**levels) -> np.ndarray:
+    """The default device's noise-free sensor current with the named gates at `levels` (arrays
+    broadcast) and every other gate at its programmed level."""
+    device = load_device()
+    shape = np.broadcast(*(np.asarray(x) for x in levels.values())).shape
+    v = np.broadcast_to(
+        np.array(device.programmed_point_v), (*shape, len(device.gate_names))
+    ).copy()
+    for gate, x in levels.items():
+        v[..., device.gate_names.index(gate)] = x
+    return device.at(v).sensor_current_a
+
+
+P2 = programmed()["P2"]
 
 
 def run(definition, device):
@@ -29,9 +53,10 @@ def test_device_satisfies_the_three_protocols():
 
 def test_levels_and_sense():
     d = quiet()
-    d.set("P1", 0.05)
-    assert d.get("P1") == 0.05
-    assert d.sense("sensor") == pytest.approx(d.model.current(d.gate_vector()), rel=1e-12)
+    d.set("P1", 0.62)
+    assert d.get("P1") == 0.62
+    assert d.get("P2") == P2  # every gate starts at the programmed point
+    assert d.sense("sensor") == pytest.approx(float(current(P1=0.62)), rel=1e-12)
     with pytest.raises(ValueError, match="sense the sensor"):
         d.sense("P1")
     with pytest.raises(ValueError, match="unknown channel"):
@@ -50,15 +75,12 @@ def test_compile_rejects_other_backends():
 
 
 def test_stability_sweep_equals_the_model_on_the_grid():
-    """No noise, mean occupation: the executed sweep is the model evaluated at every (P1, P2 pulse)."""
-    plan, out = run(stability(6, 9, p1=(-0.02, 0.04), p2=(-0.03, 0.05)), quiet())
+    """No noise, mean occupation: the executed sweep is the device evaluated at every (P1, P2 pulse)."""
+    plan, out = run(stability(6, 9, p1=(0.58, 0.64), p2=(-0.03, 0.05)), quiet())
     assert out["I_sensor"].shape == (6, 9)
-    p1 = np.linspace(-0.02, 0.04, 6)
+    p1 = np.linspace(0.58, 0.64, 6)
     p2 = np.linspace(-0.03, 0.05, 9)
-    v = np.zeros((6, 9, 3))
-    v[..., 0] = p1[:, None]
-    v[..., 1] = p2[None, :]  # DC P2 is 0, the pulse adds on top
-    expected = quiet().model.current(v)
+    expected = current(P1=p1[:, None], P2=P2 + p2[None, :])  # the pulse adds to P2's programmed DC
     np.testing.assert_allclose(out["I_sensor"].values, expected, rtol=1e-12)
     np.testing.assert_allclose(out["P2"].values, p2)
     assert plan.dataset.data_vars[0].unit == "A"
@@ -66,15 +88,14 @@ def test_stability_sweep_equals_the_model_on_the_grid():
 
 def test_pulse_adds_to_dc_level():
     d = quiet()
-    d.set("P2", 0.01)
-    _, out = run(stability(2, 4, p1=(0.0, 0.0), p2=(0.0, 0.03)), d)
-    v = np.zeros((4, 3))
-    v[:, 1] = 0.01 + np.linspace(0.0, 0.03, 4)
-    np.testing.assert_allclose(out["I_sensor"].values[0], d.model.current(v), rtol=1e-12)
+    d.set("P2", 0.61)
+    _, out = run(stability(2, 4, p1=(0.6, 0.6), p2=(0.0, 0.03)), d)
+    expected = current(P1=0.6, P2=0.61 + np.linspace(0.0, 0.03, 4))
+    np.testing.assert_allclose(out["I_sensor"].values[0], expected, rtol=1e-12)
 
 
 def test_kept_shots_sample_the_charge_state_and_readout_noise():
-    d = SimulatedDevice(noise=DeviceNoise(readout=WhiteNoise(2e-11, seed=1)), seed=3)
+    d = SimulatedDevice(load_device(), seed=3)
     _, out = run(stability(2, 3, shots=50), d)
     assert out["I_sensor"].shape == (2, 3, 50)
     assert out["I_sensor"].values.std(axis=-1).min() > 0, "shots differ"
@@ -86,7 +107,7 @@ def test_kept_shots_sample_the_charge_state_and_readout_noise():
 def test_clock_advances_with_integration_and_pulses():
     d = quiet()
     t0 = d.clock_s
-    run(stability(1, 2, p1=(0.0, 0.0), p2=(0.0, 0.01)), d)
+    run(stability(1, 2, p1=(0.6, 0.6), p2=(0.0, 0.01), measure_ns=2000), d)
     # per pixel: 500 ns step + 2000 ns measure + shot overhead
     assert d.clock_s - t0 == pytest.approx(2 * (2500e-9 + d.shot_overhead_s), rel=1e-9)
 
@@ -104,7 +125,9 @@ def test_from_config_takes_the_sensor_aperture_from_the_channel_map():
         c.model_copy(update={"integration_s": 5e-3}) if c.channel == "sensor" else c
         for c in stand.instrument_channels(DEVICE_ID)
     )
-    d = SimulatedDevice.from_config(stand.instrument(DEVICE_ID), channels, noise=DeviceNoise())
+    d = SimulatedDevice.from_config(
+        stand.instrument(DEVICE_ID), channels, load_device(), noise=False
+    )
     t0 = d.clock_s
     d.sense("sensor")
     assert d.clock_s - t0 == pytest.approx(5e-3 + d.shot_overhead_s, rel=1e-12)
@@ -117,7 +140,7 @@ def test_from_config_rejects_a_quantity_that_contradicts_the_role():
         for c in stand.instrument_channels(DEVICE_ID)
     )
     with pytest.raises(ValueError, match="sensor"):
-        SimulatedDevice.from_config(stand.instrument(DEVICE_ID), channels)
+        SimulatedDevice.from_config(stand.instrument(DEVICE_ID), channels, load_device())
 
 
 def chopped(shots: int = 1, reduce: str = "keep"):
@@ -126,7 +149,7 @@ def chopped(shots: int = 1, reduce: str = "keep"):
     from qdt_schemas.pulse import Affine, Difference, Measure, PulseSequence, Step, Symbol
 
     v = Symbol(name="v_p2", unit="V")
-    p2 = SweepAxis(name="P2", channel="P2_pulse", start=0.03, stop=0.17, num=15)  # step 0.01 V
+    p2 = SweepAxis(name="P2", channel="P2_pulse", start=-0.07, stop=0.07, num=15)  # step 0.01 V
     seq = PulseSequence(
         name="chopped",
         body=(
@@ -139,7 +162,7 @@ def chopped(shots: int = 1, reduce: str = "keep"):
     )
     return SweepDefinition(
         name="chopped",
-        axes=(SweepAxis(name="P1", channel="P1", start=0.03, stop=0.17, num=4), p2),
+        axes=(SweepAxis(name="P1", channel="P1", start=0.53, stop=0.67, num=4), p2),
         stage=SequencerStage(
             instrument=DEVICE_ID,
             axes=("P2",),
@@ -177,13 +200,13 @@ def test_difference_is_per_shot_and_recorded_beside_the_measures():
 
 
 def test_operating_point_level_is_what_pulses_add_to():
-    """ADR 0038: P2 held at 50 mV by the operating point, its pulse swept 50 mV lower, is the same map
-    as no DC and the pulse swept over the absolute range."""
+    """ADR 0038: P2 held 50 mV above its programmed level by the operating point, its pulse swept 50 mV
+    lower, is the same map as the programmed DC and the pulse swept over the higher range."""
     from qdt_schemas.activity import FixedLevel
 
-    absolute = stability(6, 8, p1=(0.03, 0.17), p2=(0.03, 0.17))
-    held = stability(6, 8, p1=(0.03, 0.17), p2=(-0.02, 0.12)).model_copy(
-        update={"levels": (FixedLevel(channel="P2", value=0.05),)}
+    absolute = stability(6, 8, p1=(0.53, 0.67), p2=(0.03, 0.17))
+    held = stability(6, 8, p1=(0.53, 0.67), p2=(-0.02, 0.12)).model_copy(
+        update={"levels": (FixedLevel(channel="P2", value=P2 + 0.05),)}
     )
     held = type(held).model_validate(held.model_dump())
     plan, a = run(absolute, quiet())
@@ -210,7 +233,7 @@ def test_a_triggered_axis_on_the_device_gives_the_same_map_as_software_stepping(
     from qdt_lab.protocols import TriggeredLevelSource
 
     assert isinstance(quiet(), TriggeredLevelSource)
-    auto = stability(6, 9, p1=(-0.02, 0.04), p2=(-0.03, 0.05))
+    auto = stability(6, 9, p1=(0.58, 0.64), p2=(-0.03, 0.05))
     software = auto.model_copy(
         update={"axes": (auto.axes[0].model_copy(update={"stepping": "software"}), auto.axes[1])}
     )
@@ -236,14 +259,14 @@ def test_a_triggered_axis_on_the_device_gives_the_same_map_as_software_stepping(
 
 def test_a_host_stepped_axis_read_in_a_one_measure_shot_is_the_model_at_each_point():
     """ADR 0068: no stage axis, one shot, the DC axis stepped from the host: one measure per point, the
-    value the model gives there (what a DC sweep read in the shot records on an unwired stand)."""
+    value the device gives there (what a DC sweep read in the shot records on an unwired stand)."""
     from qdt_schemas.activity import SequencerStage, SweepAxis, SweepDefinition
     from qdt_schemas.pulse import Measure, PulseSequence
 
     definition = SweepDefinition(
         name="read in the shot, host-stepped",
         axes=(
-            SweepAxis(name="P1", channel="P1", start=-0.02, stop=0.04, num=7, stepping="software"),
+            SweepAxis(name="P1", channel="P1", start=0.58, stop=0.64, num=7, stepping="software"),
         ),
         stage=SequencerStage(
             instrument=DEVICE_ID,
@@ -254,12 +277,11 @@ def test_a_host_stepped_axis_read_in_a_one_measure_shot_is_the_model_at_each_poi
     )
     plan, out = run(definition, quiet())
     assert plan.pacing_of("P1").pacing == "software"
-    v = np.zeros((7, 3))
-    v[:, 0] = np.linspace(-0.02, 0.04, 7)
-    np.testing.assert_allclose(out["I"].values, quiet().model.current(v), rtol=1e-12)
+    expected = current(P1=np.linspace(0.58, 0.64, 7))
+    np.testing.assert_allclose(out["I"].values, expected, rtol=1e-12)
 
 
-def test_a_capture_on_the_devices_own_sensor_records_the_model_over_the_window():
+def test_a_capture_on_the_devices_own_sensor_records_the_device_over_the_window():
     """ADR 0069: the device is its own scope. A capture on the sensor channel inside the shot is the
     sensor current at the shot's levels, `num` samples over the window, one record per shot; over a
     triggered DC axis the records lie at the stepped points, and the plan needs no scope at all."""
@@ -268,7 +290,7 @@ def test_a_capture_on_the_devices_own_sensor_records_the_model_over_the_window()
 
     definition = SweepDefinition(
         name="record the sensor",
-        axes=(SweepAxis(name="P1", channel="P1", start=-0.02, stop=0.04, num=4),),
+        axes=(SweepAxis(name="P1", channel="P1", start=0.58, stop=0.64, num=4),),
         stage=SequencerStage(
             instrument=DEVICE_ID,
             sequence=PulseSequence(
@@ -290,10 +312,7 @@ def test_a_capture_on_the_devices_own_sensor_records_the_model_over_the_window()
         ("sensor", "sequencer"),
     }
     assert out["trace"].dims == ("P1", "shot", "time") and out["trace"].shape == (4, 2, 8)
-    v = np.zeros((4, 3))
-    v[:, 0] = np.linspace(-0.02, 0.04, 4)
-    v[:, 1] = 0.01  # the pulse adds to P2's DC level, 0
-    expected = quiet().model.current(v)
+    expected = current(P1=np.linspace(0.58, 0.64, 4), P2=P2 + 0.01)  # the pulse adds to P2's DC
     np.testing.assert_allclose(
         out["trace"].values, np.broadcast_to(expected[:, None, None], (4, 2, 8)), rtol=1e-12
     )
@@ -372,3 +391,41 @@ def test_consecutive_scope_captures_advance_the_clock_once_by_the_longest_window
     )
     assert len(frames) == 6  # three records on each channel
     assert device.clock_s - t0 == pytest.approx(3 * (1000e-9 + 4000e-9), rel=1e-9)
+
+
+def test_the_stand_wires_every_gate_and_a_gate_without_a_channel_holds_the_programmed_point():
+    """Step 6d deliverable 6: a DC channel per gate, pulse lines on the plungers, the bias, the sensor."""
+    device = load_device()
+    logical = {c.logical for c in default_stand().channels}
+    assert logical == {*device.gate_names, "P1_pulse", "P2_pulse", "bias", "bias_pulse", "sensor"}
+    d = SimulatedDevice(device, {"P1": "P1", "sensor": "sensor"}, noise=False, sample_charge=False)
+    assert d.levels()["B_M"] == programmed()["B_M"] and d.levels()["bias"] == 50e-6
+    assert d.sense("sensor") == pytest.approx(float(current()), rel=1e-12)
+
+
+def test_the_noise_seed_replays_a_realisation_and_another_seed_draws_a_new_one():
+    def read(seed):
+        _, out = run(stability(3, 4, measure_ns=2000), default_device(seed=seed))
+        return out["I_sensor"].values
+
+    np.testing.assert_array_equal(read(4), read(4))
+    assert not np.allclose(read(4), read(5), rtol=1e-3, atol=0)
+
+
+def test_a_device_file_that_hashes_otherwise_or_is_not_committed_is_refused():
+    with pytest.raises(ValueError, match="hashes to"):
+        load_device("two-dot-sige-a", "0" * 64)
+    with pytest.raises(ValueError, match="no committed device"):
+        load_device("../../etc/passwd")
+
+
+def test_qdt_sim_holds_no_physics_and_stays_under_300_lines():
+    """Phantom's Step 8 exit, from qdt's side (ADR 0087): an adapter, not a model."""
+    import pathlib
+
+    import qdt_sim
+
+    src = pathlib.Path(qdt_sim.__file__).parent
+    modules = sorted(p.name for p in src.glob("*.py"))
+    assert modules == ["__init__.py", "device.py", "scenarios.py"]
+    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 300

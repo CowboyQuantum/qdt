@@ -14,7 +14,7 @@ from qdt_lab.experiment import Executor, RunRecorder, SimulatedEmitter, compile_
 from qdt_lab.stream import PayloadSource, StreamServer, collect
 from qdt_registry import Registry
 from qdt_schemas.identity import DeviceRecord
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand, stability
+from qdt_sim.scenarios import DEVICE_ID, default_device, default_stand, load_device, stability
 
 registry = Registry(Path(tempfile.mkdtemp()) / "registry")
 registry.register_device(
@@ -23,11 +23,12 @@ registry.register_device(
     )
 )
 
-# 1. A stability diagram, recorded as in Tutorial 02. The window keeps both dots occupied, where the
-#    honeycomb is periodic.
+# 1. A stability diagram, recorded as in Tutorial 02. The default window sits about the device's
+#    programmed point, where both dots hold electrons and the honeycomb is periodic; 10 ms a pixel keeps
+#    the simulated readout noise (Phantom's, ADR 0088) well below a transition's step.
 stand = default_stand()
 plan = compile_sweep(
-    stability(96, 96, p1=(0.03, 0.18), p2=(0.03, 0.18)), stand, {"simulated": SimulatedEmitter()}
+    stability(64, 64, measure_ns=10_000_000), stand, {"simulated": SimulatedEmitter()}
 )
 recorder = RunRecorder(plan, stand, DEVICE_ID)
 for _ in recorder.wrap(Executor(plan, {DEVICE_ID: default_device(seed=1)}).run()).frames():
@@ -45,10 +46,11 @@ assert result.status == "ok" and result.record_id == record.record_id
 assert output.dataset.source.kind == "analysis" and result.output is None
 
 # 4. The numbers: electrons per volt on each dot from each plunger, and the cross-capacitance ratios
-#    a virtual-gate matrix is built from. The simulated device knows the truth.
-truth = default_model().charge_lattice("P1", "P2")
+#    a virtual-gate matrix is built from. The simulated device knows the truth (in a test only; a
+#    server never shows it).
+truth = load_device().truth(("P1", "P2")).charge_lattice_e_per_v
 ratio = result.estimate("cross_ratio_a").value
-assert abs(ratio - truth[0, 1] / truth[0, 0]) < 0.02
+assert abs(ratio - truth[0][1] / truth[0][0]) < 0.02
 
 # 5. Keep it. The registry writes the output payload to its store and fills `result.output`; results and
 #    their outputs sync to the server with everything else. The output reads back as a Dataset, and

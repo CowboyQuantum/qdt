@@ -139,19 +139,21 @@ def sensor_operating_point(
     sensor_gate: str = "SG",
     bias: str = "bias",
     sensor: str = "sensor",
+    sg: tuple[float, float] = (-0.2, 0.2),
     n: int = 64,
     flank_offset_v: float = 0.02,
     near_v: float = 0.0,
 ) -> CalibrationNode:
-    """The sensor node: the Coulomb diamonds read by `detect_diamonds`, the sensor gate parked on the
-    flank of the peak nearest `near_v` (ADR 0052). Its `sg_operating_v` is what the stability nodes hold."""
+    """The sensor node: the Coulomb diamonds over the sensor-gate window `sg` read by `detect_diamonds`,
+    the sensor gate parked on the flank of the peak nearest `near_v` (ADR 0052). Its `sg_operating_v` is
+    what the stability nodes hold."""
     return CalibrationNode(
         node_id="sensor-operating-point",
         description=(
             "The charge sensor's Coulomb diamonds: period, charging energy, lever arm; the sensor gate "
             "parked on a peak's flank, where the current changes fastest with charge."
         ),
-        definition=coulomb_diamonds(sensor_gate=sensor_gate, bias=bias, sensor=sensor, n=n),
+        definition=coulomb_diamonds(sensor_gate=sensor_gate, bias=bias, sensor=sensor, sg=sg, n=n),
         method=FitModel(
             name=DIAMONDS_METHOD, version=DIAMONDS_VERSION, parameters=DIAMONDS_DEFAULTS
         ),
@@ -260,15 +262,23 @@ def charge_lattice(
     p1: tuple[float, float] = (0.03, 0.18),
     p2: tuple[float, float] = (0.03, 0.18),
     n: int = 96,
+    measure_ns: int = 2000,
     max_cross_ratio: float = 0.6,
     sensor_gate: str | None = None,
 ) -> CalibrationNode:
-    """The first node: a stability diagram in a window where both dots are occupied, the charge
-    lattice from its transitions (ADR 0029), the virtual-gate matrix as the decision. With
+    """The first node: a stability diagram in a window where both dots are occupied (`p1` on P1's DC
+    line, `p2` the P2 pulse about P2's DC level), the sensor integrated `measure_ns` a pixel, the
+    charge lattice from its transitions (ADR 0029), the virtual-gate matrix as the decision. With
     `sensor_gate`, the node holds that gate at the wing `sensor-wing` fitted (ADR 0052, 0062): a held
     level in the sweep, bound from the upstream outcome."""
     definition = stability_diagram(
-        instrument=instrument, p1=p1, p2=p2, n_outer=n, n_inner=n, name="charge lattice"
+        instrument=instrument,
+        p1=p1,
+        p2=p2,
+        n_outer=n,
+        n_inner=n,
+        measure_ns=measure_ns,
+        name="charge lattice",
     )
     depends_on: tuple[str, ...] = ()
     inputs: tuple[InputBinding, ...] = ()
@@ -302,6 +312,7 @@ def virtual_lattice(
     p1: tuple[float, float] = (0.03, 0.18),
     p2: tuple[float, float] = (0.03, 0.18),
     n: int = 96,
+    measure_ns: int = 2000,
     max_residual_ratio: float = 0.05,
 ) -> CalibrationNode:
     """The second node: the same window swept in virtual gates built from `charge-lattice`'s
@@ -318,6 +329,7 @@ def virtual_lattice(
             p2=p2,
             n_outer=n,
             n_inner=n,
+            measure_ns=measure_ns,
             name="virtual-gate lattice",
             virtual=True,
         ),
@@ -335,17 +347,22 @@ def virtual_lattice(
     )
 
 
-TEMPLATES: dict[str, Callable[[str, str | None], CalibrationNode]] = {
-    "sensor-operating-point": lambda instrument, sensor_gate: sensor_operating_point(
-        sensor_gate=sensor_gate or "SG"
+TEMPLATES: dict[str, Callable[..., CalibrationNode]] = {
+    "sensor-operating-point": lambda instrument, sensor_gate, **w: sensor_operating_point(
+        sensor_gate=sensor_gate or "SG", **w
     ),
-    "sensor-wing": lambda instrument, sensor_gate: sensor_wing(sensor_gate=sensor_gate or "SG"),
-    "charge-lattice": lambda instrument, sensor_gate: charge_lattice(
-        instrument=instrument, sensor_gate=sensor_gate
+    "sensor-wing": lambda instrument, sensor_gate, **w: sensor_wing(
+        sensor_gate=sensor_gate or "SG", **w
     ),
-    "virtual-lattice": lambda instrument, sensor_gate: virtual_lattice(instrument=instrument),
+    "charge-lattice": lambda instrument, sensor_gate, **w: charge_lattice(
+        instrument=instrument, sensor_gate=sensor_gate, **w
+    ),
+    "virtual-lattice": lambda instrument, sensor_gate, **w: virtual_lattice(
+        instrument=instrument, **w
+    ),
 }
-"""Node id → constructor taking the stand's sequencer instrument id and its sensor-gate channel (None
-when the stand has no `SG`): what a server offers (ADR 0050, 0052, 0062). With a sensor gate,
+"""Node id → constructor taking the stand's sequencer instrument id, its sensor-gate channel (None
+when the stand has no `SG`) and, as keywords, the stand's windows for that node (ADR 0088; the
+constructor's defaults otherwise): what a server offers (ADR 0050, 0052, 0062). With a sensor gate,
 `charge-lattice` depends on `sensor-wing`, which depends on `sensor-operating-point` (or stands alone as
 a retune); the two sensor nodes need `SG`, `bias` and `sensor` channels."""

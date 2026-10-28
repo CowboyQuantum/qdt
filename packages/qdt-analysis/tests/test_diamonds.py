@@ -1,12 +1,12 @@
 """Injection–recovery for Coulomb diamonds (Step 4 L0, ADR 0030).
 
 Truth is injected two ways: a synthetic diamond train with a chosen period and charging energy, and the
-simulated sensor SET through the real sweep path, whose model knows E_c, the period, the lever arm and
-the edge lines (`DoubleDotModel.diamond_edges`). The estimator must recover each within stated
-tolerances, must refuse a map with no diamonds, and its edges must lie on the true ones.
+simulated device's sensor SET through the real sweep path, whose truth (Phantom's `Device.truth`) gives
+E_c, the period, the lever arm and the peaks the edge lines pass through. The estimator must recover
+each within stated tolerances, must refuse a map with no diamonds, and its edges must lie on the true
+ones.
 """
 
-import dataclasses
 from datetime import UTC, datetime
 
 import numpy as np
@@ -19,11 +19,14 @@ from qdt_lab.stream import assemble
 from qdt_schemas.data import Dataset, DataVariable, Dimension, LinearCoordinate, SourceDescriptor
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.payload_hdf5 import Payload
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand, diamonds
-
-COLD_SENSOR = {"sensor_width_v": 0.01}
-"""A diamond characterisation wants a cold sensor (kT_s ≈ 20 µeV); at the stability default (40 mV) the
-thermal tails of neighbouring edges overlap near the apexes (ADR 0030)."""
+from qdt_sim.scenarios import (
+    DEVICE_ID,
+    default_device,
+    default_stand,
+    diamonds,
+    load_device,
+    programmed,
+)
 
 
 def record_for(dataset_id: str) -> MeasurementRecord:
@@ -97,22 +100,27 @@ def test_recovers_injected_diamonds():
 
 
 def sweep(seed: int, noise: bool):
-    """The simulated sensor's diamonds through the real sweep path, with a cold sensor."""
-    model = dataclasses.replace(default_model(), **COLD_SENSOR)
-    stand = default_stand()
-    plan = compile_sweep(diamonds(64, 64), stand, {"simulated": SimulatedEmitter()})
-    device = default_device(seed=seed, noise=noise, model=model, sample_charge=False)
+    """The default device's sensor diamonds through the real sweep path, about the programmed sensor
+    gate, and the device's truth for its sensor there."""
+    plan = compile_sweep(diamonds(64, 64), default_stand(), {"simulated": SimulatedEmitter()})
+    device = default_device(seed=seed, noise=noise, sample_charge=False)
     data = assemble(plan.dataset, Executor(plan, {DEVICE_ID: device}).run().frames())
     payload = Payload(plan.dataset, {"I_sensor": data["I_sensor"].values}, (), plan, None)
-    return payload, data["SG"].values, data["V_sd"].values, model
+    truth = load_device().truth(near_v=programmed()["SG"]).sensor
+    return payload, data["SG"].values, data["V_sd"].values, truth
 
 
-def edge_truth(model, sg: np.ndarray, v_sd: np.ndarray) -> np.ndarray:
-    """Rasterized `diamond_edges` of every degeneracy point whose edges enter the window."""
+def edge_truth(truth, sg: np.ndarray, v_sd: np.ndarray) -> np.ndarray:
+    """Rasterized edges of every degeneracy point whose edges enter the window: through each peak
+    V_k = peak + k·period, rising and falling with dV_sd/dV_SG = ±2·lever arm (ADR 0030)."""
     pitch_g = sg[1] - sg[0]
     segments = []
     for k in range(-5, 6):
-        for phi_k, s in model.diamond_edges(k):
+        peak = truth.peak_v + k * truth.period_v
+        for phi_k, s in (
+            (peak, 2 * truth.lever_arm_ev_per_v),
+            (peak, -2 * truth.lever_arm_ev_per_v),
+        ):
             reach = abs(v_sd).max() / abs(s)
             if not (sg[0] - reach <= phi_k <= sg[-1] + reach):
                 continue
@@ -122,19 +130,25 @@ def edge_truth(model, sg: np.ndarray, v_sd: np.ndarray) -> np.ndarray:
 
 
 @pytest.mark.parametrize("noise", [False, True], ids=["clean", "noisy"])
-def test_recovers_the_sensor_models_diamonds_through_a_sweep(noise):
-    payload, sg, v_sd, model = sweep(seed=2, noise=noise)
+def test_recovers_the_devices_sensor_diamonds_through_a_sweep(noise):
+    payload, sg, v_sd, truth = sweep(seed=2, noise=noise)
     result, output = detect_diamonds(record_for(payload.dataset.dataset_id), payload)
     assert result.status == "ok", result.message
-    r = recovery(result, payload.dataset, edge_truth(model, sg, v_sd), tolerance=2.0)
-    assert r.precision > 0.9 and r.recall > 0.85, r
-    assert result.estimate("period").value == pytest.approx(model.sensor_period_v, rel=0.03)
+    edges = edge_truth(truth, sg, v_sd)
+    # the detector's edge pixels lie on the true edges and cover them
+    pixels = score(output.arrays["edges"].astype(bool), edges, 2.0)
+    assert pixels.precision > 0.95 and pixels.recall > 0.95, pixels
+    # the overlays too, but they stop short of where neighbouring diamonds' edges cross: the sensor is
+    # warm (its peak a sixth of its period) and Phantom 0.2.0 compiles no colder one (ADR 0088)
+    r = recovery(result, payload.dataset, edges, tolerance=2.0)
+    assert r.precision > 0.9 and r.recall > 0.55, r
+    assert result.estimate("period").value == pytest.approx(truth.period_v, rel=0.03)
     assert result.estimate("charging_energy").value == pytest.approx(
-        model.sensor_charging_ev, rel=0.05
+        truth.charging_energy_ev, rel=0.05
     )
-    assert result.estimate("lever_arm").value == pytest.approx(model.sensor_lever_arm, rel=0.08)
+    assert result.estimate("lever_arm").value == pytest.approx(truth.lever_arm_ev_per_v, rel=0.08)
     assert result.estimate("slope_rising").value == pytest.approx(
-        model.diamond_edges(0)[0][1], rel=0.08
+        2 * truth.lever_arm_ev_per_v, rel=0.08
     )
     assert all(a.coords == ("SG", "V_sd") for a in result.annotations)
     assert output is not None and output.dataset.source.kind == "analysis"

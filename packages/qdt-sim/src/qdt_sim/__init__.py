@@ -1,19 +1,7 @@
-"""physics models; SimulatedDevice behind qdt-lab protocols (ADR 0020)"""
+"""An adapter over a pinned Phantom release behind qdt-lab's protocols (ADR 0020, 0087); no physics."""
 
-from .device import DeviceNoise, SimulatedDevice
-from .dot import DoubleDotModel
-from .noise import Composite, NoiseModel, NoNoise, OneOverFNoise, TelegraphNoise, WhiteNoise
+from .device import PhantomPhysics, SimulatedDevice
 
 __version__ = "0.1.0"
 
-__all__ = [
-    "Composite",
-    "DeviceNoise",
-    "DoubleDotModel",
-    "NoNoise",
-    "NoiseModel",
-    "OneOverFNoise",
-    "SimulatedDevice",
-    "TelegraphNoise",
-    "WhiteNoise",
-]
+__all__ = ["PhantomPhysics", "SimulatedDevice"]

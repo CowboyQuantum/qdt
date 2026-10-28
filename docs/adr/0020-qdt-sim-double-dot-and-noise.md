@@ -1,6 +1,6 @@
 # 0020 — `qdt-sim` written fresh: constant-interaction double dot, periodic charge sensor, clocked noise models
 
-**Status:** Accepted (amends plan §2: `qdt-sim` is not imported from `quantum_dot_sim`)
+**Status:** Superseded by 0088
 **Date:** 2026-10-12
 **Step:** 2
 

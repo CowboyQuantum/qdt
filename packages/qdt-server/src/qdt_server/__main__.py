@@ -105,6 +105,7 @@ def cli() -> None:
                 registered_at=datetime.now(UTC),
             ),
             backends=stand_backends(stand),
+            nodes={},
         )
     app = create_app(settings)
     uvicorn.run(app, host=a.host, port=a.port, log_level="info")

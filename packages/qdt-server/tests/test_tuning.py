@@ -1,6 +1,7 @@
-"""Calibration nodes against the simulator (ADR 0048, 0049): one node runs and decides; a tune-up chains
-nodes through their bound inputs; committed outcomes are reproduced and agree with the model's truth;
-and the outcomes a node gives when its method or its stand fails."""
+"""Calibration nodes against the simulator (ADR 0048, 0049, 0088): one node runs and decides; a tune-up
+chains nodes through their bound inputs; committed outcomes are reproduced and agree with the device's
+truth (Phantom's); and the outcomes a node gives when its method or its stand fails. The nodes take the
+simulated stand's windows (`SIMULATED_NODES`), as the server offers them."""
 
 import pathlib
 from collections.abc import Callable, Sequence
@@ -12,8 +13,16 @@ import pytest
 from qdt_registry import Registry
 from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import CalibrationNode, SimResult, SimScenario
+from qdt_server.app import SIMULATED_NODES
 from qdt_server.tuning import run_node, run_tuneup
-from qdt_sim.scenarios import DEVICE_ID, default_stand, device_for, lattice_truth, sensor_truth
+from qdt_sim.scenarios import (
+    DEVICE_ID,
+    DEVICES,
+    default_stand,
+    device_for,
+    lattice_truth,
+    sensor_truth,
+)
 from qdt_tuning import (
     charge_lattice,
     sensor_operating_point_node,
@@ -24,61 +33,71 @@ from qdt_tuning import (
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
+A, B = "two-dot-sige-a", "two-dot-sige-b"
 DEFAULT = SimScenario(
     scenario_id="default-occupied-window",
-    description="the default double dot with its default noise, seed 1; the charge-lattice node's window",
+    description="the default device with its noise, noise seed 1; the charge-lattice node's window",
+    device=A,
+    device_sha256=DEVICES[A],
     seed=1,
 )
 QUIET = SimScenario(
     scenario_id="default-quiet",
-    description="the default double dot, noise off",
-    seed=0,
+    description="the default device, noise off",
+    device=A,
+    device_sha256=DEVICES[A],
     noise=False,
 )
-
-COLD = SimScenario(
-    scenario_id="cold-sensor",
-    description="a cold sensor (10 mV peaks) so the diamonds resolve (ADR 0030); noise off",
-    model={"sensor_width_v": 0.01},
+SECOND = SimScenario(
+    scenario_id="second-device",
+    description="a second disorder draw of the same layout, noise off: the full chain finds it (ADR 0088)",
+    device=B,
+    device_sha256=DEVICES[B],
     seed=2,
     noise=False,
 )
+WINDOWS = SIMULATED_NODES
+
+
+def sensor_node() -> CalibrationNode:
+    return sensor_operating_point_node(**WINDOWS["sensor-operating-point"])
+
+
+def wing_node() -> CalibrationNode:
+    return sensor_wing_node(**WINDOWS["sensor-wing"])
+
+
+def lattice_node(**kwargs) -> CalibrationNode:
+    return charge_lattice(instrument=DEVICE_ID, **WINDOWS["charge-lattice"] | kwargs)
+
+
+def virtual_node() -> CalibrationNode:
+    return virtual_lattice(instrument=DEVICE_ID, **WINDOWS["virtual-lattice"])
+
 
 NodeBuilders = Sequence[Callable[[], CalibrationNode]]
-THREE_NODES: NodeBuilders = [
-    sensor_operating_point_node,
-    sensor_wing_node,
-    lambda: charge_lattice(instrument=DEVICE_ID, sensor_gate="SG"),
-    lambda: virtual_lattice(instrument=DEVICE_ID),
+FOUR_NODES: NodeBuilders = [
+    sensor_node,
+    wing_node,
+    lambda: lattice_node(sensor_gate="SG"),
+    virtual_node,
 ]
-"""The full chain (four nodes since ADR 0062; the name stays for the fixtures that cite it)."""
+"""The full chain (ADR 0062)."""
 SCENARIOS: dict[str, tuple[SimScenario, NodeBuilders]] = {
-    "sensor_operating_point_cold": (COLD, [sensor_operating_point_node]),
-    "sensor_wing_cold": (COLD, [sensor_operating_point_node, sensor_wing_node]),
-    "virtual_lattice_cold": (COLD, THREE_NODES),
-    "charge_lattice_default": (DEFAULT, [lambda: charge_lattice(instrument=DEVICE_ID)]),
-    "charge_lattice_quiet": (QUIET, [lambda: charge_lattice(instrument=DEVICE_ID)]),
-    "virtual_lattice_default": (
-        DEFAULT,
-        [
-            lambda: charge_lattice(instrument=DEVICE_ID),
-            lambda: virtual_lattice(instrument=DEVICE_ID),
-        ],
-    ),
-    "virtual_lattice_quiet": (
-        QUIET,
-        [
-            lambda: charge_lattice(instrument=DEVICE_ID),
-            lambda: virtual_lattice(instrument=DEVICE_ID),
-        ],
-    ),
+    "sensor_operating_point_second": (SECOND, [sensor_node]),
+    "sensor_wing_second": (SECOND, [sensor_node, wing_node]),
+    "virtual_lattice_second": (SECOND, FOUR_NODES),
+    "charge_lattice_default": (DEFAULT, [lattice_node]),
+    "charge_lattice_quiet": (QUIET, [lattice_node]),
+    "virtual_lattice_default": (DEFAULT, [lattice_node, virtual_node]),
+    "virtual_lattice_quiet": (QUIET, [lattice_node, virtual_node]),
 }
 """Fixture name → (scenario, the tune-up's nodes in order); the fixture is the last node's outcome.
 `scripts/make_tuning_fixtures.py` writes one file each."""
 
 
 def truth_for(scenario: SimScenario, node_id: str) -> dict[str, float]:
-    """The model's values for the node's decided quantities, by the node's output names."""
+    """The device's values for the node's decided quantities, by the node's output names."""
     lattice = lattice_truth(scenario)
     L = np.array([[lattice["l_11"], lattice["l_12"]], [lattice["l_21"], lattice["l_22"]]])
     M = virtual_gate_matrix(L)
@@ -91,10 +110,10 @@ def truth_for(scenario: SimScenario, node_id: str) -> dict[str, float]:
     if node_id == "sensor-operating-point":
         t = sensor_truth(scenario)
         return {k: t[k] for k in ("sg_peak_v", "period", "charging_energy", "lever_arm")} | {
-            "sg_operating_v": t["sg_peak_v"] + 0.02  # the rule's default flank offset
+            "sg_operating_v": t["sg_peak_v"] + WINDOWS["sensor-operating-point"]["flank_offset_v"]
         }
     if node_id == "sensor-wing":
-        bias = sensor_wing_node().definition.levels[0].value  # the node's linear-response bias
+        bias = wing_node().definition.levels[0].value  # the node's linear-response bias
         t = sensor_truth(scenario, bias_v=bias)
         return {
             "sg_peak_v": t["sg_peak_v"],
@@ -144,11 +163,12 @@ def run_scenario(scenario: SimScenario, builders: NodeBuilders, root: pathlib.Pa
 
 
 TOLERANCES = {
-    # name → (relative, absolute) against the model's truth, per decided quantity
+    # name → (relative, absolute) against the device's truth, per decided quantity; the lattice's cross
+    # terms absolutely, within a quarter of the spectrum's bin over the window (ADR 0088)
     "l_11": (0.01, 0.0),
     "l_22": (0.01, 0.0),
-    "l_12": (0.04, 0.0),
-    "l_21": (0.04, 0.0),
+    "l_12": (0.0, 0.2),
+    "l_21": (0.0, 0.2),
     "m_11": (0.0, 0.01),
     "m_12": (0.0, 0.01),
     "m_21": (0.0, 0.01),
@@ -157,18 +177,21 @@ TOLERANCES = {
     "c_12": (0.0, 0.01),
     "residual_a": (0.0, 0.02),
     "residual_b": (0.0, 0.02),
-    "sg_peak_v": (0.0, 0.005),
-    "sg_operating_v": (0.0, 0.005),
+    # the sensor's (ADR 0088): positions within an eighth of its 0.16 V peak width; period and lever arm
+    # looser, since the 2 V diamond window charges each dot by about one electron through the sensor
+    # gate, moving the sensor by ~4 % of a period, while Phantom's truth holds the dots' charge fixed
+    "sg_peak_v": (0.0, 0.02),
+    "sg_operating_v": (0.0, 0.02),
     "sg_width_v": (0.1, 0.0),
     "sensitivity_a_per_v": (0.15, 0.0),
-    "period": (0.02, 0.0),
+    "period": (0.05, 0.0),
     "charging_energy": (0.05, 0.0),
-    "lever_arm": (0.07, 0.0),
+    "lever_arm": (0.1, 0.0),
 }
 
 
 @pytest.mark.parametrize("name", sorted(SCENARIOS))
-def test_the_tuneup_reproduces_its_committed_outcome_and_the_models_truth(name, tmp_path):
+def test_the_tuneup_reproduces_its_committed_outcome_and_the_devices_truth(name, tmp_path):
     scenario, builders = SCENARIOS[name]
     fixture = SimResult.model_validate_json((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
     nodes = [b() for b in builders]
@@ -185,7 +208,7 @@ def test_the_tuneup_reproduces_its_committed_outcome_and_the_models_truth(name, 
     assert {e.name: e.value for e in result.estimates} == pytest.approx(
         {e.name: e.value for e in fixture.estimates}, rel=1e-6
     )
-    # and they agree with the model
+    # and they agree with the device
     assert fixture.truth == pytest.approx(truth, rel=1e-9)
     for k, v in truth.items():
         rel, absolute = TOLERANCES[k]
@@ -197,11 +220,11 @@ def test_the_tuneup_reproduces_its_committed_outcome_and_the_models_truth(name, 
 
 
 def test_the_virtual_lattice_straightens_what_the_charge_lattice_found(tmp_path):
-    """The DAG edge in one picture: cross ratios of ≈ 0.2 in real gates, within 0.01 of zero in the
+    """The DAG edge in one picture: cross ratios of ≈ 0.1 in real gates, within 0.01 of zero in the
     virtual gates built from the first node's coefficients."""
     outcomes, _, _ = run_scenario(QUIET, SCENARIOS["virtual_lattice_quiet"][1], tmp_path)
     first, second = outcomes
-    assert first.outputs["l_12"] / first.outputs["l_11"] > 0.15
+    assert first.outputs["l_12"] / first.outputs["l_11"] > 0.05
     assert abs(second.outputs["residual_a"]) < 0.01 and abs(second.outputs["residual_b"]) < 0.01
     bound = Registry(tmp_path / "registry").get(second.record_id)
     assert bound.definition_name == "virtual-gate lattice"
@@ -211,9 +234,9 @@ def test_a_tuneup_stops_at_the_first_node_that_is_not_accepted(tmp_path):
     """A charge-lattice node whose rule cannot accept (an impossible cross-ratio limit): the second
     node is not run, and its missing input is the reason the tune-up ends there."""
     registry = registry_for(tmp_path)
-    strict = charge_lattice(instrument=DEVICE_ID, max_cross_ratio=0.01)
+    strict = lattice_node(max_cross_ratio=0.01)
     outcomes = run_tuneup(
-        [strict, virtual_lattice(instrument=DEVICE_ID)],
+        [strict, virtual_node()],
         default_stand(),
         {DEVICE_ID: device_for(QUIET)},
         registry,
@@ -224,7 +247,7 @@ def test_a_tuneup_stops_at_the_first_node_that_is_not_accepted(tmp_path):
     assert "cross-capacitance" in outcomes[0].message
     with pytest.raises(ValueError, match="not in the tune-up"):
         run_tuneup(
-            [virtual_lattice(instrument=DEVICE_ID)],
+            [virtual_node()],
             default_stand(),
             {},
             registry,
@@ -238,7 +261,8 @@ def test_a_window_without_a_lattice_is_a_failed_outcome_with_its_record_kept(tmp
     so, names the record and the (failed) result, and carries no outputs. (With noise off the map is
     nearly constant and the method reports a degenerate lattice as `ok`: a method weakness, STATUS.md.)"""
     registry = registry_for(tmp_path)
-    node = charge_lattice(instrument=DEVICE_ID, p1=(-0.3, -0.25), p2=(-0.3, -0.25), n=24)
+    empty = {"p1": (-0.65, -0.6), "p2": (-1.25, -1.2), "n": 24}  # both plungers about −0.6 V
+    node = lattice_node(**empty)
     outcome, result = run_node(
         node,
         default_stand(),
@@ -255,7 +279,7 @@ def test_a_window_without_a_lattice_is_a_failed_outcome_with_its_record_kept(tmp
 
 
 def test_a_node_with_an_unknown_method_is_a_definition_error(tmp_path):
-    node = charge_lattice(instrument=DEVICE_ID)
+    node = lattice_node()
     node = node.model_copy(
         update={"method": node.method.model_copy(update={"name": "qdt_analysis.nope"})}
     )
@@ -320,7 +344,7 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
                 "sensor-wing",
                 "sensor-operating-point",
             ],  # any order
-            "scenario": COLD.model_dump(mode="json"),
+            "scenario": SECOND.model_dump(mode="json"),
             "options": {"campaign": "tuneup"},
         },
     )
@@ -333,12 +357,15 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
         "charge-lattice",
         "virtual-lattice",
     ]
-    assert tuneup.scenario_id == COLD.scenario_id and tuneup.attrs["sensor_width_v"] == 0.01
+    assert tuneup.scenario_id == SECOND.scenario_id and tuneup.attrs["device"] == B
     assert tuneup.name == "sensor-operating-point → sensor-wing → charge-lattice → virtual-lattice"
     assert [o.status for o in tuneup.outcomes] == ["accepted"] * 4
     first, wing, _, second = tuneup.outcomes
-    assert first.outputs["sg_peak_v"] == pytest.approx(-0.06, abs=0.005)
-    assert wing.outputs["sg_width_v"] == pytest.approx(0.01, rel=0.1)
+    sensor = sensor_truth(SECOND)
+    assert first.outputs["sg_peak_v"] == pytest.approx(
+        sensor["sg_peak_v"], abs=TOLERANCES["sg_peak_v"][1]
+    )
+    assert wing.outputs["sg_width_v"] == pytest.approx(sensor["sg_width_v"], rel=0.1)
     assert abs(second.outputs["residual_a"]) < 0.02 and second.tuneup_id == tuneup.tuneup_id
     # every node's sweep was a run on the server, with the tune-up's options
     runs = client.get("/runs").json()
@@ -366,13 +393,31 @@ def test_a_tuneup_runs_through_the_api_and_its_outcomes_are_in_the_registry(clie
     state = client.get("/stand/state").json()  # ADR 0085: a version under the tune-up's name
     assert state["set_by"] == f"tune-up {tuneup.tuneup_id}"
     assert "'sensor-wing' accepted" in state["reason"]
-    r = client.post("/tuneups", json={"node_ids": ["sensor-wing"], "scenario": COLD.model_dump(mode="json")})
+    r = client.post(
+        "/tuneups", json={"node_ids": ["sensor-wing"], "scenario": SECOND.model_dump(mode="json")}
+    )
     assert r.status_code == 202, r.text
     retune = wait_tuneup(client, r.json()["tuneup_id"])
     assert retune.state == "completed", retune.message
-    assert retune.outcomes[0].outputs["sg_operating_v"] == pytest.approx(wing.outputs["sg_operating_v"], abs=2e-3)
+    assert retune.outcomes[0].outputs["sg_operating_v"] == pytest.approx(
+        wing.outputs["sg_operating_v"], abs=TOLERANCES["sg_operating_v"][1]
+    )
     window = retune.nodes[0].definition.axes[0]
-    assert (window.start, window.stop) == pytest.approx((held["SG"] - 0.05, held["SG"] + 0.05))
+    span = WINDOWS["sensor-wing"]["span_v"]
+    assert (window.start, window.stop) == pytest.approx((held["SG"] - span, held["SG"] + span))
+
+
+def test_a_tuneup_on_a_scenario_whose_device_file_hashes_otherwise_fails(client):
+    """ADR 0088: the scenario pins its device file by hash, and the server's backends check it."""
+    wrong = SECOND.model_copy(update={"device_sha256": DEVICES[A]})
+    r = client.post(
+        "/tuneups",
+        json={"node_ids": ["sensor-operating-point"], "scenario": wrong.model_dump(mode="json")},
+    )
+    assert r.status_code == 202, r.text
+    tuneup = wait_tuneup(client, r.json()["tuneup_id"])
+    assert tuneup.state == "failed" or tuneup.outcomes[0].status == "failed"
+    assert "hashes to" in (tuneup.message + " ".join(o.message for o in tuneup.outcomes))
 
 
 def test_a_tuneup_refuses_unknown_nodes_and_stops_when_asked(client):
@@ -381,14 +426,19 @@ def test_a_tuneup_refuses_unknown_nodes_and_stops_when_asked(client):
     # a dependent without its dependency is a 400, not a run
     missing = client.post(
         "/tuneups",
-        json={"node_ids": ["charge-lattice"], "scenario": COLD.model_dump(mode="json")},
+        json={"node_ids": ["charge-lattice"], "scenario": SECOND.model_dump(mode="json")},
     )
     assert missing.status_code == 400 and "sensor-wing" in missing.json()["detail"]
     r = client.post(
         "/tuneups",
         json={
-            "node_ids": ["sensor-operating-point", "sensor-wing", "charge-lattice", "virtual-lattice"],
-            "scenario": COLD.model_dump(mode="json"),
+            "node_ids": [
+                "sensor-operating-point",
+                "sensor-wing",
+                "charge-lattice",
+                "virtual-lattice",
+            ],
+            "scenario": SECOND.model_dump(mode="json"),
         },
     )
     tuneup_id = r.json()["tuneup_id"]

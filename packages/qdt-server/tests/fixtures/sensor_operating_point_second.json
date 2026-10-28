@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 2,
+    "scenario_id": "second-device",
+    "description": "a second disorder draw of the same layout, noise off: the full chain finds it (ADR 0088)",
+    "device": "two-dot-sige-b",
+    "device_sha256": "36fb0400267711c4875bbb23a1561edf8c3f23210cae90eb3ead5720a0d91f28",
+    "seed": 2,
+    "noise": false,
+    "attrs": {}
+  },
+  "node_id": "sensor-operating-point",
+  "outcome": {
+    "schema_version": 1,
+    "outcome_id": "a837654c89a041d0bf8a16bf6eddc87c",
+    "node_id": "sensor-operating-point",
+    "tuneup_id": "0f342d04655a4a9b85766db2227896dc",
+    "scenario_id": "second-device",
+    "record_id": "b7884122fef74be8b57ca7f7f26a6779",
+    "result_id": "018bdf3fc4fd43fda7c41228b4f9eef8",
+    "status": "accepted",
+    "message": "peak at +0.3680 V (of 3), operating point +0.4680 V",
+    "outputs": {
+      "sg_peak_v": 0.3679576690673175,
+      "sg_operating_v": 0.4679576690673175,
+      "period": 1.0389991797302838,
+      "charging_energy": 0.0009617320552719905,
+      "lever_arm": 0.0009256331227534258
+    },
+    "created_at": "2026-10-28T13:03:45.714932Z",
+    "attrs": {
+      "method": "qdt_analysis.diamonds.detect_diamonds",
+      "rule": "qdt_tuning.decisions.sensor_operating_point"
+    }
+  },
+  "estimates": [
+    {
+      "schema_version": 1,
+      "name": "period",
+      "value": 1.0389991797302838,
+      "stderr": null,
+      "unit": "V"
+    },
+    {
+      "schema_version": 1,
+      "name": "charging_energy",
+      "value": 0.0009617320552719905,
+      "stderr": null,
+      "unit": "eV"
+    },
+    {
+      "schema_version": 1,
+      "name": "lever_arm",
+      "value": 0.0009256331227534258,
+      "stderr": null,
+      "unit": "eV/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "slope_rising",
+      "value": 0.001851266245506851,
+      "stderr": null,
+      "unit": "V/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "slope_falling",
+      "value": -0.001851266245506852,
+      "stderr": null,
+      "unit": "V/V"
+    }
+  ],
+  "truth": {
+    "sg_peak_v": 0.3683509370138386,
+    "period": 1.0076317488185305,
+    "charging_energy": 0.001,
+    "lever_arm": 0.0009924260536376718,
+    "sg_operating_v": 0.46835093701383856
+  },
+  "created_at": "2026-10-28T13:03:45.724314Z"
+}

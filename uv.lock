@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
@@ -1088,6 +1088,17 @@ wheels = [
 ]
 
 [[package]]
+name = "phantom"
+version = "0.2.0"
+source = { git = "https://github.com/CowboyQuantum/phantom?tag=v0.2.0#f72daacfe02137a034ce883fb2ccf2be4cd3a363" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[[package]]
 name = "platformdirs"
 version = "4.12.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1611,8 +1622,10 @@ source = { editable = "packages/qdt-sim" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "phantom" },
     { name = "qdt-lab" },
     { name = "qdt-schemas" },
+    { name = "qdt-tuning" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "xarray" },
@@ -1621,8 +1634,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26,<3" },
+    { name = "phantom", git = "https://github.com/CowboyQuantum/phantom?tag=v0.2.0" },
     { name = "qdt-lab", editable = "packages/qdt-lab" },
     { name = "qdt-schemas", editable = "packages/qdt-schemas" },
+    { name = "qdt-tuning", editable = "packages/qdt-tuning" },
     { name = "scipy" },
     { name = "xarray", specifier = ">=2024.1,<2027" },
 ]

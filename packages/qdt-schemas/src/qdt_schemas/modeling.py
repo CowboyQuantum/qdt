@@ -15,8 +15,9 @@ Those never live in the result: they are a `Dataset` of their own, with `source.
 written as a `qdt-hdf5-v1` payload and referenced by `AnalysisResult.output` (ADR 0031), so Flight
 Deck draws them like any measurement and the registry stores them like any payload.
 
-Step 6 (ADR 0048) adds, beside the frozen three: `SimScenario` (a reproducible simulated situation: model
-overrides, seed, noise; the truth is derived from the model by `qdt-sim`, never stored here),
+Step 6 (ADR 0048) adds, beside the frozen three: `SimScenario` (a reproducible simulated situation: a
+committed device file by name and hash, a noise seed, noise on or off, ADR 0088; the truth is derived
+from the device by `qdt-sim`, never stored here),
 `CalibrationNode` (one step of a tune-up as data: the experiment, the method that reads it, the
 `DecisionRule` that judges it), `NodeOutcome` (what running a node produced: its record, its result, the
 verdict and the decided quantities) and `SimResult` (a committed outcome of a node on a scenario, with the
@@ -134,23 +135,35 @@ class AnalysisResult(QdtModel):
 
 
 class SimScenario(QdtModel):
-    """A reproducible simulated situation: which scalar parameters of the simulated device's model are
-    overridden, which seed, whether noise is on. `qdt-sim` realizes it into a device and derives the
-    truth a method must recover; this package holds the recipe only (rule 1)."""
+    """A reproducible simulated situation: which committed device file the simulator loads (by name and
+    SHA-256, ADR 0088), which noise seed, whether noise is on. `qdt-sim` realizes it into a device and
+    derives the truth a method must recover; this package holds the reference only (rule 1)."""
 
+    schema_version: int = Field(
+        default=2,
+        description=(
+            "Per-object-type schema version; bumps only on breaking changes. 2: the scenario names a "
+            "device file instead of overriding a model's scalars, and `seed` is the noise seed (ADR 0088)."
+        ),
+    )
     scenario_id: str = Field(
         min_length=1, description="Stable name of the scenario, e.g. 'default-occupied-window'."
     )
     description: str = Field(default="", description="What the scenario stands for.")
-    model: dict[str, AttrValue] = Field(
-        default_factory=dict,
-        description=(
-            "Scalar overrides of the simulated device's default model, by field name (e.g. "
-            "sensor_width_v). Matrix parameters are not overridable through a scenario yet."
-        ),
+    device: str = Field(
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
+        description="Name of the committed device file the simulator loads, e.g. 'two-dot-sige-a'.",
     )
-    seed: int = Field(default=0, ge=0, description="Seed of every random draw in the device.")
-    noise: bool = Field(default=True, description="Whether the device's noise models are on.")
+    device_sha256: str = Field(
+        pattern=r"^[0-9a-f]{64}$",
+        description="SHA-256 of that file; the simulator refuses a file that hashes otherwise.",
+    )
+    seed: int = Field(
+        default=0,
+        ge=0,
+        description="Seed of the run's noise realisation; the device's own disorder is in its file.",
+    )
+    noise: bool = Field(default=True, description="Whether the device's noise is on.")
     attrs: dict[str, AttrValue] = Field(
         default_factory=dict, description="Free-form scalar metadata."
     )
@@ -309,7 +322,7 @@ class NodeOutcome(QdtModel):
 
 
 class SimResult(QdtModel):
-    """A committed outcome of a node on a scenario, with the truth the model gives for the decided
+    """A committed outcome of a node on a scenario, with the truth the device gives for the decided
     quantities: the fixture CI reproduces (within tolerance) whenever the node, the method or the
     simulator changes."""
 
@@ -321,6 +334,6 @@ class SimResult(QdtModel):
     )
     truth: dict[str, float] = Field(
         default_factory=dict,
-        description="The model's values for the decided quantities, by the same names as `outputs`.",
+        description="The device's values for the decided quantities, by the same names as `outputs`.",
     )
     created_at: AwareDatetime = Field(description="When the fixture was made.")

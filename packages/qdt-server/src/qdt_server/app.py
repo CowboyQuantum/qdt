@@ -5,7 +5,6 @@ run or a method parameter out of range, 422 (FastAPI) for a body that is not the
 """
 
 import asyncio
-import dataclasses
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
@@ -31,8 +30,19 @@ from qdt_schemas.identity import DeviceRecord
 from qdt_schemas.modeling import AnalysisResult, CalibrationNode, NodeOutcome, SimScenario
 from qdt_schemas.operations import ChannelLimit, QueuedRun, StandQueue, StandState
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
-from qdt_sim.dot import DoubleDotModel
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_model, default_stand
+from qdt_sim.scenarios import (
+    DEFAULT_DEVICE,
+    DEVICE_ID,
+    LATTICE_SPAN_V,
+    MEASURE_NS,
+    SENSOR_WINDOW_V,
+    about,
+    default_device,
+    default_stand,
+    load_device,
+    programmed,
+    provenance,
+)
 
 from . import catalogue
 from .auth import command_token, commander, read_tokens
@@ -42,11 +52,38 @@ from .tuning import TuneUpManager
 
 log = logging.getLogger(__name__)
 
-MODEL_OPTIONS = {
-    f.name for f in dataclasses.fields(DoubleDotModel) if f.type in ("float", "int", float, int)
+SIMULATED_NODES: dict[str, dict[str, Any]] = {
+    "sensor-operating-point": {
+        "sg": about("SG", SENSOR_WINDOW_V),
+        "near_v": programmed()["SG"],
+        "flank_offset_v": 0.1,
+    },
+    "sensor-wing": {"span_v": 0.4},
+    "charge-lattice": {
+        "p1": about("P1", (-LATTICE_SPAN_V, LATTICE_SPAN_V)),
+        "p2": (-LATTICE_SPAN_V, LATTICE_SPAN_V),
+        "n": 64,
+        "measure_ns": 10 * MEASURE_NS,
+    },
 }
-"""Run options that override a scalar of the default `DoubleDotModel`, e.g. `sensor_width_v` for the
-cold sensor a diamond measurement wants (ADR 0030)."""
+"""The windows the simulated stand's tune-up nodes take, by node id (`qdt_tuning.TEMPLATES`, ADR 0088):
+about the default device's programmed point and sized to it (plungers ~20 e/V, a sensor period ~1 V),
+integrating 10 ms a lattice pixel, where Phantom's readout noise is ~5 pA. `virtual-lattice` takes the
+charge lattice's window."""
+SIMULATED_NODES["virtual-lattice"] = SIMULATED_NODES["charge-lattice"]
+
+
+def simulated_device_record() -> DeviceRecord:
+    """The registry's record of the simulated device, with what made it (ADR 0087): Phantom's version,
+    its model versions and the device file's name and hash. A registry keeps the first record it was
+    given for an id, so a later pin's provenance shows only in a fresh registry."""
+    return DeviceRecord(
+        device_id=DEVICE_ID,
+        kind="double_dot",
+        simulated=True,
+        attrs=provenance(DEFAULT_DEVICE),
+        registered_at=datetime(2026, 10, 13, tzinfo=UTC),
+    )
 
 
 SCOPE_ID = "scope"
@@ -77,16 +114,18 @@ def simulated_stand() -> StandConfig:
 
 
 def simulated_backends(options: dict[str, AttrValue]) -> Mapping[str, Any]:
-    """The Step 4b backend: the default simulated double dot, seeded and noisy by option, with any
-    `MODEL_OPTIONS` applied to its model; and the simulated scope, recording a droop per
-    `SCOPE_OPTIONS`."""
+    """The Step 4b backend: a run on the committed device `device` (default the default device, loaded
+    once; refused unless its file hashes to `device_sha256` when a scenario gives one), with noise seed
+    `seed` and noise by option; and the simulated scope, recording a droop per `SCOPE_OPTIONS`."""
     seed = int(options.get("seed", 0))
     noise = bool(options.get("noise", True))
-    overrides = {k: v for k, v in options.items() if k in MODEL_OPTIONS}
-    model = dataclasses.replace(default_model(), **overrides) if overrides else None
+    sha256 = options.get("device_sha256")
+    device = load_device(
+        str(options.get("device", DEFAULT_DEVICE)), str(sha256) if sha256 else None
+    )
     scope = {k: float(options.get(k, v)) for k, v in SCOPE_OPTIONS.items()}
     return {
-        DEVICE_ID: default_device(seed=seed, noise=noise, model=model),
+        DEVICE_ID: default_device(seed, noise, device=device),
         SCOPE_ID: SimulatedWaveformSense(
             noise=scope["scope_noise_v"] if noise else 0.0,
             seed=seed,
@@ -119,15 +158,11 @@ class Settings:
     stream_host: str = "127.0.0.1"
     stream_port: int = 8765
     stand: StandConfig = field(default_factory=simulated_stand)
-    device: DeviceRecord = field(
-        default_factory=lambda: DeviceRecord(
-            device_id=DEVICE_ID,
-            kind="double_dot",
-            simulated=True,
-            registered_at=datetime(2026, 10, 13, tzinfo=UTC),
-        )
-    )
+    device: DeviceRecord = field(default_factory=simulated_device_record)
     backends: BackendFactory = simulated_backends
+    nodes: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: SIMULATED_NODES)
+    """Per node id, the windows the stand's tune-up nodes take (`qdt_tuning.TEMPLATES`, ADR 0088); a
+    node not named keeps its constructor's defaults."""
     ui: Path | None = None
     """A built Flight Deck (`apps/flightdeck/dist`) to serve at `/`, after the API routes; None serves none."""
     read_only: bool = False
@@ -207,8 +242,8 @@ class TuneUpRequest(BaseModel):
     scenario: SimScenario | None = Field(
         default=None,
         description=(
-            "On the simulated stand: the scenario the backends are built from (seed, noise, model "
-            "overrides become run options) and the outcomes are tagged with; ignored by a real stand."
+            "On the simulated stand: the scenario the backends are built from (its device, noise seed "
+            "and noise become run options) and the outcomes are tagged with; ignored by a real stand."
         ),
     )
     name: str | None = Field(
@@ -301,7 +336,7 @@ def create_app(settings: Settings) -> FastAPI:
                 stream,
                 settings.root / "outbox",
             )
-            app.state.tuneups = TuneUpManager(app.state.runs)
+            app.state.tuneups = TuneUpManager(app.state.runs, settings.nodes)
             app.state.queue = RunQueue(app.state.runs, registry, settings.stand.stand_id)
             app.state.queue.start()
             app.state.runs.sync_later()  # what an earlier session left in the cache (ADR 0080)

@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
   "scenario": {
-    "schema_version": 1,
+    "schema_version": 2,
     "scenario_id": "default-occupied-window",
-    "description": "the default double dot with its default noise, seed 1; the charge-lattice node's window",
-    "model": {},
+    "description": "the default device with its noise, noise seed 1; the charge-lattice node's window",
+    "device": "two-dot-sige-a",
+    "device_sha256": "0ac31718688900366d9da58008da15aae834f08f2880476bf6dbc6975e175903",
     "seed": 1,
     "noise": true,
     "attrs": {}
@@ -12,27 +13,27 @@
   "node_id": "charge-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "e56c4393861d4d289c233a61c376a660",
+    "outcome_id": "b4ee2ff99ece4cbfba64a79936b8ff40",
     "node_id": "charge-lattice",
-    "tuneup_id": "0e02efdb60c94d4a864c3937092e805a",
+    "tuneup_id": "75e98cd88e364bd5babe160b82b94855",
     "scenario_id": "default-occupied-window",
-    "record_id": "cb3fb7ae80a74d5189cf1ca48585ee66",
-    "result_id": "d86ed51fa0474c64a5e91a621ab0e50d",
+    "record_id": "5f9b46fd0e6f4e2d8a91a3a7b3cd09d8",
+    "result_id": "af6aea5e57884b188e8f58acd90ff281",
     "status": "accepted",
-    "message": "lattice condition 1.56, cross ratios 0.214 and 0.223",
+    "message": "lattice condition 1.36, cross ratios 0.114 and 0.065",
     "outputs": {
-      "l_11": 74.45421598528753,
-      "l_12": 15.959055985783607,
-      "l_21": 15.873321562395347,
-      "l_22": 71.33920928189042,
-      "m_11": 1.0500818760755946,
-      "m_12": -0.2250821559018043,
-      "m_21": -0.23364833243284305,
-      "m_22": 1.0500818760755946,
-      "c_21": -0.2225048710544766,
-      "c_12": -0.2143472438006356
+      "l_11": 19.23809277216671,
+      "l_12": 2.1877351880787046,
+      "l_21": 1.6003473031337165,
+      "l_22": 24.666490743211128,
+      "m_11": 1.0074328560642087,
+      "m_12": -0.11456417925310126,
+      "m_21": -0.06536164674070576,
+      "m_22": 1.007432856064209,
+      "c_21": -0.06487940744364598,
+      "c_12": -0.11371892286764915
     },
-    "created_at": "2026-10-16T04:59:06.443294Z",
+    "created_at": "2026-10-28T13:03:53.949317Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.virtual_gates"
@@ -42,57 +43,57 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 74.45421598528753,
+      "value": 19.23809277216671,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": 15.959055985783607,
+      "value": 2.1877351880787046,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": 15.873321562395347,
+      "value": 1.6003473031337165,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 71.33920928189042,
+      "value": 24.666490743211128,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": 0.2143472438006356,
+      "value": 0.11371892286764915,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": 0.22250487105447658,
+      "value": 0.06487940744364597,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "l_11": 74.89810889352916,
-    "l_12": 15.603772686151908,
-    "l_21": 15.603772686151908,
-    "l_22": 71.77735435629877,
-    "m_11": 1.047438330170778,
-    "m_12": -0.21821631878557876,
-    "m_21": -0.22770398481973436,
-    "m_22": 1.047438330170778,
-    "c_21": -0.2173913043478261,
-    "c_12": -0.20833333333333337
+    "l_11": 19.223253407523533,
+    "l_12": 2.2063564315732966,
+    "l_21": 1.507500315831431,
+    "l_22": 24.65856587451645,
+    "m_11": 1.0070663716188561,
+    "m_12": -0.11558643685011341,
+    "m_21": -0.061566957340677436,
+    "m_22": 1.007066371618856,
+    "c_21": -0.06113495502953667,
+    "c_12": -0.11477539128261088
   },
-  "created_at": "2026-10-16T04:59:06.458446Z"
+  "created_at": "2026-10-28T13:03:53.959961Z"
 }

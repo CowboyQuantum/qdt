@@ -3,7 +3,15 @@ name = "qdt-sim"
 version = "0.1.0"
 description = "qdt — physics models; SimulatedDevice behind qdt-lab protocols"
 requires-python = ">=3.11,<3.14"
-dependencies = ["qdt-schemas", "qdt-lab", "numpy>=1.26,<3", "scipy", "xarray>=2024.1,<2027"]
+dependencies = [
+  "qdt-schemas",
+  "qdt-lab",
+  "qdt-tuning",
+  "phantom==0.2.0",
+  "numpy>=1.26,<3",
+  "scipy",
+  "xarray>=2024.1,<2027",
+]
 
 [build-system]
 requires = ["hatchling"]
