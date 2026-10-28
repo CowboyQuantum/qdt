@@ -6,7 +6,7 @@ Instrument capability protocols, vendor drivers, simulated backends, the `Datase
 ```
 qdt_lab/
   protocols/         # LevelSource, LevelSense, WaveformSource, WaveformSense, Sequencer — typing.Protocol classes (ADR 0016)
-  simulated/         # one Simulated* per protocol; the L0 backends
+  simulated/         # one Simulated* per protocol; the L0 backends; instrument.py: SimulatedInstrument, the sequencer interpreter over a SimulatedPhysics (ADR 0087)
   drivers/<vendor>/  # real drivers + their SCPI emulators; vendor SDK imported lazily (ADR 0041)
   drivers/scpi.py    # the shared SCPI transport; drivers/__init__.FACTORIES maps backend keys to factories
   conformance/       # ONE suite, parametrized over backends; the spec for any driver
@@ -26,3 +26,6 @@ qdt_lab/
 
 ## Conformance suite is the spec
 Test names describe required behavior ("set_level_then_get_returns_within_tolerance"). If a driver needs behavior the suite does not test, the suite is incomplete — extend it, then implement.
+
+## The simulated instrument (ADR 0087)
+`simulated/instrument.py` is the sequencer interpreter every simulated stand runs: channels and roles, the bias tee's sum, triggered lists, captures, shot reduction and frames. What it is connected to is a `SimulatedPhysics` (inputs, one output, default levels, a clock it owns, `hold` and `sense`); `qdt-sim` supplies the real one, and `LinearPhysics` is the test double the conformance suites use. Physics never lives here, and the module keeps to general words (ADR 0079). A change in how the interpreter advances the clock or sums levels changes every simulator fixture: prove it bit-identical, or regenerate them in the same commit.

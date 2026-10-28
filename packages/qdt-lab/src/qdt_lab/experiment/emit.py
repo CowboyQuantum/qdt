@@ -3,8 +3,9 @@
 An emitter owns everything the sequencer language needs around the per-shot sequence: the loops over
 the stage axes and shots, the integer input streams for swept and per-run symbols, the stream
 processing that keeps or reduces shots, and the result declarations. The simulated emitter is the first
-ISA: its body is the sequence itself as JSON plus the symbol → parameter map, which `qdt-sim`'s
-`SimulatedDevice` interprets against the dot model. The QUA emitter is Step 5 (`[opx]`).
+ISA: its body is the sequence itself as JSON plus the symbol → parameter map, which
+`qdt_lab.simulated.SimulatedInstrument` interprets against a `SimulatedPhysics` (ADR 0087). The QUA
+emitter is Step 5 (`[opx]`).
 """
 
 import json

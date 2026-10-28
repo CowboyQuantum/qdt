@@ -23,6 +23,8 @@ from qdt_lab.drivers.keysight.infiniivision_emulator import emulated as infiniiv
 from qdt_lab.drivers.qdevil.qdac2 import QDac2
 from qdt_lab.drivers.qdevil.qdac2_emulator import emulated as qdac2_emulated
 from qdt_lab.simulated import (
+    LinearPhysics,
+    SimulatedInstrument,
     SimulatedLevelSense,
     SimulatedLevelSource,
     SimulatedSequencer,
@@ -113,8 +115,17 @@ def _infiniivision_hardware():
     return InfiniiVisionX.from_config(inst, (ch,))
 
 
+def _instrument_on_stub() -> SimulatedInstrument:
+    """The sequencer interpreter (ADR 0087) on a linear physics: ch00 and ch01 drive its two inputs."""
+    return SimulatedInstrument(
+        LinearPhysics({"a": 1.0, "b": 1.0}),
+        {"ch00": "a", "ch01": "b", "out": "out"},
+    )
+
+
 LEVEL_SOURCE_BACKENDS = [
     pytest.param(SimulatedLevelSource, id="simulated"),
+    pytest.param(_instrument_on_stub, id="simulated-instrument"),
     pytest.param(lambda: _Renamed(qdac2_emulated()), id="qdac2-emulated"),
     pytest.param(lambda: k2400_emulated("2400"), id="k2400-emulated"),
     pytest.param(lambda: k2400_emulated("2450"), id="k2450-emulated"),
@@ -172,6 +183,7 @@ def _qdac2_triggered_hardware():
 
 TRIGGERED_LEVEL_SOURCE_BACKENDS = [
     pytest.param(SimulatedLevelSource, id="simulated"),
+    pytest.param(_instrument_on_stub, id="simulated-instrument"),
     pytest.param(lambda: _RenamedTriggered(qdac2_emulated()), id="qdac2-emulated"),
     pytest.param(_qdac2_triggered_hardware, id="qdac2", marks=pytest.mark.hardware),
 ]

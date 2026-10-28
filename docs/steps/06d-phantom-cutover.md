@@ -28,9 +28,10 @@ SHA-256 instead of carrying overrides of `qdt-sim`'s model, and its `seed` becom
    with the same constructor and attributes, until the cutover. Every output stays bit-identical: the
    committed stability fixture and the seven `SimResult` fixtures reproduce without regeneration, and
    every existing test passes unchanged.
-3. qdt-lab's conformance suites (level source, level sense, triggered level source) gain the interpreter
-   on a stub physics, and a test runs emitted sequences on it: impossible before, because qdt-lab may not
-   import qdt-sim.
+3. qdt-lab's conformance suites for the level source and the triggered level source gain the interpreter
+   on a stub physics (`LinearPhysics`), and a test runs emitted sequences on it: impossible before,
+   because qdt-lab may not import qdt-sim. The level-sense suite does not fit it (it senses the channel it
+   sets, and times the wall clock), nor does the sequencer suite (its program is the flat-index one).
 
 **Then, against `v0.2.0` (#140 and #142, one pull request)**
 4. Phantom as a dependency of `qdt-sim` only, pinned by git tag (`uv.lock` carries the commit);
@@ -60,8 +61,8 @@ SHA-256 instead of carrying overrides of `qdt-sim`'s model, and its `seed` becom
 14. `python -m phantom.contract packages/qdt-sim/devices/*.json` runs in qdt's CI.
 
 ## L0 tests (CI)
-- Interpreter on a stub physics: the level-source, level-sense and triggered-level-source conformance
-  suites pass unchanged; an emitted stage sequence (steps, a measure, a capture on the output, a
+- Interpreter on a stub physics: the level-source and triggered-level-source conformance suites pass
+  unchanged; an emitted stage sequence (steps, a measure, a capture on the output, a
   difference, a triggered axis) gives the values the stub physics defines, with the clock advanced as
   the sequence says.
 - Before the cutover: the stability fixture and the seven `SimResult` fixtures reproduce bit for bit.
