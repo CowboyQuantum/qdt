@@ -106,9 +106,11 @@ Either way, the server's interactive API documentation is at <http://127.0.0.1:8
 Each pane's title is a menu, so any pane can show any widget. The `+` button adds a pane below and `✕`
 closes it. The layout is remembered in your browser.
 
-> **Watch the default window.** The Sweep form opens at 0.03 to 0.18 V on both axes with a 2 µs reading.
-> Those values suited qdt's earlier toy simulator. On this device they land far from where the electrons
-> are, and the reading is mostly noise. Use the values below instead.
+> **The Sweep form opens about where the stand sits.** Each stepped axis opens 0.3 V wide, centred on the
+> level its channel is held at, or on the instrument's setpoint when nothing is held. A pulse line opens
+> about 0, because a pulse adds to its gate's DC level. Choosing another channel, or changing a level in
+> **Levels**, centres the window again. Once you type an axis's start or stop, the form leaves that axis
+> alone.
 
 ## 1. Measure a stability diagram
 
@@ -117,10 +119,10 @@ changes in a step each time a dot gains an electron, which draws the honeycomb o
 
 In **Sweep**:
 1. Leave **kind** at `stage: inner axis pulsed`, and name the sweep.
-2. Set the **outer** axis to `P1` from `0.45` to `0.75` with `48` points: 0.15 V either side of its
-   programmed 0.6 V.
-3. Set the **inner** axis to `P2_pulse` from `-0.15` to `0.15` with `48` points. These are offsets,
-   because the pulse adds to `P2`'s 0.6 V DC level.
+2. Check that the **outer** axis is `P1` from `0.45` to `0.75` with `48` points. The form opened it
+   0.15 V either side of `P1`'s 0.6 V.
+3. Check that the **inner** axis is `P2_pulse` from `-0.15` to `0.15` with `48` points. These are
+   offsets, because the pulse adds to `P2`'s 0.6 V DC level.
 4. Set **options** to `{"seed": 1, "noise": false}`. With noise off, the template's 2 µs reading is
    enough. To measure with noise on, change the `measure` row's **duration** in **Pulse** to `1000000`
    (1 ms) or more.
@@ -235,7 +237,7 @@ stand it takes:
 | What you see | Why, and what to do |
 |---|---|
 | The map is speckled noise. | The reading is too short for the noise. Set `"noise": false`, or raise the `measure` duration in Pulse to 1 ms or more. |
-| The map is a smooth slope with no steps. | The window is away from the electrons, probably the 0.03–0.18 V default. Sweep about 0.6 V as in step 1. |
+| The map is a smooth slope with no steps. | The window is away from the electrons. Type a window about the channel's level in **Levels**, such as 0.45 to 0.75 V for `P1` as in step 1. |
 | Flight Deck shows no stand, or every command fails. | The server is not running, or it is on another port. Start `python -m qdt_server`, or pass `?api=` and `?ws=` in Flight Deck's address. |
 | `address already in use` when starting. | Another server is running. Stop it, or start this one with `--port` and `--stream-port`. |
 | A command from another computer is refused. | Commands from another computer need a token. Run `uv run python -m qdt_server --add-token "<desk>"`, start the server with `--host 0.0.0.0`, and open Flight Deck there with `?token=<token>` once. |
@@ -248,3 +250,17 @@ stand it takes:
   is built and pinned.
 - On the bench, the same server runs real instruments: `python -m qdt_server --stand stand.json
   --device-id <id>` (see [BENCH.md](../BENCH.md)). Flight Deck does not change.
+
+## Regenerating these screenshots
+
+The pictures in this guide come from a script that walks the steps above. After a change to Flight
+Deck, retake them from `apps/flightdeck`:
+
+```bash
+corepack pnpm screenshots
+```
+
+It builds Flight Deck and starts its own stand server with an empty registry on free ports. Then it drives
+a headless Chrome through steps 1 to 5 and writes the eight files in `docs/guides/img/`, reduced to 256
+colours. It prints the estimates it saw, so you can check the numbers this guide quotes. A step that
+does not complete stops it with an error, and no picture is changed. It takes about 30 seconds.

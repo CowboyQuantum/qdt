@@ -14,7 +14,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "bench": "node bench/run.mjs",
     "gen:api": "node scripts/gen-api.mjs",
-    "check:api": "node scripts/gen-api.mjs --check"
+    "check:api": "node scripts/gen-api.mjs --check",
+    "screenshots": "pnpm build && node scripts/screenshots.mjs"
   },
   "dependencies": {
     "apache-arrow": "^21.2.0"
