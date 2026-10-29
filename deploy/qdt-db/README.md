@@ -74,7 +74,7 @@ constrains the choice.
 
 | In the examples | What it is | Rules |
 |---|---|---|
-| `C:\qdt\repo` (Windows), `~/qdt/repo` (Mac) | This repository, cloned | Anywhere on a local disk. |
+| `C:\qdt\repo` (Windows), `~/qdt/repo` (Mac) | This repository, cloned | Anywhere on a local disk. On `qdt-db`, keep it a clone that only the read server uses: the server runs whatever is checked out there each time it starts, so switching branches in it for other work changes the server at its next restart. |
 | `C:\qdt\payloads` on `qdt-db` | The folder that holds every measurement's data file; shared as `qdt-payloads` (Part 5) | The largest disk the PC has. Grows for ever; include it in backups (Part 9). |
 | `C:\qdt\read-server` on `qdt-db` | The read server's scratch folder, named by `--root` (Part 6) | Small. On a local disk, outside the repository, and **not inside** `C:\qdt\payloads`, because the program creates a `payloads` subfolder of its own in it. |
 | `C:\qdt\read-server.ps1` on `qdt-db` | The start-up script you write in Part 6, step 2 | Anywhere **outside the repository**, because it holds the reader password. Steps 3 and 5 of Part 6 must name the same path. |
@@ -539,7 +539,8 @@ by hand to see it work, then make Windows start it at boot.
    ```
 
    The last command ends with `✓ built in …` and creates the folder `apps\flightdeck\dist`, which is the
-   finished web page. Rebuild it the same way whenever you update the repository.
+   finished web page. Rebuild it the same way whenever you update the repository, and then restart the
+   read server (*Starting, stopping and restarting it later*, at the end of this part).
 
 2. Write the script that starts the read server. Nothing generates this file: you type it, now, as a new
    text file of four lines. It can live anywhere outside the repository (it will hold the reader password);
@@ -648,6 +649,60 @@ http://qdt-db:8700/?api=http://qdt-db:8700&ws=ws://qdt-db:8765
 ```
 
 Bookmark that on each desk. From `qdt-db` itself the short `http://localhost:8700/` is enough.
+
+### Starting, stopping and restarting it later
+
+**What this does.** After step 5 the read server starts by itself whenever `qdt-db` boots, so on most
+days you do nothing. A running server keeps the program and the settings it started with, so you start
+or restart it by hand in four cases:
+
+- **After you update the repository on `qdt-db`.** Do it in this order. First update the repository.
+  Then, if the update raised the table-layout version, run Part 4's `python -m qdt_registry init` as the
+  admin. Then rebuild the web page as in step 1. Restart the server last. If you skip the `init`, the
+  restarted server still answers `/server`, but `/records` shows `Internal Server Error`.
+- **After you edit `read-server.ps1`**, for example to change the reader password or the data folder.
+  The server reads the script only when it starts.
+- **When the server has stopped.** Someone ended the task, or it failed more often than the three
+  automatic restarts that step 5 allows.
+- **When it stops answering.** `http://localhost:8700/server` on `qdt-db` does not load.
+
+Start and restart it through the scheduled task, not by running the script in a window. The task runs
+the server exactly as a boot does, and the server keeps running after you log out. In PowerShell on
+`qdt-db`, logged in as the account the task runs as (step 5):
+
+```powershell
+# Is it running? "Running" means the server is up. "Ready" means the task, and so the server, is stopped.
+(Get-ScheduledTask -TaskName "qdt read server").State
+
+# Restart: stop it, then start it again. When it is already stopped, the second line alone starts it.
+Stop-ScheduledTask -TaskName "qdt read server"
+Start-ScheduledTask -TaskName "qdt read server"
+```
+
+Stopping the task also ends the server program it started. Nothing is left holding the two ports, so the
+new start does not fail with `only one usage of each socket address`. An ordinary PowerShell window is
+enough when you are logged in as the task's account. If Windows answers `Access is denied`, open
+PowerShell as administrator and run the same lines. If the first line prints `Disabled`, the task will
+not start even at boot. `Enable-ScheduledTask -TaskName "qdt read server"` turns it back on.
+
+You can do the same without typing commands. In Task Scheduler, select *Task Scheduler Library* on the
+left, right-click `qdt read server` and choose *End*. Then right-click it again and choose *Run*.
+
+**Check it.** The server takes about ten seconds to start. Then, on `qdt-db`:
+
+- `http://localhost:8700/server` shows the `{"read_only":true` line, as in step 3.
+- `http://localhost:8700/records` shows the list of records (`[]` if there are none yet), not
+  `Internal Server Error`.
+- `Get-NetTCPConnection -LocalPort 8700,8765 -State Listen` lists both ports with the local address
+  `0.0.0.0`, which means other computers can reach them.
+
+While the server runs, Task Scheduler's *Last Run Result* column shows `The task is currently running.
+(0x41301)`, and PowerShell's `Get-ScheduledTaskInfo` shows the same result as the number `267009`. Both
+mean the server is up. Neither is an error.
+
+The task runs the server without a window, so its error messages are not shown anywhere. If it does not
+answer, stop the task and run the script by hand as in step 3: the window then shows the error, and
+Appendix B lists the usual ones. When it is fixed, press Ctrl-C in that window and start the task again.
 
 ## Part 7 — The measurement PC
 
@@ -978,8 +1033,8 @@ few seconds before falling back.
 | Finder (Mac) | `There was a problem connecting to the server "qdt-db"` | Same causes as the row above; also check the name resolves (`ping qdt-db`) and that you chose *Registered User*, not *Guest*. |
 | stand server log (Mac) | `registry sync failed … Permission denied: '/Users/…/qdt-payloads/…'` | The share is not mounted on the Mac (the read-only mount point refused the write, as intended). `bash deploy/qdt-db/mac-payload-mount.sh check` shows what the last attempt logged; running it without `check` mounts again. The waiting record is copied on the next sync. |
 | Python | `Can't load plugin: sqlalchemy.dialects:postgreswl.psycopg` (or any spelling other than `postgresql.psycopg`) | A typo in the first word of `QDT_REGISTRY_DSN`. It must begin exactly `postgresql+psycopg://`. |
-| read server window | `error while attempting to bind on address ('0.0.0.0', 8765) … only one usage of each socket address` | A read server is already running on this PC (an earlier window, or the scheduled task from Part 6, step 5). Only one can own the ports. To find it: `Get-NetTCPConnection -LocalPort 8700 \| Select-Object OwningProcess`, then `Stop-Process -Id <that number>`, or press Ctrl-C in its window. If the scheduled task started it, it is doing its job; leave it. |
-| browser, read server | `http://localhost:8700/server` answers but `/records` shows `Internal Server Error` | The server cannot log in to the database: the reader password or account in `read-server.ps1` is wrong. PostgreSQL's log (newest file in `C:\Program Files\PostgreSQL\17\data\log\`) says `password authentication failed for user "qdt_reader"`. Part 6, step 3. |
+| read server window | `error while attempting to bind on address ('0.0.0.0', 8765) … only one usage of each socket address` | A read server is already running on this PC (an earlier window, or the scheduled task from Part 6, step 5). Only one can own the ports. To find it: `Get-NetTCPConnection -LocalPort 8700 \| Select-Object OwningProcess`, then `Stop-Process -Id <that number>`, or press Ctrl-C in its window. If the scheduled task started it, it is doing its job; leave it, or restart it through the task (Part 6, *Starting, stopping and restarting it later*). |
+| browser, read server | `http://localhost:8700/server` answers but `/records` shows `Internal Server Error` | Usually the server cannot log in to the database: the reader password or account in `read-server.ps1` is wrong. PostgreSQL's log (newest file in `C:\Program Files\PostgreSQL\17\data\log\`) then says `password authentication failed for user "qdt_reader"`. Part 6, step 3. The other cause is a repository update that raised the table-layout version without Part 4's `init` being run again: the server's window then shows `has ddl_version …; this client expects …` (the `ddl_version` row above). |
 | read server window, on *open* in History | `FileNotFoundError: … Unable to synchronously open file … 'C:\qdt\payloads\2026\…h5'` | The record is in the database but the server looks for its data file in the wrong folder: `QDT_PAYLOAD_STORE` in `read-server.ps1` must be the shared folder's local path on this PC (`Get-SmbShare -Name qdt-payloads` prints it), not the example path. Fix the script, Ctrl-C the server, start it again. |
 | Python | `failed to resolve host 'qdt-db': [Errno 11001] getaddrinfo failed` (or `URLError … getaddrinfo failed`) | This machine does not know the name `qdt-db`. On the database PC itself that is normal: use `127.0.0.1` in the address (Part 8, step 3). On a laptop, the name is missing: Part 3, step 5 (hosts file), or Tailscale is not connected. |
 | PowerShell | `The argument '…\read-server.ps1' to the -File parameter does not exist` | No file has exactly that name. `Get-ChildItem` on its folder shows the real name; usually it is `read-server.ps1.txt` (Notepad added `.txt`): `Rename-Item …\read-server.ps1.txt read-server.ps1`. Part 6, step 2 says how to create it with the right name. |
