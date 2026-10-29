@@ -188,6 +188,25 @@ sweep moves that channel itself.
 A limit on a channel (set in Levels, with a reason) makes the server refuse every level and every sweep
 that would cross it, rather than clamp it. Each change is a new, versioned stand state.
 
+### See the gates on a drawing of the device
+
+The **Device** widget draws the device's eight gates as seen from above, to scale, from the layout in
+Phantom's device file. Each gate is filled with a colour for the level it sits at: the held level if
+there is one, otherwise the instrument's setpoint. To open it, choose **Device** in the menu at the top of
+any side pane.
+
+- **The colour bar** under the drawing runs from the lowest gate level to the highest. The menu in the
+  pane's head switches the colormap between viridis, magma and grey.
+- **The scale bar** next to it shows the length of 100 nm at the drawing's current size.
+- **The legend** lists every gate with its level. A gate's label inside the drawing appears only when the
+  pane is large enough to fit it, so enlarge the pane to see the levels on the gates themselves. Hovering
+  over a gate shows its role, its channel and its level.
+- **The dashed outlines** are the conducting channel under the gates and the sensor's island.
+
+The drawing follows the stand: a level set in Levels, by a click on a map, or by a finished run appears
+within two seconds. It shows DC levels only, so a pulse line's offset is not drawn. A real stand has no
+layout yet, and the widget says so.
+
 ## 5. Run the tune-up
 
 The tune-up runs four calibration nodes in order on the server. Each node's sweep is an ordinary run on

@@ -121,6 +121,23 @@
       table.ht tr.open td.shown { color: var(--sel); }
 
       /* ---- widget: levels (operating point) ---- */
+      .devmap { display: flex; flex-direction: column; height: 100%; gap: 6px; padding: 6px 10px; font-size: 0.93em; }
+      .devmap .frame { flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; }
+      .devmap svg { width: 100%; height: 100%; font-family: var(--mono); }
+      .devmap .area { fill: var(--panel-2); }
+      .devmap .region { fill: none; stroke: var(--text-3); stroke-dasharray: 6 4; }
+      .devmap .gate { stroke: var(--line-strong); }
+      .devmap .gate.unset { fill: var(--panel); stroke-dasharray: 4 3; }
+      .devmap .glabel { pointer-events: none; }
+      .devmap .sbar { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-right: 8px; }
+      .devmap .sbar .line { display: block; height: 0; border-top: 2px solid var(--text); }
+      .devmap .cbar { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.86em; color: var(--text-2); }
+      .devmap .cbar .bar { flex: 1; height: 10px; border-radius: var(--r); border: 1px solid var(--line); }
+      .devmap .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--mono); font-size: 0.86em; }
+      .devmap .legend .item { display: inline-flex; align-items: center; gap: 5px; }
+      .devmap .legend .sw { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--line-strong); }
+      .devmap .legend .sw.unset { border-style: dashed; }
+      .devmap .legend .v { color: var(--text-2); }
       .dc { display: flex; flex-direction: column; height: 100%; font-size: 0.93em; }
       .dc .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); }
       .dc .filters .group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }

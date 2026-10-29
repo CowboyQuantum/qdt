@@ -9,6 +9,7 @@ import pathlib
 import phantom.api as phantom
 
 from qdt_schemas.activity import SweepDefinition
+from qdt_schemas.identity import DeviceLayout
 from qdt_schemas.modeling import SimScenario
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_tuning import coulomb_diamonds, stability_diagram
@@ -38,6 +39,8 @@ SENSOR_TRUTH = {
     "sensitivity_a_per_v": "sensitivity_a_per_v",
 }
 """The sensor nodes' output names → Phantom's `SensorTruth` fields."""
+LAYOUT_FIELDS = ("material", "channel_nm", "sensor_nm")
+"""Phantom's layout fields that `DeviceLayout` takes under the same names."""
 
 
 @functools.cache
@@ -64,6 +67,19 @@ def provenance(name: str = DEFAULT_DEVICE) -> dict[str, str | int]:
     versions = {f"phantom.{k}": v for k, v in phantom.model_versions().items()}
     attrs = {"phantom_version": phantom.__version__, "device_file": name}
     return attrs | {"device_sha256": DEVICES[name]} | versions
+
+
+def layout(name: str = DEFAULT_DEVICE) -> DeviceLayout:
+    """The device seen from above as `Device.knowable` shows it; each gate on its channel (ADR 0089)."""
+    k = load_device(name).knowable().layout
+    gates = [
+        {f: g[f] for f in ("name", "role", "polygon_nm")} | {"channel": g["name"]}
+        for g in k["gates"]
+    ]
+    source = f"Phantom {phantom.__version__}, device file {name}"
+    return DeviceLayout(
+        device_id=DEVICE_ID, gates=gates, source=source, **{f: k[f] for f in LAYOUT_FIELDS}
+    )
 
 
 def default_device(

@@ -10,7 +10,7 @@ never touches a database (rule 4) and never imports a driver.
 ```
 qdt_sim/
   device.py      # PhantomPhysics (the SimulatedPhysics over a Phantom session) + SimulatedDevice; roles(device): the stand's channels
-  scenarios.py   # DEVICES (file → SHA-256), load_device, programmed, provenance; default_device / default_stand; stability(...) / diamonds(...) about the programmed point; device_for / lattice_truth / sensor_truth for a SimScenario
+  scenarios.py   # DEVICES (file → SHA-256), load_device, programmed, provenance; default_device / default_stand; layout(name): the DeviceLayout the Device widget draws (ADR 0089); stability(...) / diamonds(...) about the programmed point; device_for / lattice_truth / sensor_truth for a SimScenario
   recipes.json   # how each device file is compiled: layout, programmed point, disorder seed
   devices/*.json # Phantom's canonical device files, written only by scripts/make_sim_devices.py
 ```
@@ -19,7 +19,7 @@ qdt_sim/
 - Phantom is this package's dependency alone, pinned by git tag in the root `pyproject.toml`
   (`uv.lock` carries the commit), and reached only through `phantom.api`; `scripts/check_imports.py`
   enforces both. A pin moves in a pull request of its own (ADR 0087).
-- Stay under 300 lines of source (Phantom's Step 8 exit; `test_device.py` pins it). Physics, truth and
+- Stay under 320 lines of source (Phantom's Step 8 exit set 300; ADR 0089 raised it for the layout rename; `test_device.py` pins it). Physics, truth and
   device parameters are Phantom's: rename, never compute. A quantity Phantom does not give is a Phantom
   issue, not code here.
 - A device file changes only through `uv run python scripts/make_sim_devices.py`, which compiles every

@@ -5,6 +5,7 @@ import type {
   AnalysisResult,
   CalibrationNode,
   ChannelLevel,
+  DeviceLayout,
   DeviceRecord,
   ExecutionPlan,
   FixedLevel,
@@ -83,6 +84,10 @@ export class ApiClient {
   }
   devices(): Promise<DeviceRecord[]> {
     return this.call("GET", "/devices");
+  }
+  /** The device's gates seen from above, to scale (ADR 0089); 404 when the stand's device has none. */
+  deviceLayout(): Promise<DeviceLayout> {
+    return this.call("GET", "/device/layout");
   }
   stream(): Promise<StreamInfo> {
     return this.call("GET", "/stream");

@@ -16,6 +16,7 @@ export interface QdtControlApi {
   DataVariable?: DataVariable;
   Dataset?: Dataset;
   DecisionRule?: DecisionRule;
+  DeviceLayout?: DeviceLayout;
   DeviceRecord?: DeviceRecord;
   Difference?: Difference;
   Dimension?: Dimension;
@@ -25,6 +26,7 @@ export interface QdtControlApi {
   ExecutionPlan?: ExecutionPlan;
   FitModel?: FitModel;
   FixedLevel?: FixedLevel;
+  GateOutline?: GateOutline;
   HTTPValidationError?: HTTPValidationError;
   IndexedCoordinate?: IndexedCoordinate;
   InputBinding?: InputBinding;
@@ -1399,6 +1401,75 @@ export interface SourceDescriptor {
    * Registry reference when the Dataset is addressable in the registry (Step 3); None otherwise.
    */
   registry_ref?: string | null;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+}
+/**
+ * A device's gates seen from above, to scale (ADR 0089): what the Device widget draws, coloured by
+ * the voltage each gate sits at. Served by `GET /device/layout`; never stored.
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "DeviceLayout".
+ */
+export interface DeviceLayout {
+  /**
+   * The conducting channel under the gates, as (x_min, x_max, y_min, y_max) in nanometres; null when the layout does not give it.
+   */
+  channel_nm?: [number, number, number, number] | null;
+  /**
+   * The device this layout is of (`DeviceRecord`).
+   */
+  device_id: string;
+  /**
+   * Every gate, in layout order.
+   *
+   * @minItems 1
+   */
+  gates: [GateOutline, ...GateOutline[]];
+  /**
+   * The heterostructure, e.g. 'SiGe' or 'MOS'; empty when unknown.
+   */
+  material?: string;
+  /**
+   * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
+   */
+  schema_version?: number;
+  /**
+   * The sensing element's region, as (x_min, x_max, y_min, y_max) in nanometres; null when the layout does not give it.
+   */
+  sensor_nm?: [number, number, number, number] | null;
+  /**
+   * Where the layout comes from, e.g. 'Phantom 0.2.0, device file two-dot-sige-a'; shown under the diagram.
+   */
+  source?: string;
+}
+/**
+ * One gate electrode of a device, seen from above (ADR 0089).
+ *
+ * This interface was referenced by `QdtControlApi`'s JSON-Schema
+ * via the `definition` "GateOutline".
+ */
+export interface GateOutline {
+  /**
+   * The stand's logical channel that sets this gate's voltage (`ChannelMap.logical`); null when the stand wires none.
+   */
+  channel: string | null;
+  /**
+   * The device's name for the gate.
+   */
+  name: string;
+  /**
+   * The gate's outline as (x, y) vertices in nanometres, in order, in the layout's own frame (y up). Approximate: what the device's layout declares, not a lithography file.
+   *
+   * @minItems 3
+   */
+  polygon_nm: [[number, number], [number, number], [number, number], ...[number, number][]];
+  /**
+   * What the gate does, as the layout names it ('gate' when the layout does not say); free text, used for labels.
+   */
+  role: string;
   /**
    * Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.
    */

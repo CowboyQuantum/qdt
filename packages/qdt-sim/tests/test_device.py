@@ -419,8 +419,9 @@ def test_a_device_file_that_hashes_otherwise_or_is_not_committed_is_refused():
         load_device("../../etc/passwd")
 
 
-def test_qdt_sim_holds_no_physics_and_stays_under_300_lines():
-    """Phantom's Step 8 exit, from qdt's side (ADR 0087): an adapter, not a model."""
+def test_qdt_sim_holds_no_physics_and_stays_under_320_lines():
+    """Phantom's Step 8 exit, from qdt's side (ADR 0087): an adapter, not a model. The cap was 300
+    until the layout rename (ADR 0089) took it to 311."""
     import pathlib
 
     import qdt_sim
@@ -428,4 +429,25 @@ def test_qdt_sim_holds_no_physics_and_stays_under_300_lines():
     src = pathlib.Path(qdt_sim.__file__).parent
     modules = sorted(p.name for p in src.glob("*.py"))
     assert modules == ["__init__.py", "device.py", "scenarios.py"]
-    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 300
+    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 320
+
+
+def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel():
+    """ADR 0089: the Device widget's layout is Phantom's, renamed; every gate's channel is a stand DC
+    channel, and the layout says where it came from."""
+    from qdt_sim.scenarios import DEVICES, default_stand, layout, load_device
+
+    for name in DEVICES:
+        drawn = layout(name)
+        known = load_device(name).knowable().layout
+        assert [(g.name, g.role, [list(p) for p in g.polygon_nm]) for g in drawn.gates] == [
+            (g["name"], g["role"], [list(p) for p in g["polygon_nm"]]) for g in known["gates"]
+        ]
+        assert drawn.material == known["material"] == "SiGe"
+        assert list(drawn.channel_nm) == list(known["channel_nm"])
+        assert list(drawn.sensor_nm) == list(known["sensor_nm"])
+        assert drawn.source == f"Phantom 0.2.0, device file {name}"
+        logical = {c.logical: c for c in default_stand().channels}
+        for g in drawn.gates:
+            assert logical[g.channel].quantity == "voltage"
+            assert logical[g.channel].channel == g.name

@@ -908,6 +908,85 @@
         "title": "DecisionRule",
         "type": "object"
       },
+      "DeviceLayout": {
+        "additionalProperties": false,
+        "description": "A device's gates seen from above, to scale (ADR 0089): what the Device widget draws, coloured by\nthe voltage each gate sits at. Served by `GET /device/layout`; never stored.",
+        "properties": {
+          "channel_nm": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The conducting channel under the gates, as (x_min, x_max, y_min, y_max) in nanometres; null when the layout does not give it.",
+            "title": "Channel Nm"
+          },
+          "device_id": {
+            "description": "The device this layout is of (`DeviceRecord`).",
+            "minLength": 1,
+            "title": "Device Id",
+            "type": "string"
+          },
+          "gates": {
+            "description": "Every gate, in layout order.",
+            "items": {
+              "$ref": "#/components/schemas/GateOutline"
+            },
+            "minItems": 1,
+            "title": "Gates",
+            "type": "array"
+          },
+          "material": {
+            "default": "",
+            "description": "The heterostructure, e.g. 'SiGe' or 'MOS'; empty when unknown.",
+            "title": "Material",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sensor_nm": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The sensing element's region, as (x_min, x_max, y_min, y_max) in nanometres; null when the layout does not give it.",
+            "title": "Sensor Nm"
+          },
+          "source": {
+            "default": "",
+            "description": "Where the layout comes from, e.g. 'Phantom 0.2.0, device file two-dot-sige-a'; shown under the diagram.",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "gates"
+        ],
+        "title": "DeviceLayout",
+        "type": "object"
+      },
       "DeviceRecord": {
         "additionalProperties": false,
         "description": "A device under test (or a simulated one) that measurements are recorded against.",
@@ -1409,6 +1488,64 @@
           "value"
         ],
         "title": "FixedLevel",
+        "type": "object"
+      },
+      "GateOutline": {
+        "additionalProperties": false,
+        "description": "One gate electrode of a device, seen from above (ADR 0089).",
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stand's logical channel that sets this gate's voltage (`ChannelMap.logical`); null when the stand wires none.",
+            "title": "Channel"
+          },
+          "name": {
+            "description": "The device's name for the gate.",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "polygon_nm": {
+            "description": "The gate's outline as (x, y) vertices in nanometres, in order, in the layout's own frame (y up). Approximate: what the device's layout declares, not a lithography file.",
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "minItems": 3,
+            "title": "Polygon Nm",
+            "type": "array"
+          },
+          "role": {
+            "description": "What the gate does, as the layout names it ('gate' when the layout does not say); free text, used for labels.",
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "schema_version": {
+            "default": 1,
+            "description": "Per-object-type schema version; bumps only on breaking changes. Readers upgrade on load via migrations.py.",
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "channel",
+          "polygon_nm"
+        ],
+        "title": "GateOutline",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -4350,6 +4487,25 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/device/layout": {
+      "get": {
+        "description": "The device's gates seen from above, to scale (ADR 0089): what the Device widget draws,\ncoloured by `GET /levels/state`. 404 when the stand's device has no layout.",
+        "operationId": "get_device_layout_device_layout_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLayout"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Device Layout"
+      }
+    },
     "/devices": {
       "get": {
         "operationId": "get_devices_devices_get",
