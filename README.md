@@ -4,7 +4,8 @@ A generic engine for silicon spin qubit measurement: instrument capability proto
 front end (Flight Deck), experiments-as-data, a provenance-first measurement registry, physics simulation,
 and schema-validated frameworks. Apache-2.0. Published by Cowboy Quantum.
 
-- Humans: start at `docs/DEVELOPMENT_PLAN.md` (roadmap §7).
+- Humans: start at `docs/DEVELOPMENT_PLAN.md` (roadmap §7). To try it without instruments, follow
+  [Run the simulated stand and drive it from Flight Deck](docs/guides/simulated-stand.md).
 - Agents: start at `CLAUDE.md`, then `docs/STATUS.md`.
 
 ```
