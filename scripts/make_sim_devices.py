@@ -6,11 +6,14 @@ It compiles each recipe in `qdt_sim/recipes.json` with the pinned Phantom, write
 canonical text) and prints its SHA-256: paste the new hashes into `qdt_sim.scenarios.DEVICES`, then
 regenerate the simulator fixtures (`make_sim_fixtures.py`, `make_tuning_fixtures.py`).
 `--check` (check_all) writes nothing and fails when a recipe no longer compiles to its committed file
-or a file's hash is not the one `DEVICES` pins.
+or a file's hash is not the one `DEVICES` pins. "Compiles to" is `same`: Phantom is bit for bit on one
+platform and within 1e-9 relative across platforms (its CONTRACT.md), so floats compare within that and
+everything else exactly (#154).
 """
 
 import hashlib
 import json
+import math
 import pathlib
 import sys
 
@@ -19,6 +22,30 @@ from phantom.api import CompileParams, __version__, compile_device, two_dot_layo
 from qdt_sim.scenarios import DEVICES
 
 FOLDER = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-sim/src/qdt_sim/devices"
+
+
+REL, ABS = 1e-9, 1e-15
+"""Phantom's cross-platform bound, and a floor for a value that is zero on one platform (the smallest
+computed number in a device file is about 2.5e-7)."""
+
+
+def same(a, b) -> bool:
+    """Two parsed device files agree: the same structure, strings and integers, and floats within
+    `REL` relative (or `ABS` absolute)."""
+    if isinstance(a, dict):
+        return isinstance(b, dict) and a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return isinstance(b, list) and len(a) == len(b) and all(map(same, a, b))
+    if isinstance(a, float) or isinstance(b, float):
+        numbers = (int, float)
+        if (
+            isinstance(a, bool)
+            or isinstance(b, bool)
+            or not (isinstance(a, numbers) and isinstance(b, numbers))
+        ):
+            return False
+        return math.isclose(a, b, rel_tol=REL, abs_tol=ABS)
+    return a == b
 
 
 def compiled(recipe: dict) -> str:
@@ -40,7 +67,9 @@ if __name__ == "__main__":
                 f'"{name}": "{hashlib.sha256(path.read_bytes()).hexdigest()}",  # phantom {__version__}'
             )
             continue
-        if not path.exists() or path.read_text(encoding="utf-8") != text:
+        if not path.exists() or not same(
+            json.loads(path.read_text(encoding="utf-8")), json.loads(text)
+        ):
             bad.append(f"{name}: the recipe compiles to other text than the committed file")
         elif hashlib.sha256(path.read_bytes()).hexdigest() != DEVICES.get(name):
             bad.append(f"{name}: the file's SHA-256 is not the one qdt_sim.scenarios.DEVICES pins")
