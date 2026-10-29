@@ -266,6 +266,7 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
   // reads τ from the stored record; its markers are rules on the trace.
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   page.on("pageerror", (e) => console.error("page error:", e));
+  page.on("console", (m) => { if (m.type() === "error") console.error("console:", m.text()); }); // #152
   await page.goto(`${app}?ws=ws://127.0.0.1:${WS_PORT}&api=http://127.0.0.1:${API_PORT}`);
   await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
   await page.selectOption(".pane[data-widget=sweep] select[name=kind]", "capture");
@@ -289,7 +290,16 @@ it("captures a record on the simulated scope, draws it as a trace, and marks the
   expect(estimates).toMatch(/tau\s+0\.001[45]/);
 
   await page.locator(".pane[data-widget=analysis] [data-overlays]").click();
-  await page.waitForFunction(() => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
+  try {
+    await page.waitForFunction(() => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
+  } catch {
+    // #152: on CI this wait has timed out with no server error; say what the page and the server show
+    const record = await page.inputValue(".pane[data-widget=analysis] select[name=record]");
+    const t0 = Date.now();
+    const direct = await fetch(`http://127.0.0.1:${API_PORT}/stream/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ record_id: record }) })
+      .then(async (r) => `${r.status} ${(await r.text()).slice(0, 200)}`, (e: unknown) => String(e));
+    throw new Error(`#152: no "replaying" message within 30 s; the strip says ${JSON.stringify(await page.textContent("#message"))}; record ${JSON.stringify(record)}; a direct replay answered in ${Date.now() - t0} ms: ${direct}`);
+  }
   // the markers are red rules on the trace canvas (the 2-D overlay; the trace itself is teal). A heatmap
   // was shown on this page before, so the WebGL map canvas is hidden and the trace is really drawn.
   await page.waitForFunction(
