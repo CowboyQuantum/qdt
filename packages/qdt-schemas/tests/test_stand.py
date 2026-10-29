@@ -46,3 +46,22 @@ def test_names_unique():
             ),
             channels=(ChannelMap(logical="g", instrument="a", channel="c", quantity="voltage"),),
         )
+
+
+def test_device_layout_refuses_repeated_gates_and_inverted_rectangles():
+    """ADR 0089: a layout names each gate once, and its rectangles run from min to max."""
+    import pytest
+    from pydantic import ValidationError
+
+    from qdt_schemas.identity import DeviceLayout, GateOutline
+
+    square = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
+    gate = GateOutline(name="P1", role="plunger", channel="P1", polygon_nm=square)
+    layout = DeviceLayout(device_id="dot", gates=(gate,), channel_nm=(-5.0, 5.0, -1.0, 1.0))
+    assert DeviceLayout.model_validate_json(layout.model_dump_json()) == layout
+    with pytest.raises(ValidationError, match="gate names repeat"):
+        DeviceLayout(device_id="dot", gates=(gate, gate))
+    with pytest.raises(ValidationError, match="min < max"):
+        DeviceLayout(device_id="dot", gates=(gate,), sensor_nm=(5.0, -5.0, 0.0, 1.0))
+    with pytest.raises(ValidationError):
+        GateOutline(name="P1", role="plunger", channel=None, polygon_nm=square[:2])

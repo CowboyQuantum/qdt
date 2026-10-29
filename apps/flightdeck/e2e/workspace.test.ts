@@ -88,7 +88,7 @@ it("splits and closes panes, a second plot shows the same Dataset with its own v
   expect(await page.locator(".col.right .gutter.h").count()).toBe(4);
   // the new pane may take any widget that is not a busy single (every form widget is open already)
   const options = await right.nth(3).locator(".picker option").allTextContents();
-  expect(options).toEqual(["Empty", "History", "Virtual gates", "Script"]);
+  expect(options).toEqual(["Empty", "History", "Virtual gates", "Device", "Script"]);
   // the Script placeholder (ADR 0059): stage lints against the allowed API and says nothing ran
   await right.nth(3).locator(".picker").selectOption("script");
   const script = page.locator(".pane[data-widget=script]");

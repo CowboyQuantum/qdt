@@ -106,6 +106,7 @@ def cli() -> None:
             ),
             backends=stand_backends(stand),
             nodes={},
+            layout=None,
         )
     app = create_app(settings)
     uvicorn.run(app, host=a.host, port=a.port, log_level="info")

@@ -26,7 +26,7 @@ from qdt_schemas.activity import ExecutionPlan, FixedLevel, SweepDefinition
 from qdt_schemas.control import ChannelLevel, MethodSpec, Run, RunRequest, TuneUp
 from qdt_schemas.data import AttrValue
 from qdt_schemas.envelope import MeasurementRecord
-from qdt_schemas.identity import DeviceRecord
+from qdt_schemas.identity import DeviceLayout, DeviceRecord
 from qdt_schemas.modeling import AnalysisResult, CalibrationNode, NodeOutcome, SimScenario
 from qdt_schemas.operations import ChannelLimit, QueuedRun, StandQueue, StandState
 from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
@@ -39,6 +39,7 @@ from qdt_sim.scenarios import (
     about,
     default_device,
     default_stand,
+    layout,
     load_device,
     programmed,
     provenance,
@@ -159,6 +160,9 @@ class Settings:
     stream_port: int = 8765
     stand: StandConfig = field(default_factory=simulated_stand)
     device: DeviceRecord = field(default_factory=simulated_device_record)
+    layout: DeviceLayout | None = field(default_factory=layout)
+    """The device's gates seen from above, for the Device widget (ADR 0089): the simulated device's
+    from Phantom; None for a stand whose device has none (a real stand, for now)."""
     backends: BackendFactory = simulated_backends
     nodes: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: SIMULATED_NODES)
     """Per node id, the windows the stand's tune-up nodes take (`qdt_tuning.TEMPLATES`, ADR 0088); a
@@ -391,6 +395,14 @@ def create_app(settings: Settings) -> FastAPI:
     @stand.get("/stand", response_model=StandConfig)
     def get_stand(request: Request) -> StandConfig:
         return runs(request).stand
+
+    @stand.get("/device/layout", response_model=DeviceLayout)
+    def get_device_layout() -> DeviceLayout:
+        """The device's gates seen from above, to scale (ADR 0089): what the Device widget draws,
+        coloured by `GET /levels/state`. 404 when the stand's device has no layout."""
+        if settings.layout is None:
+            raise HTTPException(404, f"no layout for device {settings.device.device_id!r}")
+        return settings.layout
 
     @app.get("/devices", response_model=list[DeviceRecord])
     def get_devices(request: Request) -> list[DeviceRecord]:

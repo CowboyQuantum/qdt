@@ -20,10 +20,11 @@ qdt_server/
 ## Rules
 - Every request and response body is a schema object (`SweepDefinition`, `ExecutionPlan`, `Run`,
   `MeasurementRecord`, `MethodSpec`, `AnalysisResult`, `CalibrationNode`, `TuneUp`, `NodeOutcome`,
-  `StandState`, `RunRequest`, `QueuedRun`, `StandQueue`) or a list of them. No ad-hoc JSON shapes:
+  `StandState`, `RunRequest`, `QueuedRun`, `StandQueue`, `DeviceLayout`) or a list of them. No ad-hoc JSON shapes:
   the OpenAPI document is generated from them and the UI's client is generated from that (ADR 0034).
 - The server never defines schema objects (that is `qdt-schemas`) and never computes an analysis itself
   (that is `qdt-analysis`): it compiles, executes, stores, serves.
+- `GET /device/layout` (ADR 0089) serves `Settings.layout`, the device's gates seen from above for the Device widget: the simulated device's by default (`qdt_sim.scenarios.layout`), None with `--stand`, which answers 404. A real device's layout is site geometry and stays out of the repository (rule 7).
 - `GET /levels/state` (ADR 0057) reports every level-setting or level-sensing channel's setpoint, held level and readback (null where the instrument refuses the channel) from one live instrument set the `RunManager` builds once and keeps; on the simulator that set is separate from a run's seeded device.
 - The `TuneUpManager` binds a node's inputs from the accepted outcomes before it, or from the held operating point for a binding with a `held` fallback (a retune, ADR 0062), and holds a node's `holds` outputs as the operating point when the node is accepted.
 - Runs and tune-ups live in memory; records, results, node outcomes and stand state versions are the

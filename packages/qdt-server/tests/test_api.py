@@ -643,6 +643,7 @@ def _stand_server_that_measured_once(tmp_path, monkeypatch):
 
 STAND_ROUTES = [
     ("GET", "/stand"),
+    ("GET", "/device/layout"),
     ("GET", "/levels"),
     ("GET", "/levels/state"),
     ("POST", "/levels"),
@@ -744,3 +745,21 @@ def test_the_simulated_device_record_says_which_phantom_made_it_and_truth_stays_
         "scenario_draw",
     ):
         assert truth not in openapi
+
+
+def test_the_device_layout_is_the_simulated_devices_and_a_stand_without_one_answers_404(
+    client, tmp_path
+):
+    """ADR 0089: `GET /device/layout` serves the device's gates seen from above, each on a stand DC
+    channel that `GET /levels/state` reports; a stand whose device has no layout answers 404."""
+    from qdt_sim.scenarios import layout
+
+    got = client.get("/device/layout").json()
+    assert got == layout().model_dump(mode="json")
+    assert got["device_id"] == DEVICE_ID and len(got["gates"]) == 8
+    levels = {c["channel"] for c in client.get("/levels/state").json()}
+    assert {g["channel"] for g in got["gates"]} <= levels
+    bare = create_app(Settings(root=tmp_path / "bare", stream_port=0, layout=None))
+    with TestClient(bare, client=LOOPBACK) as c:
+        r = c.get("/device/layout")
+        assert r.status_code == 404 and "no layout" in r.json()["detail"]
