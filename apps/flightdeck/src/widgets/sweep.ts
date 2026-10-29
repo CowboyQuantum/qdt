@@ -13,10 +13,12 @@ import {
   buildLevels,
   captureSequencer,
   captureSweep,
+  centredWindow,
   dcSweep,
   sensorPerPoint,
   sensorResult,
   sensorSequencer,
+  sittingLevels,
   stageSweep,
   standChannels,
   type AxisForm,
@@ -78,6 +80,8 @@ class SweepWidget {
   private shotSequencer = "";
   private channels: ChannelMap[] = [];
   private levelRows: LevelRow[] = [];
+  /** Where each channel is sitting (#157), from `GET /levels/state`: the windows open about it. */
+  private sitting: Record<string, number> = {};
   private sequence: { rows: OpRow[]; bindings: BindingRow[]; errors: string[] } | null = null;
   /** axis channel → companion → V/V from the Virtual gates widget (ADR 0049); empty when none is open. */
   private couplings: Record<string, Record<string, number>> = {};
@@ -157,6 +161,7 @@ class SweepWidget {
         this.markStale();
       }),
       ctx.bus.on("layout:changed", () => this.emitAxes()),
+      ctx.bus.on("levels:changed", () => void this.centreOnStand(["outer", "inner"])),
     );
     void this.init();
   }
@@ -177,10 +182,33 @@ class SweepWidget {
       this.stand = standChannels(stand);
       this.channels = [...stand.channels];
       this.fillSelects();
+      await this.centreOnStand(["outer", "inner"]);
       this.changed();
     } catch (e) {
       this.say(`server: ${describe(e)}`, true);
     }
+  }
+
+  /** Re-read where the stand is sitting and centre these axes on their channels' levels (#157), keeping each
+   * window's width. An axis whose start or stop the user typed is theirs and stays; so does every axis
+   * when the levels cannot be read. */
+  private async centreOnStand(prefixes: ("outer" | "inner")[]): Promise<void> {
+    try {
+      this.sitting = sittingLevels(await this.ctx.api.levelState());
+    } catch {
+      return;
+    }
+    let moved = false;
+    for (const prefix of prefixes) {
+      const level = this.sitting[this.value(`${prefix}_channel`)];
+      const [start, stop] = ["start", "stop"].map((e) => this.form.elements.namedItem(`${prefix}_${e}`) as HTMLInputElement) as [HTMLInputElement, HTMLInputElement];
+      if (level === undefined || start.dataset.typed || stop.dataset.typed) continue;
+      const w = centredWindow(level, Number(start.value), Number(stop.value));
+      if (String(w.start) === start.value && String(w.stop) === stop.value) continue;
+      [start.value, stop.value] = [String(w.start), String(w.stop)];
+      moved = true;
+    }
+    if (moved) this.changed();
   }
 
   private say(text: string, error = false): void {
@@ -214,7 +242,8 @@ class SweepWidget {
     addLevel.addEventListener("click", () => {
       const touched = this.touchedChannels();
       const free = this.stand.dc.find((c) => !touched.includes(c.logical) && !this.levelRows.some((r) => r.channel === c.logical));
-      this.levelRows = [...this.levelRows, { channel: free?.logical ?? "", value: "0" }];
+      const at = free ? this.sitting[free.logical] : undefined;
+      this.levelRows = [...this.levelRows, { channel: free?.logical ?? "", value: String(at ?? 0) }];
       this.renderLevels();
       this.changed();
     });
@@ -231,8 +260,9 @@ class SweepWidget {
       ),
       field("name", h("input", { name: "name", value: "stability" })),
       h("div", { className: "axis head" }, ...["channel", "start", "stop", "num"].map((t) => h("span", { text: t }))),
-      h("div", {}, "outer", axisRow("outer", { channel: "", start: 0.03, stop: 0.18, num: 48 })),
-      sweepOnly(h("div", {}, "inner", axisRow("inner", { channel: "", start: 0.03, stop: 0.18, num: 48 }))),
+      // 0.3 V wide about 0 until the stand says where each channel sits (#157)
+      h("div", {}, "outer", axisRow("outer", { channel: "", start: -0.15, stop: 0.15, num: 48 })),
+      sweepOnly(h("div", {}, "inner", axisRow("inner", { channel: "", start: -0.15, stop: 0.15, num: 48 }))),
       this.steppingField,
       this.steppingHint,
       sweepOnly(field("inner axis name", h("input", { name: "inner_name", placeholder: "defaults to the channel" }))),
@@ -255,7 +285,17 @@ class SweepWidget {
       h("div", { className: "hint", text: "Run is in the strip: it compiles what the editors hold and runs that; compile here to see the plan first" }),
       this.planBox,
     );
-    (f.elements.namedItem("kind") as HTMLSelectElement).addEventListener("change", () => this.fillSelects());
+    (f.elements.namedItem("kind") as HTMLSelectElement).addEventListener("change", () => {
+      this.fillSelects();
+      void this.centreOnStand(["outer", "inner"]); // the inner axis may now be another channel (a pulse line or a DC one)
+    });
+    for (const prefix of ["outer", "inner"] as const) {
+      (f.elements.namedItem(`${prefix}_channel`) as HTMLSelectElement).addEventListener("change", () => void this.centreOnStand([prefix]));
+      for (const end of ["start", "stop"]) {
+        // a window the user typed is theirs: the form no longer centres it on the stand
+        (f.elements.namedItem(`${prefix}_${end}`) as HTMLInputElement).addEventListener("input", (e) => ((e.target as HTMLInputElement).dataset.typed = "1"));
+      }
+    }
     for (const name of ["inner_channel", "inner_name", "sensor", "outer_channel", "capture_channel"]) {
       (f.elements.namedItem(name) as HTMLElement).addEventListener("change", () => this.validateLevels()); // a newly swept channel may clash with a held one
     }
