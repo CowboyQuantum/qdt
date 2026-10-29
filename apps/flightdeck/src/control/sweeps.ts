@@ -6,7 +6,7 @@
 // *in the shot* instead of per point (ADR 0067): the sensor integrated by its sequencer in a one-measure
 // shot, the record captured in a shot from the sequencer's marker; the compiler may then trigger the
 // innermost DC axis (ADR 0066). Pure functions: no DOM, no network.
-import type { CapturedWaveform, ChannelMap, FixedLevel, StandConfig, SweepDefinition } from "../schema/api";
+import type { CapturedWaveform, ChannelLevel, ChannelMap, FixedLevel, StandConfig, SweepDefinition } from "../schema/api";
 import { buildBindings, buildSequence, templateRows, unusedStageAxes, type BindingRow, type OpRow } from "./sequence";
 
 export interface AxisForm {
@@ -93,6 +93,25 @@ export interface DcSweepForm {
    * per point and averaged. */
   readout?: Readout;
   shot?: { instrument: string; measureNs: number; shots: number };
+}
+
+/** Where each channel is sitting now (#157): the level the server holds for it, else the instrument's setpoint;
+ * a channel with neither is left out. A pulse line sits at 0, the offset it adds to its gate's DC level. */
+export function sittingLevels(state: readonly ChannelLevel[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of state) {
+    const level = c.held ?? c.setpoint;
+    if (level != null && Number.isFinite(level)) out[c.channel] = level;
+  }
+  return out;
+}
+
+/** An axis window of the same width as start → stop, centred on `level` (#157); rounded to 1 nV so a
+ * re-centred field shows 0.45, not 0.44999999999999996. */
+export function centredWindow(level: number, start: number, stop: number): { start: number; stop: number } {
+  const half = (stop - start) / 2;
+  const round = (v: number) => Math.round(v * 1e9) / 1e9;
+  return { start: round(level - half), stop: round(level + half) };
 }
 
 export function axisName(a: AxisForm): string {

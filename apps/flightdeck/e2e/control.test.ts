@@ -70,6 +70,10 @@ it("crafts, runs, records, analyses and overlays a sweep from the UI against the
   await page.waitForFunction(() => document.querySelectorAll(".pane[data-widget=sweep] select[name=outer_channel] option").length > 0);
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=outer_channel]")).toBe("P1");
   expect(await page.inputValue(".pane[data-widget=sweep] select[name=inner_channel]")).toBe("P2_pulse");
+  // #157: the windows open about where the stand sits: P1 at the device's programmed 0.6 V, the pulse line at 0
+  await page.waitForFunction(() => (document.querySelector(".pane[data-widget=sweep] input[name=outer_start]") as HTMLInputElement | null)?.value === "0.45");
+  expect(await page.inputValue(".pane[data-widget=sweep] input[name=outer_stop]")).toBe("0.75");
+  expect([await page.inputValue(".pane[data-widget=sweep] input[name=inner_start]"), await page.inputValue(".pane[data-widget=sweep] input[name=inner_stop]")]).toEqual(["-0.15", "0.15"]);
   expect((await page.locator(".pane[data-widget=analysis] select[name=method] option").allTextContents()).sort()).toEqual(["Charge transitions", "Coulomb diamonds", "Plane", "Sensor peak", "Single exponential"]);
 
   // craft: an occupied-window stability sweep (the lattice estimate needs a periodic region): P1 about the

@@ -3,8 +3,8 @@ import { ApiClient, ApiError, addressWithoutToken, apiBase, commandToken, descri
 import { check, defaults, overrides, parse } from "../src/control/methods";
 import { tuneupLines } from "../src/widgets/tuneup";
 import { setpointFor } from "../src/widgets/levels";
-import { captureSweep, dcSweep, stageSweep, standChannels } from "../src/control/sweeps";
-import type { MethodSpec, StandConfig } from "../src/schema/api";
+import { captureSweep, centredWindow, dcSweep, sittingLevels, stageSweep, standChannels } from "../src/control/sweeps";
+import type { ChannelLevel, MethodSpec, StandConfig } from "../src/schema/api";
 
 const stand: StandConfig = {
   stand_id: "simulated-double-dot",
@@ -159,6 +159,20 @@ const spec: MethodSpec = {
   ],
   estimates: [],
 } as MethodSpec;
+
+describe("windows about where the stand sits (#157)", () => {
+  const level = (channel: string, setpoint: number | null, held: number | null = null): ChannelLevel => ({ channel, instrument: "dev", quantity: "voltage", setpoint, held });
+  it("takes the held level over the setpoint, and leaves out a channel with neither", () => {
+    expect(sittingLevels([level("P1", 0.6), level("P2", 0.6, 0.55), level("P2_pulse", 0), level("sensor", null)])).toEqual({ P1: 0.6, P2: 0.55, P2_pulse: 0 });
+  });
+  it("centres a window of the same width on the level, rounded to show what was meant", () => {
+    expect(centredWindow(0.6, -0.15, 0.15)).toEqual({ start: 0.45, stop: 0.75 });
+    expect(centredWindow(0, 0.45, 0.75)).toEqual({ start: -0.15, stop: 0.15 });
+    expect(centredWindow(5e-5, -0.0015, 0.0015)).toEqual({ start: -0.00145, stop: 0.00155 });
+    // a reversed window stays reversed
+    expect(centredWindow(0.6, 0.15, -0.15)).toEqual({ start: 0.75, stop: 0.45 });
+  });
+});
 
 describe("method parameter forms", () => {
   it("starts from the spec's defaults and sends only the overrides", () => {
