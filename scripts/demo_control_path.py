@@ -25,24 +25,25 @@ APP = REPO / "apps" / "flightdeck"
 # ASCII only: a Windows console (or a redirect) may not encode arrows and minus signs
 WALKTHROUGH = """\
 Flight Deck at {url}
+The stand is Phantom's simulated device (ADR 0088): eight gates programmed at their working point
+(P1, P2 and SG at 0.6 V), the sensor, its bias, and a simulated scope. docs/guides/simulated-stand.md
+walks through all of this with pictures.
 
 Stability diagram (stage sweep; the inner axis pulsed by the sequencer):
-  1. Sweep: kind "stage", outer P1, inner P2_pulse, 48 x 48 -> "run". The map draws live.
-  2. Pulse sequence: edit the rows (step / ramp / wait / drive / measure); a value is a number or a
-     symbol, and each symbol is bound below to an axis or a number. Errors show while you type;
-     "reset to template" returns to step(P2_pulse, v_P2) ; measure(sensor).
-  3. Records -> "analyse" on the new record -> method "Charge transitions" -> "run analysis" ->
+  1. Sweep: kind "stage", outer P1 0.45..0.75, inner P2_pulse -0.15..0.15 (a pulse adds to P2's DC
+     level), 48 x 48, options {{"seed": 1, "noise": false}} -> Run. The map draws live. With noise on,
+     raise the measure's duration in the Pulse widget to 1000000 ns (1 ms) or more.
+  2. Pulse: edit the rows (step / ramp / wait / drive / measure); a value is a number or a symbol, and
+     each symbol is bound below to an axis or a number. "reset to template" returns to
+     step(P2_pulse, v_P2) ; measure(sensor).
+  3. History -> "analyse" on the new record -> method "Charge transitions" -> "run analysis" ->
      "show overlays" (segments on the honeycomb) and "show output" (the detection map).
-Coulomb diamonds (DC sweep): kind "DC", outer SG -0.2..0.2, inner bias -0.0015..0.0015 (inner axis
-  name V_sd), options {{"seed": 1, "noise": false, "sensor_width_v": 0.01}}, method "Coulomb diamonds".
-Chopped readout (ADR 0037): rows step P2_pulse v_P2 / measure I_on / step P2_pulse v_P2 + 0.002 /
-  measure I_off / difference dI = I_on - I_off. The record holds I_on, I_off and dI: choose one under
-  "variable" in the header, or subtract any two with "minus".
-Operating point (ADR 0038): "add level" holds DC channels for the whole sweep, e.g. P2 = 0.05 with the
-  P2_pulse axis swept around it (-0.02..0.12).
+Coulomb diamonds (DC sweep): kind "DC", outer SG -0.6..1.4, inner bias -0.0015..0.0015 (inner axis
+  name V_sd), options {{"seed": 1, "noise": false}}, method "Coulomb diamonds".
+Tune-up: in "Tune-up", tick the four nodes, options {{"seed": 2, "noise": false}} -> "run tune-up".
+Operating point: "add level" holds DC channels for the whole sweep; the Levels widget sets and holds them.
 1-D: outer axis "- none (1-D)"; the view draws a trace.
-Abort: a queued or running run has an "abort" button; a running one is recorded as aborted.
-View options (transform, swap axes) are client-side; any Dataset on the stream is under the selector.
+Abort: the Queue widget aborts a running entry; it is recorded as aborted.
 
 API docs at http://127.0.0.1:{port}/docs. Ctrl+C stops.
 """

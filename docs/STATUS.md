@@ -5,51 +5,29 @@
 > The backlog is not here: it is GitHub issues and milestones (ADR 0071).
 
 **Current step:** **6c — Lab deployment** (`docs/steps/06c-lab-deployment.md`), IN PROGRESS: what remains waits
-on the bench and on the human's decisions. **Step 6d — the Phantom cutover** (`docs/steps/06d-phantom-cutover.md`)
-is DONE in L0 once this session's pull request is green (ADR 0087, 0088). Steps 0–6 and 6b are DONE.
-**Branch:** `step-6d/phantom-adapter` (pull request against `main`; the human merges).
-**Last session:** 2026-10-28 (session 35), no bench.
+on the bench and on the human's decisions. **Step 6d — the Phantom cutover** is DONE (pull request #151 merged,
+ADR 0087, 0088). Steps 0–6 and 6b are DONE.
+**Branch:** `step-6c/simulated-stand-guide` (pull request against `main`; the human merges).
+**Last session:** 2026-10-29 (session 36), no bench.
 
 ## Done this session
-- **#140 and #142: `qdt-sim` is an adapter over Phantom `v0.2.0`** (ADR 0088, which supersedes ADR 0020).
-  - Phantom is a git dependency of `qdt-sim` alone, pinned by the tag (`uv.lock` records `f72daac`), and
-    reached only through `phantom.api`. `scripts/check_imports.py` enforces both.
-  - `PhantomPhysics` is one Phantom session per run, behind the `SimulatedPhysics` protocol from #141. The old
-    model (`dot.py`) and noise models (`noise.py`) are deleted. `qdt-sim` is 295 lines, and a test pins it
-    under 300.
-  - Two committed device files, `two-dot-sige-a` and `two-dot-sige-b` (one layout, disorder draws 2 and 5),
-    live in `packages/qdt-sim/src/qdt_sim/devices/`. Only `scripts/make_sim_devices.py` writes them, compiling
-    from `qdt_sim/recipes.json`, and `qdt_sim.scenarios.DEVICES` pins their SHA-256 hashes.
-  - `scripts/check_all.sh` now recompiles the recipes (`make_sim_devices.py --check`) and runs
-    `python -m phantom.contract` on every device file, which takes about 4 s.
-  - `SimScenario` v2 names a device file and its hash; `seed` is the noise seed. There is no migration,
-    because neither `SimScenario` nor `SimResult` is persisted.
-  - The simulated stand has a channel for each of the device's eight gates, plus the pulse lines, the bias
-    and the sensor.
-  - The run options are `seed`, `noise` and `device`, and the server checks a scenario's hash.
-  - The registered device carries Phantom's version, its model versions and the file's hash.
-- **Tune-up windows are now the stand's.** The old node windows were sized for qdt-sim's toy device and
-  cannot find Phantom's, whose plungers sit near 0.6 V at about 20 electrons per volt and whose sensor peaks
-  are 1 V apart.
-  - `qdt_tuning.TEMPLATES` take windows per node, and `Settings.nodes` holds them.
-  - The simulated stand's windows (`SIMULATED_NODES`) sit about the programmed point, at 10 ms per lattice
-    pixel, because Phantom's readout noise is physical.
-  - A real stand gives no windows, so its nodes keep the constructors' defaults.
-- **Fixtures regenerated.** The stability fixture and the seven tune-up fixtures were regenerated, and the
-  `cold-sensor` scenario became `second-device`. Every tune-up is accepted on both devices. Tolerances against
-  truth now scale with the device, and ADR 0088 §9 gives the reasons.
-- **Tests moved to Phantom's truth.** The analysis, tutorial and Flight Deck end-to-end tests take their truth
-  from `Device.truth` and `Device.at`. The diamond overlays are checked against the edge mask as well,
-  because the warm sensor blurs the edges where neighbouring diamonds cross.
-- **#150** (found-by-agent, decision): click-to-set on a pulsed axis sets the DC line to the pulse offset. That
-  was right only while the DC level sat at 0 V, which no longer holds.
-- Checks: `uv run pytest` 534 passed; `bash scripts/check_all.sh` green; Flight Deck unit tests (151) and
-  end-to-end tests (17) green; the L2 rows' simulated mode as before (T-1, T-2 and T-7 pass).
+- **`docs/guides/simulated-stand.md`**, the human's request. It is a how-to that GitHub renders, explaining how
+  to start the simulated stand (Phantom's device) and drive it from Flight Deck.
+  - It covers starting the stand, a stability diagram with its charge transitions, the sensor's Coulomb
+    diamonds, moving the operating point, the four-node tune-up, the run options and troubleshooting.
+  - Every step was run in a browser against the demo server, and the eight screenshots in
+    `docs/guides/img/` come from that run (quantized to 256 colours, 580 KB in all).
+  - It is linked from `README.md`, `docs/index.md` and the MkDocs navigation.
+- **`scripts/demo_control_path.py`'s printed walkthrough** now gives the Phantom device's windows. It
+  still gave qdt-sim's windows and the retired `sensor_width_v` option, which #151 missed.
+- **#152** (found-by-agent): the capture end-to-end test once timed out waiting for the "replaying" message.
+  It passed on the rerun and on the pull request's run of the same commit.
 
 ## In flight
-- The pull request for `step-6d/phantom-adapter` awaits the human's merge; it is watched.
+- The pull request for `step-6c/simulated-stand-guide` awaits the human's merge; it is watched.
 - The token is not yet in the runbook (Step 6c deliverable 13, the lab computer).
-- Open UI findings: #150, #130, #122, #120, #119.
+- Open UI findings: #150, #152, #130, #122, #120, #119. The Sweep form still opens at qdt-sim's 0.03–0.18 V
+  window; the guide warns about it, and no issue asks to change it yet.
 
 ## Known broken
 Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issue list`.
@@ -58,7 +36,7 @@ Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issu
 **Agent, next session:** back to Step 6c. Work deliverable 11 (#76), then 14 (#112), then 15 (#114), on a branch
 `step-6c/<short-name>`.
 **Human:**
-- Merge this pull request.
+- Merge this pull request (the guide).
 - Decide #150 (click-to-set on a pulsed axis) and #147 (the two L2 oracles).
 - On `qdt-db`, run `uv run python -m qdt_registry init` as the administrator.
 - Run `bench/test_l2_orchestration.py` on the bench with `QDT_STAND_FILE` set.
@@ -73,6 +51,8 @@ Open blockers: none (`gh issue list --label blocker`). Everything else: `gh issu
   - Run restore drill #2 on 2026-10-31 (#133).
 
 ## Direction recorded (human)
+- **2026-10-29 (session 36):** "Can you write some docs that render in the GitHub that explain how to start the
+  simulated stand and control it with flight deck?" → `docs/guides/simulated-stand.md`.
 - **2026-10-28 (session 35):** after #149 merged and was offered as next: "Start this" → #140 and #142.
 - **2026-10-28 (session 34):** "Phantom cutover now. The tag 0.2.0 has been made" → ADR 0087, Step 6d, #141.
 - **2026-10-28 (session 33):** "Go ahead, but I also didn't realize we drifted off the phantom cutover. Once you
