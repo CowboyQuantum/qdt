@@ -1,14 +1,14 @@
 {
   "two-dot-sige-a": {
-    "description": "Phantom's textbook two-dot SiGe layout at an 80 nm pitch, disorder draw 2: the default simulated device.",
+    "description": "Phantom's textbook two-dot SiGe layout at an 80 nm pitch, disorder draw 2, at the programmed point Phantom 0.3.0 sets for that draw: the default simulated device.",
     "layout": {"material": "SiGe", "pitch_nm": 80.0},
-    "operating_point_v": {"B_L": 0.15, "P1": 0.6, "B_M": 0.2, "P2": 0.6, "B_R": 0.15, "SG": 0.6, "R_L": 0.7, "R_R": 0.7},
+    "operating_point_v": {"B_L": 0.15, "P1": 0.6, "B_M": 0.2, "P2": 0.6, "B_R": 0.15, "SG": 0.6, "R_L": 0.7, "R_R": 0.7, "SB_L": 0.4, "SB_R": 0.3, "SR_L": 0.7, "SR_R": 0.7},
     "seed": 2
   },
   "two-dot-sige-b": {
-    "description": "The same layout and programmed point, disorder draw 5: a second device for the tune-up to find on its own.",
+    "description": "The same layout, disorder draw 5, its sensor barriers set for that draw: a second device for the tune-up to find on its own.",
     "layout": {"material": "SiGe", "pitch_nm": 80.0},
-    "operating_point_v": {"B_L": 0.15, "P1": 0.6, "B_M": 0.2, "P2": 0.6, "B_R": 0.15, "SG": 0.6, "R_L": 0.7, "R_R": 0.7},
+    "operating_point_v": {"B_L": 0.15, "P1": 0.6, "B_M": 0.2, "P2": 0.6, "B_R": 0.15, "SG": 0.6, "R_L": 0.7, "R_R": 0.7, "SB_L": 0.375, "SB_R": 0.425, "SR_L": 0.7, "SR_R": 0.7},
     "seed": 5
   }
 }

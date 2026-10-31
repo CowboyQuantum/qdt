@@ -30,8 +30,10 @@ def roles(device: Device) -> dict[str, str]:
 
 
 class PhantomPhysics:
-    """`SimulatedPhysics` over one Phantom session, charge dynamics off: the charge a sample sees is an
-    independent Boltzmann draw (`sample_charge`) or the thermal mean at that sample's levels."""
+    """`SimulatedPhysics` over one Phantom session. With charge dynamics off (the default) the charge a
+    sample sees is an independent Boltzmann draw (`sample_charge`) or the thermal mean at that sample's
+    levels; with `dynamics` it evolves on the session's clock (ADR 0090). Each input starts at `levels`,
+    else at the programmed point."""
 
     output = SENSOR
 
@@ -42,13 +44,14 @@ class PhantomPhysics:
         noise: bool = True,
         seed: int | None = None,
         sample_charge: bool = True,
+        dynamics: bool = False,
+        levels: Mapping[str, float] | None = None,
     ) -> None:
         self.device, self.inputs = device, (*device.gate_names, BIAS)
-        self.defaults = dict(zip(device.gate_names, device.programmed_point_v)) | {
-            BIAS: DEFAULT_BIAS_V
-        }
+        programmed = dict(zip(device.gate_names, device.programmed_point_v))
+        self.defaults = programmed | dict(levels or {}) | {BIAS: DEFAULT_BIAS_V}
         charge = "sampled" if sample_charge else "mean"
-        self.session = device.session(noise=noise, dynamics=False, charge=charge, noise_seed=seed)
+        self.session = device.session(noise, dynamics, charge, noise_seed=seed)
 
     @property
     def clock_s(self) -> float:
@@ -75,7 +78,8 @@ class PhantomPhysics:
 class SimulatedDevice(SimulatedInstrument):
     """A Phantom device through vendor channels with declared roles (default `roles`); built from a
     stand by `SimulatedDevice.from_config(instrument, channels, device, roles)` (ADR 0021). `seed` is
-    the noise seed: a new noise realisation of the same device, whose disorder is in its file."""
+    the noise seed: a new noise realisation of the same device, whose disorder is in its file;
+    `dynamics` and `levels` go to `PhantomPhysics`."""
 
     def __init__(
         self,
@@ -85,9 +89,12 @@ class SimulatedDevice(SimulatedInstrument):
         noise: bool = True,
         seed: int | None = 0,
         sample_charge: bool = True,
+        dynamics: bool = False,
+        levels: Mapping[str, float] | None = None,
         **kwargs,
     ) -> None:
-        physics = PhantomPhysics(device, noise=noise, seed=seed, sample_charge=sample_charge)
+        options = {"noise": noise, "seed": seed, "sample_charge": sample_charge}
+        physics = PhantomPhysics(device, **options, dynamics=dynamics, levels=levels)
         super().__init__(physics, channels or roles(device), **kwargs)
 
     @property

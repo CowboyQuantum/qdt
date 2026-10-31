@@ -19,14 +19,23 @@ from .device import SENSOR, SimulatedDevice, roles
 DEVICE_ID = "dot"
 DEFAULT_DEVICE = "two-dot-sige-a"
 DEVICES = {
-    "two-dot-sige-a": "0ac31718688900366d9da58008da15aae834f08f2880476bf6dbc6975e175903",
-    "two-dot-sige-b": "36fb0400267711c4875bbb23a1561edf8c3f23210cae90eb3ead5720a0d91f28",
+    "two-dot-sige-a": "bc0a65576fdf4f5ebad767eaf71a53929d1a0bc1449870225dcda4c911226bd2",
+    "two-dot-sige-b": "033fa55e426237bbc5b9e2f3619e94996b0ca6a5faa3afbf37412fdc40fac719",
 }
-"""Committed device file → its SHA-256 (Phantom 0.2.0). A file that differs is refused."""
+"""Committed device file → its SHA-256 (Phantom 0.3.0). A file that differs is refused."""
 LATTICE_SPAN_V = 0.15
 """Half the plunger window of a stability sweep: about six transitions at the devices' ~20 e/V."""
-SENSOR_WINDOW_V = (-1.2, 0.8)
-"""The sensor-gate window about its programmed level: two peaks of the devices' ~1 V period."""
+SENSOR_TAIL_V = -10e-3
+"""Where a stability sweep reads the sensor, from the wing of a lifetime-broadened peak (ADR 0090): on
+its tail, where the plungers' pull and each electron's kick keep the sensor on one slope."""
+SENSOR_SET_V = {"two-dot-sige-a": 0.650544, "two-dot-sige-b": 0.64857}
+"""Each device's sensor gate where a fresh stand holds it (ADR 0090): `SENSOR_TAIL_V` from the wing of
+the peak a period above Phantom's set point, since the programmed sensor gate sits between peaks.
+`make_sim_devices.py` prints it; `--check` holds it."""
+SENSOR_WINDOW_V = (-0.01, 0.05)
+"""The sensor-gate window about its starting level: its peak and the next of the ~36 mV period."""
+DIAMONDS_BIAS_V = (-12e-3, 12e-3)
+"""The diamonds' bias window: past their tips at the devices' ~9 meV charging energy."""
 MEASURE_NS = 1_000_000
 """A stability pixel's integration: Phantom's white floor falls as √(1 ms / dwell)."""
 SENSOR_TRUTH = {
@@ -62,6 +71,15 @@ def programmed(device: phantom.Device | None = None) -> dict[str, float]:
     return dict(zip(k.gate_names, k.programmed_point_v))
 
 
+def start(device: phantom.Device | None = None) -> dict[str, float]:
+    """The levels a fresh stand on `device` (default `load_device()`) holds: the programmed point, the
+    sensor gate at `SENSOR_SET_V` when the device is a committed one."""
+    device = device or load_device()
+    name = next((n for n in DEVICES if load_device(n) == device), None)
+    sensor = {device.knowable().sensor_gate: SENSOR_SET_V[name]} if name else {}
+    return programmed(device) | sensor
+
+
 def provenance(name: str = DEFAULT_DEVICE) -> dict[str, str | int]:
     """What made a simulated record (ADR 0087): Phantom's version, its model versions, the file's hash."""
     versions = {f"phantom.{k}": v for k, v in phantom.model_versions().items()}
@@ -90,10 +108,11 @@ def default_device(
     **kwargs,
 ) -> SimulatedDevice:
     """A run on `device` (default `load_device()`) with noise seed `seed`, built from `stand` (default
-    `default_stand(device)`) by its factory (ADR 0021)."""
+    `default_stand(device)`) by its factory (ADR 0021), its inputs at `start(device)` unless `levels`."""
     device = device or load_device()
     stand = stand or default_stand(device)
     instrument, channels = stand.instrument(DEVICE_ID), stand.instrument_channels(DEVICE_ID)
+    kwargs.setdefault("levels", start(device))
     return SimulatedDevice.from_config(
         instrument, channels, device, noise=noise, seed=seed, **kwargs
     )
@@ -121,8 +140,8 @@ def default_stand(device: phantom.Device | None = None) -> StandConfig:
 
 
 def about(gate: str, offsets: tuple[float, float]) -> tuple[float, float]:
-    """A window `offsets` about the default device's programmed level of `gate`."""
-    centre = programmed()[gate]
+    """A window `offsets` about the default device's starting level of `gate` (`start`)."""
+    centre = start()[gate]
     return (centre + offsets[0], centre + offsets[1])
 
 
@@ -159,7 +178,7 @@ def diamonds(
     n_inner: int = 64,
     *,
     sg: tuple[float, float] | None = None,
-    bias: tuple[float, float] = (-1.5e-3, 1.5e-3),
+    bias: tuple[float, float] = DIAMONDS_BIAS_V,
     repeats: int | None = 1,
     name: str = "simulated Coulomb diamonds",
 ) -> SweepDefinition:
@@ -200,10 +219,10 @@ def lattice_truth(
 def sensor_truth(
     scenario: SimScenario, near_v: float | None = None, bias_v: float | None = None
 ) -> dict[str, float]:
-    """The sensor's Coulomb peak nearest `near_v` (default: the programmed sensor gate) with the other
-    gates programmed (Phantom's truth), by the names the `sensor-operating-point` and `sensor-wing`
+    """The sensor's Coulomb peak nearest `near_v` (default: the starting sensor gate, `start`) with the
+    other gates programmed (Phantom's truth), by the names the `sensor-operating-point` and `sensor-wing`
     nodes output; the sensitivity at source–drain bias `bias_v` (Phantom's default when None)."""
     device = device_of(scenario)
-    near_v = programmed(device)["SG"] if near_v is None else near_v
+    near_v = start(device)["SG"] if near_v is None else near_v
     truth = device.truth(near_v=near_v, v_sd=bias_v).sensor
     return {name: getattr(truth, field) for name, field in SENSOR_TRUTH.items()}

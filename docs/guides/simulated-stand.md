@@ -14,22 +14,28 @@ registry as the bench, so what you learn here carries over to a real stand.
 
 The stand is one simulated instrument wired to a simulated device. The device comes from
 [Phantom](https://github.com/CowboyQuantum/phantom), a separate simulator of gate-defined quantum dots that
-qdt pins at version `v0.2.0` (ADR 0087, ADR 0088). It is a silicon–germanium double dot with a charge
-sensor:
+qdt pins at version `v0.3.0` (ADR 0087, ADR 0088, ADR 0090). It is a silicon–germanium double dot with a
+charge sensor that is a quantum dot of its own:
 
-- **Eight gates.** The plungers `P1` and `P2` set each dot's energy. The barriers `B_L`, `B_M` and `B_R`
-  separate the dots from each other and from the leads. The reservoir gates `R_L` and `R_R` fill the
-  leads. The sensor gate `SG` tunes the charge sensor. Every gate starts at the device's programmed point:
-  0.6 V on `P1`, `P2` and `SG`.
+- **Twelve gates.** The plungers `P1` and `P2` set each dot's energy. The barriers `B_L`, `B_M` and `B_R`
+  separate the dots from each other and from the leads, and they set how fast electrons tunnel through.
+  The reservoir gates `R_L` and `R_R` fill the leads. The sensor gate `SG` tunes the charge sensor's dot.
+  The sensor barriers `SB_L` and `SB_R` sit on either side of it and set how fast electrons tunnel into
+  and out of the sensor. The sensor bath gates `SR_L` and `SR_R` fill the leads the sensor draws its
+  current from. Every gate starts at the device's programmed point (0.6 V on `P1` and `P2`, 0.4 V on
+  `SB_L`, 0.3 V on `SB_R`), except `SG`, which starts at about 0.651 V, where the sensor reads.
 - **Two pulse lines,** `P1_pulse` and `P2_pulse`. A pulse adds to its gate's direct-current (DC) level,
   as a bias tee does.
 - **The sensor's source–drain bias,** `bias`, which starts at 50 µV, with its own pulse line `bias_pulse`.
 - **The sensor,** whose current (in amperes) is what every measurement reads.
 - **A simulated oscilloscope,** `scope` on channel `scope1`, for time-resolved captures.
 
-The device is physical rather than a toy. About 20 electrons sit on each dot at the programmed point, each
-dot gains one electron for every 40 to 50 mV on its plunger, and the sensor's peaks are about 1 V apart on
-`SG`. The readout noise is realistic too: it falls as the square root of the integration time, so a 2 µs
+The device is physical rather than a toy. About 20 electrons sit on each dot at the programmed point, and
+each dot gains one electron for every 40 to 50 mV on its plunger. The sensor's peaks are about 35 mV apart
+on `SG`. Each peak is a few millivolts wide, because electrons tunnel through the sensor barriers fast
+enough to broaden it, and it turns on steeply as `SG` rises. One electron on a dot moves the sensor by more
+than a peak's width. So the stand starts `SG` on the low side of a peak, about 10 mV below its steepest
+point, where the plungers' own pull on the sensor and each electron's kick keep it on one slope. The readout noise is realistic too: it falls as the square root of the integration time, so a 2 µs
 reading is mostly noise and a 1 ms reading is clean. Two devices are committed: `two-dot-sige-a`, the
 default, and `two-dot-sige-b`, a second disorder draw of the same design.
 
@@ -142,14 +148,17 @@ in the plot's ⚙ menu to make the transitions stand out.
 ## 2. Find the charge transitions
 
 1. In **History**, press **refresh**, then **analyse** on the new record. This selects it in Analysis.
-2. In **Analysis**, choose the method **Charge transitions** and press **run analysis**.
+2. In **Analysis**, choose the method **Charge transitions**, set **threshold_rel** to `0.1`, and press
+   **run analysis**. The default of 0.3 keeps only edges near a third of the strongest gradient, and on
+   this sensor the steepest corner of the slope sets that, so the steps elsewhere fall under it. The
+   estimates come out the same either way.
 3. Press **show overlays** to replay the record with the detected segments drawn on it. Press **show
    output** to see the map the method detected on.
 
 ![The detected transitions drawn on the map](img/04-transitions.png)
 
 The estimates are electrons per volt on each dot from each plunger. On the default device they come out
-near 19.3 and 24.8 on the diagonal, which is the device's own lattice within half a percent. The result
+near 20.3 and 26.3 on the diagonal, which is the device's own lattice within half a percent. The result
 is stored with the record, and the method's name, version and every parameter are kept with it.
 
 ## 3. Measure the sensor's Coulomb diamonds
@@ -159,17 +168,18 @@ are stepped from the host, and the sensor is read at every point.
 
 In **Sweep**:
 1. Set **kind** to `DC: both axes stepped, sensed`, and name the sweep.
-2. Set the **outer** axis to `SG` from `-0.6` to `1.4` with `64` points. That is two sensor peaks about
-   `SG`'s programmed 0.6 V.
-3. Set the **inner** axis to `bias` from `-0.0015` to `0.0015` with `64` points, and set **inner axis
-   name** to `V_sd`.
+2. Set the **outer** axis to `SG` from `0.64` to `0.70` with `64` points. That is two sensor peaks just
+   above where `SG` starts.
+3. Set the **inner** axis to `bias` from `-0.012` to `0.012` with `64` points, and set **inner axis
+   name** to `V_sd`. The diamonds' tips sit near ±9 mV, the sensor's charging energy over the electron
+   charge.
 4. Keep **sensor** at `sensor`, and set **options** to `{"seed": 1, "noise": false}`.
 
 Press **Run**. Then analyse the record with **Coulomb diamonds** and **show overlays**.
 
 ![The sensor's Coulomb diamonds with the detected edges](img/05-diamonds.png)
 
-The default device gives a charging energy of 1.0 meV and a peak spacing of about 0.98 V on `SG`.
+The default device gives a charging energy of about 8.8 meV and a peak spacing of about 35 mV on `SG`.
 
 ## 4. Move the operating point
 
@@ -190,7 +200,7 @@ that would cross it, rather than clamp it. Each change is a new, versioned stand
 
 ### See the gates on a drawing of the device
 
-The **Device** widget draws the device's eight gates as seen from above, to scale, from the layout in
+The **Device** widget draws the device's twelve gates as seen from above, to scale, from the layout in
 Phantom's device file. Each gate is filled with a colour for the level it sits at: the held level if
 there is one, otherwise the instrument's setpoint. To open it, choose **Device** in the menu at the top of
 any side pane.
@@ -213,8 +223,10 @@ The tune-up runs four calibration nodes in order on the server. Each node's swee
 the stream, so you can watch it:
 - **sensor-operating-point** finds the sensor's peaks from its diamonds;
 - **sensor-wing** fits one peak and parks `SG` on its steepest flank;
-- **charge-lattice** measures the stability diagram and decides the virtual-gate matrix;
-- **virtual-lattice** measures again in virtual gates and checks that the transitions come out straight.
+- **charge-lattice** measures the stability diagram with `SG` 10 mV below that flank, on the peak's tail,
+  and decides the virtual-gate matrix;
+- **virtual-lattice** measures again in virtual gates, with `SG` in the same place, and checks that the
+  transitions come out straight.
 
 In **Tune-up**, leave the four nodes ticked, set **options** to `{"seed": 2, "noise": false}` and press **run
 tune-up**. The sensor nodes need noise off, because their peak fit does not survive the device's noise.
@@ -224,7 +236,8 @@ seconds.
 ![The tune-up's four nodes, all accepted](img/07-tuneup-result.png)
 
 When it completes, every node is accepted. The server holds `SG` at the wing it found, and the last plot
-is the stability diagram in virtual gates.
+is the stability diagram in virtual gates. For a stability diagram of your own after the tune-up, set `SG`
+10 mV below the held wing in **Levels** first, where the lattice nodes read it.
 
 ![The stability diagram in virtual gates, after the tune-up](img/06-tuneup.png)
 
@@ -237,6 +250,7 @@ stand it takes:
 |---|---|
 | `seed` | The noise seed: the same seed gives the same noise, another seed a new realisation. The device's own disorder is fixed by its file. |
 | `noise` | `true` or `false`: whether the device's noise is on. |
+| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. On Phantom 0.3.0 a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. A sweep takes about ten times longer with dynamics on. |
 | `device` | Which committed device to load: `two-dot-sige-a` (the default) or `two-dot-sige-b`. Any other name fails the run. |
 | `campaign` | A label kept on the record, to find it later. |
 | `tau_s`, `droop_v`, `scope_noise_v` | The simulated scope's recorded droop: its time constant in seconds, its step in volts and its noise in volts. |

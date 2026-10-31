@@ -102,7 +102,7 @@ class DeviceLayout(QdtModel):
     source: str = Field(
         default="",
         description=(
-            "Where the layout comes from, e.g. 'Phantom 0.2.0, device file two-dot-sige-a'; shown "
+            "Where the layout comes from, e.g. 'Phantom 0.3.0, device file two-dot-sige-a'; shown "
             "under the diagram."
         ),
     )

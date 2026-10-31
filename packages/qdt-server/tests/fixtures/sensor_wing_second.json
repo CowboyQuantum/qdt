@@ -5,7 +5,7 @@
     "scenario_id": "second-device",
     "description": "a second disorder draw of the same layout, noise off: the full chain finds it (ADR 0088)",
     "device": "two-dot-sige-b",
-    "device_sha256": "36fb0400267711c4875bbb23a1561edf8c3f23210cae90eb3ead5720a0d91f28",
+    "device_sha256": "033fa55e426237bbc5b9e2f3619e94996b0ca6a5faa3afbf37412fdc40fac719",
     "seed": 2,
     "noise": false,
     "attrs": {}
@@ -13,21 +13,21 @@
   "node_id": "sensor-wing",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "23607d383339449faaa3500c47e21880",
+    "outcome_id": "d43d3279237940d88e172e781dd410d9",
     "node_id": "sensor-wing",
-    "tuneup_id": "acc0a4914c0e4f558fe01c7dffe40703",
+    "tuneup_id": "6fd813755e574cbdbada8e02e9b9549d",
     "scenario_id": "second-device",
-    "record_id": "33da3a3af4f14beca7dedae71e2bbbdb",
-    "result_id": "ee9c5acda6bd47599e9db9c1133022fb",
+    "record_id": "fc89c8030e854a41a77e9bf7f79cff05",
+    "result_id": "60a8e064ab19465ea2c442e1cc8c696b",
     "status": "accepted",
-    "message": "peak at +0.3760 V, width 0.1543 V; wing at +0.4776 ± 0.0016 V",
+    "message": "peak at +0.6570 V, width 0.0022 V; wing at +0.6585 ± 2.5e-05 V",
     "outputs": {
-      "sg_peak_v": 0.37595766906731753,
-      "sg_width_v": 0.1543046013664855,
-      "sg_operating_v": 0.477564000718032,
-      "sensitivity_a_per_v": 9.654504087485754e-10
+      "sg_peak_v": 0.6570455354945146,
+      "sg_width_v": 0.002178417901644475,
+      "sg_operating_v": 0.6584799778237012,
+      "sensitivity_a_per_v": 9.57140621676982e-8
     },
-    "created_at": "2026-10-28T13:03:47.015616Z",
+    "created_at": "2026-10-31T17:47:42.433639Z",
     "attrs": {
       "method": "qdt_analysis.sensor_peak.fit_sensor_peak",
       "rule": "qdt_tuning.decisions.sensor_wing"
@@ -37,65 +37,65 @@
     {
       "schema_version": 1,
       "name": "peak_v",
-      "value": 0.37595766906731753,
-      "stderr": 0.0008954895416916517,
+      "value": 0.6570455354945146,
+      "stderr": 9.663722971108153e-6,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "width_v",
-      "value": 0.1543046013664855,
-      "stderr": 0.0020641501859353334,
+      "value": 0.002178417901644475,
+      "stderr": 0.0000351384899613653,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "height_a",
-      "value": 1.93522175892669e-10,
-      "stderr": 1.5259685102476405e-12,
+      "value": 2.7085623441106965e-10,
+      "stderr": 2.830634441442397e-12,
       "unit": "A"
     },
     {
       "schema_version": 1,
       "name": "background_a",
-      "value": 5.597474768477561e-11,
-      "stderr": 1.2519898329231587e-12,
+      "value": 1.207843004270624e-10,
+      "stderr": 3.0881881580420217e-12,
       "unit": "A"
     },
     {
       "schema_version": 1,
       "name": "wing_v",
-      "value": 0.477564000718032,
-      "stderr": 0.0016276746135471447,
+      "value": 0.6584799778237012,
+      "stderr": 0.00002507493860077912,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "sensitivity_a_per_v",
-      "value": 9.654504087485754e-10,
+      "value": 9.57140621676982e-8,
       "stderr": null,
       "unit": "A/V"
     },
     {
       "schema_version": 1,
       "name": "r2",
-      "value": 0.9943102617570163,
+      "value": 0.9898719648473312,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "residual_rms",
-      "value": 4.990116923200846e-12,
+      "value": 8.991304701215799e-12,
       "stderr": null,
       "unit": "A"
     }
   ],
   "truth": {
-    "sg_peak_v": 0.3683509370138386,
-    "sg_width_v": 0.16122107981096487,
-    "sg_operating_v": 0.4745116241177368,
-    "sensitivity_a_per_v": 9.5496241536418e-10
+    "sg_peak_v": 0.6570430508258127,
+    "sg_width_v": 0.0023186059087877222,
+    "sg_operating_v": 0.65856980400653,
+    "sensitivity_a_per_v": 9.524348145268547e-8
   },
-  "created_at": "2026-10-28T13:03:47.023458Z"
+  "created_at": "2026-10-31T17:47:42.439693Z"
 }

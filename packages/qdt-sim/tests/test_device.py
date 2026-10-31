@@ -11,11 +11,13 @@ from qdt_schemas.activity import SequencerParameter, SequencerProgram, Sequencer
 from qdt_sim import SimulatedDevice
 from qdt_sim.scenarios import (
     DEVICE_ID,
+    SENSOR_SET_V,
     default_device,
     default_stand,
     load_device,
     programmed,
     stability,
+    start,
 )
 
 EMITTERS = {"simulated": SimulatedEmitter()}
@@ -27,12 +29,11 @@ def quiet() -> SimulatedDevice:
 
 def current(**levels) -> np.ndarray:
     """The default device's noise-free sensor current with the named gates at `levels` (arrays
-    broadcast) and every other gate at its programmed level."""
+    broadcast) and every other gate at its starting level (`start`, ADR 0090)."""
     device = load_device()
     shape = np.broadcast(*(np.asarray(x) for x in levels.values())).shape
-    v = np.broadcast_to(
-        np.array(device.programmed_point_v), (*shape, len(device.gate_names))
-    ).copy()
+    first = [start()[g] for g in device.gate_names]
+    v = np.broadcast_to(np.array(first), (*shape, len(device.gate_names))).copy()
     for gate, x in levels.items():
         v[..., device.gate_names.index(gate)] = x
     return device.at(v).sensor_current_a
@@ -55,7 +56,8 @@ def test_levels_and_sense():
     d = quiet()
     d.set("P1", 0.62)
     assert d.get("P1") == 0.62
-    assert d.get("P2") == P2  # every gate starts at the programmed point
+    assert d.get("P2") == P2  # every gate starts at the programmed point but the sensor gate
+    assert d.get("SG") == start()["SG"] != programmed()["SG"]
     assert d.sense("sensor") == pytest.approx(float(current(P1=0.62)), rel=1e-12)
     with pytest.raises(ValueError, match="sense the sensor"):
         d.sense("P1")
@@ -400,7 +402,23 @@ def test_the_stand_wires_every_gate_and_a_gate_without_a_channel_holds_the_progr
     assert logical == {*device.gate_names, "P1_pulse", "P2_pulse", "bias", "bias_pulse", "sensor"}
     d = SimulatedDevice(device, {"P1": "P1", "sensor": "sensor"}, noise=False, sample_charge=False)
     assert d.levels()["B_M"] == programmed()["B_M"] and d.levels()["bias"] == 50e-6
-    assert d.sense("sensor") == pytest.approx(float(current()), rel=1e-12)
+    assert d.levels()["SG"] == programmed()["SG"]  # built without `levels`: the programmed point
+    assert d.sense("sensor") == pytest.approx(float(current(SG=programmed()["SG"])), rel=1e-12)
+
+
+def test_a_fresh_stand_starts_at_the_programmed_point_with_the_sensor_gate_where_it_reads():
+    """ADR 0090: `start` moves only the sensor gate, to the committed level, on a committed device;
+    a device that is not committed starts at its programmed point; `levels` overrides it."""
+    device = load_device()
+    first = start(device)
+    assert {g for g in first if first[g] != programmed()[g]} == {"SG"}
+    assert first["SG"] == SENSOR_SET_V["two-dot-sige-a"]
+    assert default_device(noise=False).levels()["SG"] == first["SG"]
+    assert default_device(noise=False, levels={"SG": 0.5}).levels()["SG"] == 0.5
+    moved = type(device).loads(device.dumps().replace('"seed": 2', '"seed": 99', 1))
+    assert start(moved) == programmed(moved)
+    # there the sensor reads: a nanoamp-scale current, not the near-zero one between peaks
+    assert abs(float(current())) > 1e3 * abs(float(current(SG=programmed()["SG"])))
 
 
 def test_the_noise_seed_replays_a_realisation_and_another_seed_draws_a_new_one():
@@ -419,9 +437,10 @@ def test_a_device_file_that_hashes_otherwise_or_is_not_committed_is_refused():
         load_device("../../etc/passwd")
 
 
-def test_qdt_sim_holds_no_physics_and_stays_under_320_lines():
+def test_qdt_sim_holds_no_physics_and_stays_under_340_lines():
     """Phantom's Step 8 exit, from qdt's side (ADR 0087): an adapter, not a model. The cap was 300
-    until the layout rename (ADR 0089) took it to 311."""
+    until the layout rename (ADR 0089) took it to 311, and 320 until the starting levels and the
+    dynamics option (ADR 0090) took it to 337."""
     import pathlib
 
     import qdt_sim
@@ -429,7 +448,7 @@ def test_qdt_sim_holds_no_physics_and_stays_under_320_lines():
     src = pathlib.Path(qdt_sim.__file__).parent
     modules = sorted(p.name for p in src.glob("*.py"))
     assert modules == ["__init__.py", "device.py", "scenarios.py"]
-    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 320
+    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 340
 
 
 def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel():
@@ -446,7 +465,7 @@ def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel(
         assert drawn.material == known["material"] == "SiGe"
         assert list(drawn.channel_nm) == list(known["channel_nm"])
         assert list(drawn.sensor_nm) == list(known["sensor_nm"])
-        assert drawn.source == f"Phantom 0.2.0, device file {name}"
+        assert drawn.source == f"Phantom 0.3.0, device file {name}"
         logical = {c.logical: c for c in default_stand().channels}
         for g in drawn.gates:
             assert logical[g.channel].quantity == "voltage"

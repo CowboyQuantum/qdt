@@ -49,12 +49,14 @@ qdt_server/
   their factories; the API does not change. The simulated stand is `qdt_sim`'s Phantom device (ADR 0088)
   plus a simulated scope (`scope`, channel `scope1`, ADR 0047) whose record is a droop set by the run
   options `tau_s`, `droop_v`, `scope_noise_v`. The device's run options are `seed` (the noise seed),
-  `noise` and `device` (a committed device file; any other name fails the run). Its registry record
+  `noise`, `dynamics` (Phantom's charge dynamics, off by default, ADR 0090) and `device` (a committed
+  device file; any other name fails the run). Its registry record
   carries Phantom's provenance (`qdt_sim.scenarios.provenance`). The server never imports Phantom and
   no route serves the device's truth.
 - Tune-up windows are the stand's (ADR 0088): `Settings.nodes` maps a node id to the keyword windows its
   `qdt_tuning.TEMPLATES` constructor takes. The simulated stand's are `app.SIMULATED_NODES`, about the
-  device's programmed point; a real stand (`--stand`) gives none, so its nodes keep the defaults.
+  device's starting point (`qdt_sim.scenarios.start`, ADR 0090), the lattice nodes reading the sensor
+  `SENSOR_TAIL_V` from the wing; a real stand (`--stand`) gives none, so its nodes keep the defaults.
 - A method is callable from the API only if it is in `catalogue.METHODS` with a `MethodSpec` whose
   parameters match the function's keyword arguments (the test pins this).
 - Commands need a token off loopback (ADR 0074, 0082): every route on the `stand` router carries
