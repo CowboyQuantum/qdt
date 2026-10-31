@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'win32'",
@@ -1089,8 +1089,8 @@ wheels = [
 
 [[package]]
 name = "phantom"
-version = "0.2.0"
-source = { git = "https://github.com/CowboyQuantum/phantom?tag=v0.2.0#f72daacfe02137a034ce883fb2ccf2be4cd3a363" }
+version = "0.3.0"
+source = { git = "https://github.com/CowboyQuantum/phantom?tag=v0.3.0#6920f199cc1bcae58ababe35807065a41983de56" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1634,7 +1634,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26,<3" },
-    { name = "phantom", git = "https://github.com/CowboyQuantum/phantom?tag=v0.2.0" },
+    { name = "phantom", git = "https://github.com/CowboyQuantum/phantom?tag=v0.3.0" },
     { name = "qdt-lab", editable = "packages/qdt-lab" },
     { name = "qdt-schemas", editable = "packages/qdt-schemas" },
     { name = "qdt-tuning", editable = "packages/qdt-tuning" },

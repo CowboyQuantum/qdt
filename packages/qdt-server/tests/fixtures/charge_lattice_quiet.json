@@ -5,7 +5,7 @@
     "scenario_id": "default-quiet",
     "description": "the default device, noise off",
     "device": "two-dot-sige-a",
-    "device_sha256": "0ac31718688900366d9da58008da15aae834f08f2880476bf6dbc6975e175903",
+    "device_sha256": "bc0a65576fdf4f5ebad767eaf71a53929d1a0bc1449870225dcda4c911226bd2",
     "seed": 0,
     "noise": false,
     "attrs": {}
@@ -13,27 +13,27 @@
   "node_id": "charge-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "63392daec72f4b6ca1361e8faed30678",
+    "outcome_id": "0abfda93c70843ec966eff8795c37219",
     "node_id": "charge-lattice",
-    "tuneup_id": "9e92b8af4c41442aa1ffe1de5f389f5c",
+    "tuneup_id": "475892188ccf49da8d86004fb222ba74",
     "scenario_id": "default-quiet",
-    "record_id": "856d6d0082aa4946b57410f95810c599",
-    "result_id": "f02278ce02cd46a894d4189e99e2dca1",
+    "record_id": "ea060f357ed54fb787dd9a377c13a435",
+    "result_id": "863e619626264afaaddd4bf6698a029e",
     "status": "accepted",
-    "message": "lattice condition 1.36, cross ratios 0.115 and 0.063",
+    "message": "lattice condition 1.37, cross ratios 0.117 and 0.066",
     "outputs": {
-      "l_11": 19.239018902315266,
-      "l_12": 2.211663093359192,
-      "l_21": 1.5440560381991872,
-      "l_22": 24.698331477922736,
-      "m_11": 1.0072387557075702,
-      "m_12": -0.11578931303671547,
-      "m_21": -0.06296915579292052,
-      "m_22": 1.0072387557075702,
-      "c_21": -0.06251661330156585,
-      "c_12": -0.11495716619380399
+      "l_11": 20.187797018387826,
+      "l_12": 2.3654062245897762,
+      "l_21": 1.73208469991377,
+      "l_22": 26.27284459363362,
+      "m_11": 1.0077847851630173,
+      "m_12": -0.11808224551198902,
+      "m_21": -0.06644003092111808,
+      "m_22": 1.0077847851630173,
+      "c_21": -0.06592680490842187,
+      "c_12": -0.11717010144471299
     },
-    "created_at": "2026-10-28T13:03:55.196939Z",
+    "created_at": "2026-10-31T17:47:46.160344Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.virtual_gates"
@@ -43,57 +43,57 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 19.239018902315266,
+      "value": 20.187797018387826,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": 2.211663093359192,
+      "value": 2.3654062245897762,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": 1.5440560381991872,
+      "value": 1.73208469991377,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 24.698331477922736,
+      "value": 26.27284459363362,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": 0.11495716619380397,
+      "value": 0.117170101444713,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": 0.06251661330156585,
+      "value": 0.06592680490842187,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "l_11": 19.223253407523533,
-    "l_12": 2.2063564315732966,
-    "l_21": 1.507500315831431,
-    "l_22": 24.65856587451645,
-    "m_11": 1.0070663716188561,
-    "m_12": -0.11558643685011341,
-    "m_21": -0.061566957340677436,
-    "m_22": 1.007066371618856,
-    "c_21": -0.06113495502953667,
-    "c_12": -0.11477539128261088
+    "l_11": 20.340959021282163,
+    "l_12": 2.436244218646832,
+    "l_21": 1.707946863667374,
+    "l_22": 26.283340887642186,
+    "m_11": 1.0078439802253376,
+    "m_12": -0.12070984792570619,
+    "m_21": -0.06549182512415094,
+    "m_22": 1.0078439802253378,
+    "c_21": -0.06498210676369573,
+    "c_12": -0.1197703715000782
   },
-  "created_at": "2026-10-28T13:03:55.204116Z"
+  "created_at": "2026-10-31T17:47:46.164411Z"
 }

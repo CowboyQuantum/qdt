@@ -5,7 +5,7 @@
     "scenario_id": "second-device",
     "description": "a second disorder draw of the same layout, noise off: the full chain finds it (ADR 0088)",
     "device": "two-dot-sige-b",
-    "device_sha256": "36fb0400267711c4875bbb23a1561edf8c3f23210cae90eb3ead5720a0d91f28",
+    "device_sha256": "033fa55e426237bbc5b9e2f3619e94996b0ca6a5faa3afbf37412fdc40fac719",
     "seed": 2,
     "noise": false,
     "attrs": {}
@@ -13,22 +13,22 @@
   "node_id": "sensor-operating-point",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "a837654c89a041d0bf8a16bf6eddc87c",
+    "outcome_id": "c223f839401f4fa081d376ecd81488be",
     "node_id": "sensor-operating-point",
-    "tuneup_id": "0f342d04655a4a9b85766db2227896dc",
+    "tuneup_id": "abc8f20c2bbe4185b0b1cd20d0b72b82",
     "scenario_id": "second-device",
-    "record_id": "b7884122fef74be8b57ca7f7f26a6779",
-    "result_id": "018bdf3fc4fd43fda7c41228b4f9eef8",
+    "record_id": "184dd71a351b4507ab73ef2780019477",
+    "result_id": "77a4bf17e5a2455ea88f4325b53c8a01",
     "status": "accepted",
-    "message": "peak at +0.3680 V (of 3), operating point +0.4680 V",
+    "message": "peak at +0.6571 V (of 2), operating point +0.6586 V",
     "outputs": {
-      "sg_peak_v": 0.3679576690673175,
-      "sg_operating_v": 0.4679576690673175,
-      "period": 1.0389991797302838,
-      "charging_energy": 0.0009617320552719905,
-      "lever_arm": 0.0009256331227534258
+      "sg_peak_v": 0.6570855354945146,
+      "sg_operating_v": 0.6585855354945146,
+      "period": 0.03738855653767881,
+      "charging_energy": 0.009374761941853754,
+      "lever_arm": 0.25073880379431646
     },
-    "created_at": "2026-10-28T13:03:45.714932Z",
+    "created_at": "2026-10-31T17:47:41.823450Z",
     "attrs": {
       "method": "qdt_analysis.diamonds.detect_diamonds",
       "rule": "qdt_tuning.decisions.sensor_operating_point"
@@ -38,45 +38,45 @@
     {
       "schema_version": 1,
       "name": "period",
-      "value": 1.0389991797302838,
+      "value": 0.03738855653767881,
       "stderr": null,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "charging_energy",
-      "value": 0.0009617320552719905,
+      "value": 0.009374761941853754,
       "stderr": null,
       "unit": "eV"
     },
     {
       "schema_version": 1,
       "name": "lever_arm",
-      "value": 0.0009256331227534258,
+      "value": 0.25073880379431646,
       "stderr": null,
       "unit": "eV/V"
     },
     {
       "schema_version": 1,
       "name": "slope_rising",
-      "value": 0.001851266245506851,
+      "value": 0.5014776075886329,
       "stderr": null,
       "unit": "V/V"
     },
     {
       "schema_version": 1,
       "name": "slope_falling",
-      "value": -0.001851266245506852,
+      "value": -0.5014776075886329,
       "stderr": null,
       "unit": "V/V"
     }
   ],
   "truth": {
-    "sg_peak_v": 0.3683509370138386,
-    "period": 1.0076317488185305,
-    "charging_energy": 0.001,
-    "lever_arm": 0.0009924260536376718,
-    "sg_operating_v": 0.46835093701383856
+    "sg_peak_v": 0.6570430508258127,
+    "period": 0.03758114248519315,
+    "charging_energy": 0.009328938300234813,
+    "lever_arm": 0.24823455816731452,
+    "sg_operating_v": 0.6585430508258127
   },
-  "created_at": "2026-10-28T13:03:45.724314Z"
+  "created_at": "2026-10-31T17:47:41.830254Z"
 }

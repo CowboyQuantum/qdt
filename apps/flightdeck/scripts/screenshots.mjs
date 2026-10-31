@@ -43,15 +43,17 @@ const finished = (name) => [(n) => new RegExp(`${n} · completed → record`).te
 const analysed = () => /^(ok|failed)/.test(document.querySelector(".pane[data-widget=analysis] .estimates")?.textContent ?? "");
 
 /** History → analyse the named record → the method → run → overlays; returns the estimates' text. */
-async function analyse(page, record, method) {
+async function analyse(page, record, method, params = {}) {
   await page.locator(".pane[data-widget=history] [data-refresh]").click();
   await page.locator(".pane[data-widget=history] tr", { hasText: record }).first().getByRole("button", { name: "analyse" }).click();
   await step(page, `select ${record} in Analysis`, () => document.querySelector(".pane[data-widget=analysis] select[name=record]")?.value !== "");
   await page.locator(".pane[data-widget=analysis] select[name=method]").selectOption({ label: method });
+  for (const [k, v] of Object.entries(params)) await page.locator(`.pane[data-widget=analysis] input[name=${k}]`).fill(v);
   await page.locator(".pane[data-widget=analysis] [data-analyse]").first().click();
   await step(page, `${method} on ${record}`, analysed);
   const estimates = (await page.textContent(".pane[data-widget=analysis] .estimates")) ?? "";
   if (!estimates.startsWith("ok")) throw new Error(`${method} on ${record}: ${estimates.slice(0, 300)}`);
+  if (estimates.startsWith("ok · 0 overlays")) throw new Error(`${method} on ${record} drew no overlays`);
   await page.locator(".pane[data-widget=analysis] [data-overlays]").click();
   await step(page, `overlays of ${record}`, () => (document.querySelector("#message")?.textContent ?? "").startsWith("replaying"));
   await page.waitForTimeout(2500); // the replay draws, then the overlays land on it
@@ -82,7 +84,7 @@ async function walk(page, dir) {
   await shot("03-stability.png");
 
   // 2. its charge transitions
-  console.log("charge transitions:", (await analyse(page, "first stability diagram", "Charge transitions")).slice(0, 300));
+  console.log("charge transitions:", (await analyse(page, "first stability diagram", "Charge transitions", { threshold_rel: "0.1" })).slice(0, 300));
   await shot("04-transitions.png");
 
   // 3. the sensor's Coulomb diamonds
@@ -91,7 +93,7 @@ async function walk(page, dir) {
   await sweep.locator("select[name=inner_channel]").selectOption("bias");
   await sweep.locator("input[name=inner_name]").fill("V_sd");
   await sweep.locator("input[name=name]").fill("sensor diamonds");
-  for (const [k, v] of [["outer_start", "-0.6"], ["outer_stop", "1.4"], ["inner_start", "-0.0015"], ["inner_stop", "0.0015"], ["outer_num", "64"], ["inner_num", "64"]]) await sweep.locator(`input[name=${k}]`).fill(v);
+  for (const [k, v] of [["outer_start", "0.64"], ["outer_stop", "0.70"], ["inner_start", "-0.012"], ["inner_stop", "0.012"], ["outer_num", "64"], ["inner_num", "64"]]) await sweep.locator(`input[name=${k}]`).fill(v);
   await sweep.locator("input[name=options]").fill('{"seed": 1, "noise": false}');
   await page.click("#run");
   await step(page, "run the diamonds", ...finished("sensor diamonds"));

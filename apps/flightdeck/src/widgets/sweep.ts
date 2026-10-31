@@ -281,7 +281,7 @@ class SweepWidget {
         h("div", { className: "hint", text: "gates not listed keep whatever level they have; a pulse on a gate's _pulse line adds to its level here" }),
         this.levelErrors,
       ),
-      field("options", h("input", { name: "options", value: '{"seed": 1, "noise": true}' })),
+      field("options", h("input", { name: "options", value: '{"seed": 1, "noise": true, "dynamics": false}' })),
       h("div", { className: "hint", text: "Run is in the strip: it compiles what the editors hold and runs that; compile here to see the plan first" }),
       this.planBox,
     );

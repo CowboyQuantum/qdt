@@ -48,7 +48,7 @@ class TuneUpWidget {
     private readonly ctx: WidgetContext,
   ) {
     this.nodeList = h("div", { className: "nodes" });
-    this.options = h("input", { name: "options", value: '{"seed": 1, "noise": true}', attrs: { "aria-label": "Run options" } });
+    this.options = h("input", { name: "options", value: '{"seed": 1, "noise": true, "dynamics": false}', attrs: { "aria-label": "Run options" } });
     this.state = h("div", { className: "tuneup-state" });
     const start = h("button", { type: "button", text: "run tune-up", attrs: { "data-start": "" } });
     start.addEventListener("click", () => void this.start());

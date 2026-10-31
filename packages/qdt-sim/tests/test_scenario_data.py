@@ -10,8 +10,8 @@ from qdt_sim.scenarios import (
     device_for,
     lattice_truth,
     load_device,
-    programmed,
     sensor_truth,
+    start,
 )
 
 
@@ -42,9 +42,9 @@ def test_a_realized_scenario_is_a_seeded_run_and_its_truth_is_phantoms_lattice()
     )
 
 
-def test_the_sensors_truth_is_phantoms_peak_nearest_the_programmed_sensor_gate():
+def test_the_sensors_truth_is_phantoms_peak_nearest_the_starting_sensor_gate():
     device = load_device()
-    s = device.truth(near_v=programmed(device)["SG"]).sensor
+    s = device.truth(near_v=start(device)["SG"]).sensor
     t = sensor_truth(scenario())
     assert t == {
         "sg_peak_v": s.peak_v,

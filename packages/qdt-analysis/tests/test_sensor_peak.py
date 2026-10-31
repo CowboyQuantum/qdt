@@ -25,7 +25,7 @@ from qdt_analysis.sensor_peak import (
 from qdt_schemas.data import Dataset, DataVariable, Dimension, LinearCoordinate, SourceDescriptor
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
 from qdt_schemas.payload_hdf5 import Payload
-from qdt_sim.scenarios import load_device, programmed
+from qdt_sim.scenarios import load_device, start
 
 
 def record_for(dataset_id: str) -> MeasurementRecord:
@@ -111,23 +111,29 @@ def test_the_method_marks_peak_and_wing_and_takes_the_peak_nearest_the_target():
     assert result.method.name == NAME and result.method.parameters["side"] == "above"
 
 
-def test_the_simulated_sensors_peak_has_the_devices_width_and_wing():
-    """The default device's sensor at 10 µV, the other gates programmed, the gate stepped between the
-    neighbouring peaks (no dot changes charge there): its truth's peak, width, height and wing.
-    Positions within 1.5 % of the 0.16 V width, as 1 mV was of qdt-sim's 40 mV one."""
+def test_the_simulated_sensors_peak_has_the_devices_wing_and_sensitivity():
+    """The default device's sensor at 10 µV, the other gates at their starting levels, the gate stepped
+    ±4 mV through the peak nearest its starting level (ADR 0090; no dot changes charge there): its
+    truth's peak, wing and sensitivity. The peak is broadened by the sensor's tunnelling (its lifetime
+    width ~5 mV against a 0.1 mV thermal width), so its fitted sech² width is compared with the width
+    of the sech² that has the same wing, `(wing − peak) / WING_WIDTHS`, which is how Phantom places
+    its set point; the thermal `width_v` describes only a peak without lifetime broadening."""
     device = load_device()
-    truth = device.truth(near_v=programmed()["SG"], v_sd=10e-6).sensor
-    lo, hi = truth.peak_v - truth.period_v / 2, truth.peak_v + truth.period_v / 2
-    v = np.broadcast_to(np.array(device.programmed_point_v), (281, len(device.gate_names))).copy()
+    first = start(device)
+    truth = device.truth(near_v=first["SG"], v_sd=10e-6).sensor
+    same_wing = (truth.wing_v - truth.peak_v) / WING_WIDTHS
+    lo, hi = truth.peak_v - 4e-3, truth.peak_v + 4e-3
+    v = np.broadcast_to(
+        np.array([first[g] for g in device.gate_names]), (281, len(device.gate_names))
+    ).copy()
     v[:, device.gate_names.index("SG")] = np.linspace(lo, hi, 281)
     y = device.at(v, v_sd=10e-6).sensor_current_a
     result, _ = fit_sensor_peak(record_for("sg"), trace_payload(y, (lo, hi)))
     assert result.status == "ok", result.message
-    near = 0.015 * truth.width_v
-    height = truth.sensitivity_a_per_v * truth.width_v / SLOPE_FACTOR
+    near = 0.05 * same_wing
+    assert truth.lifetime_width_v > 10 * truth.width_v  # the regime this test is about
     assert result.estimate("peak_v").value == pytest.approx(truth.peak_v, abs=near)
-    assert result.estimate("width_v").value == pytest.approx(truth.width_v, rel=0.03)
-    assert result.estimate("height_a").value == pytest.approx(height, rel=0.03)
+    assert result.estimate("width_v").value == pytest.approx(same_wing, rel=0.08)
     assert result.estimate("wing_v").value == pytest.approx(truth.wing_v, abs=near)
     sensitivity = result.estimate("sensitivity_a_per_v").value
     assert sensitivity == pytest.approx(truth.sensitivity_a_per_v, rel=0.03)

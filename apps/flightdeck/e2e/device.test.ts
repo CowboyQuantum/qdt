@@ -60,16 +60,18 @@ it("draws the device's gates at their levels and follows a level set on the stan
   const level = (gate: string) => pane.locator(`path[data-gate=${gate}]`).getAttribute("data-level");
   await page.waitForFunction(() => document.querySelector(".pane[data-widget=device] path[data-gate=P1]")?.getAttribute("data-level") === "0.6");
 
-  // every gate of the device, at its programmed point; the colours span the lowest to the highest
+  // every gate of the device, the sensor's barriers and baths too (Phantom 0.3.0), at the stand's starting
+  // point (the programmed one, the sensor gate where it reads, ADR 0090); the colours span lowest to highest
   const gates = await pane.locator("path[data-gate]").evaluateAll((els) => els.map((e) => e.getAttribute("data-gate")));
-  expect(gates).toEqual(["B_L", "P1", "B_M", "P2", "B_R", "SG", "R_L", "R_R"]);
+  expect(gates).toEqual(["B_L", "P1", "B_M", "P2", "B_R", "SG", "R_L", "R_R", "SB_L", "SB_R", "SR_L", "SR_R"]);
+  expect(await level("SB_R")).toBe("0.3");
   expect(await level("B_L")).toBe("0.15");
   expect(await level("R_R")).toBe("0.7");
   expect(await pane.locator("[data-lo]").textContent()).toBe("0.150 V");
   expect(await pane.locator("[data-hi]").textContent()).toBe("0.700 V");
   expect(await pane.locator("[data-scale-nm]").getAttribute("data-scale-nm")).toBe("100");
   const [bar] = await pane.locator(".sbar .line").evaluate((e) => [e.getBoundingClientRect().width]);
-  expect(await pane.locator(".foot").textContent()).toContain("Phantom 0.2.0, device file two-dot-sige-a");
+  expect(await pane.locator(".foot").textContent()).toContain("Phantom 0.3.0, device file two-dot-sige-a");
 
   // to scale: P1 is 44 nm wide and 120 nm tall, R_L 218 nm wide; the drawn fills keep those ratios
   const drawn = (gate: string) => pane.locator(`path[data-gate=${gate}]`).evaluate((e) => [e.getBoundingClientRect().width, e.getBoundingClientRect().height]);
@@ -78,7 +80,7 @@ it("draws the device's gates at their levels and follows a level set on the stan
   expect(h1! / w1!).toBeCloseTo(120 / 44, 2);
   expect(wl! / w1!).toBeCloseTo(218 / 44, 2);
   expect(bar! / w1!).toBeCloseTo(100 / 44, 2);
-  expect(await pane.locator("[data-legend=SG]").textContent()).toBe("SG0.600 V");
+  expect(await pane.locator("[data-legend=SG]").textContent()).toBe("SG0.651 V"); // 0.650544 V, ADR 0090
   if (process.env.QDT_DEVICE_SHOT) await pane.screenshot({ path: process.env.QDT_DEVICE_SHOT });
 
   // a level set on the stand (not from this widget) shows within a poll, with a new colour

@@ -140,11 +140,13 @@ def sensor_operating_point(
     bias: str = "bias",
     sensor: str = "sensor",
     sg: tuple[float, float] = (-0.2, 0.2),
+    bias_v: tuple[float, float] = (-1.5e-3, 1.5e-3),
     n: int = 64,
     flank_offset_v: float = 0.02,
     near_v: float = 0.0,
 ) -> CalibrationNode:
-    """The sensor node: the Coulomb diamonds over the sensor-gate window `sg` read by `detect_diamonds`,
+    """The sensor node: the Coulomb diamonds over the sensor-gate window `sg` and the bias window
+    `bias_v` (reaching the diamonds' tips, about the charging energy over e) read by `detect_diamonds`,
     the sensor gate parked on the flank of the peak nearest `near_v` (ADR 0052). Its `sg_operating_v` is
     what the stability nodes hold."""
     return CalibrationNode(
@@ -153,7 +155,9 @@ def sensor_operating_point(
             "The charge sensor's Coulomb diamonds: period, charging energy, lever arm; the sensor gate "
             "parked on a peak's flank, where the current changes fastest with charge."
         ),
-        definition=coulomb_diamonds(sensor_gate=sensor_gate, bias=bias, sensor=sensor, sg=sg, n=n),
+        definition=coulomb_diamonds(
+            sensor_gate=sensor_gate, bias=bias, sensor=sensor, sg=sg, bias_v=bias_v, n=n
+        ),
         method=FitModel(
             name=DIAMONDS_METHOD, version=DIAMONDS_VERSION, parameters=DIAMONDS_DEFAULTS
         ),
@@ -256,6 +260,21 @@ def sensor_wing(
     )
 
 
+def held_sensor(
+    definition: SweepDefinition, sensor_gate: str | None, offset_v: float
+) -> tuple[SweepDefinition, tuple[str, ...], tuple[InputBinding, ...]]:
+    """A lattice node's sensor gate (ADR 0052, 0062, 0090): with `sensor_gate`, a held level in the
+    sweep bound `offset_v` from the wing `sensor-wing` fitted; without, the sweep, no dependency, no
+    binding."""
+    if sensor_gate is None:
+        return definition, (), ()
+    held = definition.model_copy(update={"levels": (FixedLevel(channel=sensor_gate, value=0.0),)})
+    binding = InputBinding(
+        node_id="sensor-wing", output="sg_operating_v", target="levels.0.value", offset=offset_v
+    )
+    return held, ("sensor-wing",), (binding,)
+
+
 def charge_lattice(
     *,
     instrument: str,
@@ -265,12 +284,14 @@ def charge_lattice(
     measure_ns: int = 2000,
     max_cross_ratio: float = 0.6,
     sensor_gate: str | None = None,
+    sensor_offset_v: float = 0.0,
 ) -> CalibrationNode:
     """The first node: a stability diagram in a window where both dots are occupied (`p1` on P1's DC
     line, `p2` the P2 pulse about P2's DC level), the sensor integrated `measure_ns` a pixel, the
     charge lattice from its transitions (ADR 0029), the virtual-gate matrix as the decision. With
-    `sensor_gate`, the node holds that gate at the wing `sensor-wing` fitted (ADR 0052, 0062): a held
-    level in the sweep, bound from the upstream outcome."""
+    `sensor_gate`, the node holds that gate `sensor_offset_v` from the wing `sensor-wing` fitted (ADR
+    0052, 0062, 0090): a held level in the sweep, bound from the upstream outcome. A sensor whose peak
+    the plungers carry it across reads the lattice from the peak's tail, below the wing."""
     definition = stability_diagram(
         instrument=instrument,
         p1=p1,
@@ -280,16 +301,7 @@ def charge_lattice(
         measure_ns=measure_ns,
         name="charge lattice",
     )
-    depends_on: tuple[str, ...] = ()
-    inputs: tuple[InputBinding, ...] = ()
-    if sensor_gate is not None:
-        definition = definition.model_copy(
-            update={"levels": (FixedLevel(channel=sensor_gate, value=0.0),)}
-        )
-        depends_on = ("sensor-wing",)
-        inputs = (
-            InputBinding(node_id="sensor-wing", output="sg_operating_v", target="levels.0.value"),
-        )
+    definition, depends_on, inputs = held_sensor(definition, sensor_gate, sensor_offset_v)
     return CalibrationNode(
         node_id="charge-lattice",
         description=(
@@ -314,35 +326,41 @@ def virtual_lattice(
     n: int = 96,
     measure_ns: int = 2000,
     max_residual_ratio: float = 0.05,
+    sensor_gate: str | None = None,
+    sensor_offset_v: float = 0.0,
 ) -> CalibrationNode:
     """The second node: the same window swept in virtual gates built from `charge-lattice`'s
-    compensation coefficients; the transitions must come out axis-aligned (ADR 0049)."""
+    compensation coefficients; the transitions must come out axis-aligned (ADR 0049). With
+    `sensor_gate`, the sensor is held where `charge-lattice` holds it (`held_sensor`, ADR 0090)."""
+    definition = stability_diagram(
+        instrument=instrument,
+        p1=p1,
+        p2=p2,
+        n_outer=n,
+        n_inner=n,
+        measure_ns=measure_ns,
+        name="virtual-gate lattice",
+        virtual=True,
+    )
+    definition, sensor_depends, sensor_inputs = held_sensor(definition, sensor_gate, sensor_offset_v)
     return CalibrationNode(
         node_id="virtual-lattice",
         description=(
             "The stability diagram in virtual gates: P2's DC line follows P1 by c_21, P1's pulse line "
             "follows the P2 pulse by c_12; the honeycomb's residual cross ratios must be near zero."
         ),
-        definition=stability_diagram(
-            instrument=instrument,
-            p1=p1,
-            p2=p2,
-            n_outer=n,
-            n_inner=n,
-            measure_ns=measure_ns,
-            name="virtual-gate lattice",
-            virtual=True,
-        ),
+        definition=definition,
         method=FitModel(
             name=TRANSITIONS_METHOD, version=TRANSITIONS_VERSION, parameters=TRANSITIONS_DEFAULTS
         ),
         decision=decision_rule(STRAIGHTENED_NAME, max_residual_ratio=max_residual_ratio),
-        depends_on=("charge-lattice",),
+        depends_on=("charge-lattice", *sensor_depends),
         inputs=(
             InputBinding(node_id="charge-lattice", output="c_21", target="axes.0.couplings.P2"),
             InputBinding(
                 node_id="charge-lattice", output="c_12", target="stage.sequence.body.0.level.scale"
             ),
+            *sensor_inputs,
         ),
     )
 
@@ -358,7 +376,7 @@ TEMPLATES: dict[str, Callable[..., CalibrationNode]] = {
         instrument=instrument, sensor_gate=sensor_gate, **w
     ),
     "virtual-lattice": lambda instrument, sensor_gate, **w: virtual_lattice(
-        instrument=instrument, **w
+        instrument=instrument, sensor_gate=sensor_gate, **w
     ),
 }
 """Node id → constructor taking the stand's sequencer instrument id, its sensor-gate channel (None

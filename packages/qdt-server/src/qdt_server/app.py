@@ -33,16 +33,18 @@ from qdt_schemas.stand import ChannelMap, InstrumentConfig, StandConfig
 from qdt_sim.scenarios import (
     DEFAULT_DEVICE,
     DEVICE_ID,
+    DIAMONDS_BIAS_V,
     LATTICE_SPAN_V,
     MEASURE_NS,
+    SENSOR_TAIL_V,
     SENSOR_WINDOW_V,
     about,
     default_device,
     default_stand,
     layout,
     load_device,
-    programmed,
     provenance,
+    start,
 )
 
 from . import catalogue
@@ -56,20 +58,23 @@ log = logging.getLogger(__name__)
 SIMULATED_NODES: dict[str, dict[str, Any]] = {
     "sensor-operating-point": {
         "sg": about("SG", SENSOR_WINDOW_V),
-        "near_v": programmed()["SG"],
-        "flank_offset_v": 0.1,
+        "bias_v": DIAMONDS_BIAS_V,
+        "near_v": start()["SG"],
+        "flank_offset_v": 1.5e-3,
     },
-    "sensor-wing": {"span_v": 0.4},
+    "sensor-wing": {"span_v": 4e-3, "n": 201},
     "charge-lattice": {
         "p1": about("P1", (-LATTICE_SPAN_V, LATTICE_SPAN_V)),
         "p2": (-LATTICE_SPAN_V, LATTICE_SPAN_V),
         "n": 64,
         "measure_ns": 10 * MEASURE_NS,
+        "sensor_offset_v": SENSOR_TAIL_V,
     },
 }
 """The windows the simulated stand's tune-up nodes take, by node id (`qdt_tuning.TEMPLATES`, ADR 0088):
-about the default device's programmed point and sized to it (plungers ~20 e/V, a sensor period ~1 V),
-integrating 10 ms a lattice pixel, where Phantom's readout noise is ~5 pA. `virtual-lattice` takes the
+about the default device's starting point (`start`, ADR 0090) and sized to it (plungers ~20 e/V; a sensor
+period ~36 mV, a charging energy ~9 meV, peaks a few millivolts wide by their tunnelling; the lattice read
+`SENSOR_TAIL_V` below the wing), integrating 10 ms a lattice pixel, where Phantom's readout noise is ~5 pA. `virtual-lattice` takes the
 charge lattice's window."""
 SIMULATED_NODES["virtual-lattice"] = SIMULATED_NODES["charge-lattice"]
 
@@ -117,16 +122,18 @@ def simulated_stand() -> StandConfig:
 def simulated_backends(options: dict[str, AttrValue]) -> Mapping[str, Any]:
     """The Step 4b backend: a run on the committed device `device` (default the default device, loaded
     once; refused unless its file hashes to `device_sha256` when a scenario gives one), with noise seed
-    `seed` and noise by option; and the simulated scope, recording a droop per `SCOPE_OPTIONS`."""
+    `seed`, noise and charge `dynamics` (off by default, ADR 0090) by option; and the simulated scope,
+    recording a droop per `SCOPE_OPTIONS`."""
     seed = int(options.get("seed", 0))
     noise = bool(options.get("noise", True))
+    dynamics = bool(options.get("dynamics", False))
     sha256 = options.get("device_sha256")
     device = load_device(
         str(options.get("device", DEFAULT_DEVICE)), str(sha256) if sha256 else None
     )
     scope = {k: float(options.get(k, v)) for k, v in SCOPE_OPTIONS.items()}
     return {
-        DEVICE_ID: default_device(seed, noise, device=device),
+        DEVICE_ID: default_device(seed, noise, device=device, dynamics=dynamics),
         SCOPE_ID: SimulatedWaveformSense(
             noise=scope["scope_noise_v"] if noise else 0.0,
             seed=seed,

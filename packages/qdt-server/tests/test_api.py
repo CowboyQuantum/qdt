@@ -17,7 +17,7 @@ from qdt_schemas.control import Run
 from qdt_schemas.envelope import MeasurementRecord
 from qdt_schemas.modeling import AnalysisResult
 from qdt_server import Settings, create_app
-from qdt_sim.scenarios import DEVICE_ID, diamonds, stability
+from qdt_sim.scenarios import DEVICE_ID, diamonds, load_device, stability, start
 
 LOOPBACK = ("127.0.0.1", 50000)
 """The test client's peer: this computer, so commands need no token (ADR 0074). The default peer,
@@ -150,7 +150,9 @@ def test_diamonds_run_through_the_api_on_the_device_a_run_names(client):
     assert r.status_code == 201, r.text
     result = AnalysisResult.model_validate(r.json())
     assert result.status == "ok", result.message
-    assert result.estimate("charging_energy").value == pytest.approx(1e-3, rel=0.05)
+    b = load_device("two-dot-sige-b")
+    e_c = b.truth(near_v=start(b)["SG"]).sensor.charging_energy_ev  # ~9 meV on Phantom 0.3.0
+    assert result.estimate("charging_energy").value == pytest.approx(e_c, rel=0.05)
 
 
 def edited(outer: bool = True) -> dict:
@@ -733,7 +735,7 @@ def test_the_simulated_device_record_says_which_phantom_made_it_and_truth_stays_
 
     (device,) = client.get("/devices").json()
     attrs = device["attrs"]
-    assert attrs["phantom_version"] == "0.2.0" and attrs["device_file"] == "two-dot-sige-a"
+    assert attrs["phantom_version"] == "0.3.0" and attrs["device_file"] == "two-dot-sige-a"
     assert attrs["device_sha256"] == DEVICES["two-dot-sige-a"]
     assert attrs["phantom.charge.ci"] >= 1 and attrs["phantom.readout.sensor"] >= 1
     openapi = client.get("/openapi.json").text
@@ -756,10 +758,21 @@ def test_the_device_layout_is_the_simulated_devices_and_a_stand_without_one_answ
 
     got = client.get("/device/layout").json()
     assert got == layout().model_dump(mode="json")
-    assert got["device_id"] == DEVICE_ID and len(got["gates"]) == 8
+    assert got["device_id"] == DEVICE_ID and len(got["gates"]) == 12
     levels = {c["channel"] for c in client.get("/levels/state").json()}
     assert {g["channel"] for g in got["gates"]} <= levels
     bare = create_app(Settings(root=tmp_path / "bare", stream_port=0, layout=None))
     with TestClient(bare, client=LOOPBACK) as c:
         r = c.get("/device/layout")
         assert r.status_code == 404 and "no layout" in r.json()["detail"]
+
+
+def test_the_dynamics_option_turns_phantoms_charge_dynamics_on_and_the_stand_starts_reading():
+    """ADR 0090: the run option `dynamics` (off by default) reaches the Phantom session; every run
+    starts with the sensor gate where the sensor reads (`qdt_sim.scenarios.start`)."""
+    from qdt_server.app import simulated_backends
+
+    off = simulated_backends({"seed": 1})[DEVICE_ID]
+    on = simulated_backends({"seed": 1, "dynamics": True})[DEVICE_ID]
+    assert not off.physics.session.dynamics and on.physics.session.dynamics
+    assert off.levels()["SG"] == on.levels()["SG"] == start()["SG"]

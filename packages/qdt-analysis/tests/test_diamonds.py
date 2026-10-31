@@ -25,7 +25,7 @@ from qdt_sim.scenarios import (
     default_stand,
     diamonds,
     load_device,
-    programmed,
+    start,
 )
 
 
@@ -100,13 +100,13 @@ def test_recovers_injected_diamonds():
 
 
 def sweep(seed: int, noise: bool):
-    """The default device's sensor diamonds through the real sweep path, about the programmed sensor
+    """The default device's sensor diamonds through the real sweep path, about the starting sensor
     gate, and the device's truth for its sensor there."""
     plan = compile_sweep(diamonds(64, 64), default_stand(), {"simulated": SimulatedEmitter()})
     device = default_device(seed=seed, noise=noise, sample_charge=False)
     data = assemble(plan.dataset, Executor(plan, {DEVICE_ID: device}).run().frames())
     payload = Payload(plan.dataset, {"I_sensor": data["I_sensor"].values}, (), plan, None)
-    truth = load_device().truth(near_v=programmed()["SG"]).sensor
+    truth = load_device().truth(near_v=start()["SG"]).sensor
     return payload, data["SG"].values, data["V_sd"].values, truth
 
 
