@@ -36,9 +36,18 @@ ADR 0087, 0088). Steps 0–6 and 6b are DONE.
   - The guide (`docs/guides/simulated-stand.md`) gained a section on merging and separating the dots
     with `B_M`, a troubleshooting row for the merged corner, and new timings. Its pictures were
     regenerated with `pnpm screenshots`.
+- **`make_sim_devices.py --check` on Linux:** one of CI's runners recompiled three values of the new shape
+  grid 1.2·10⁻⁹ away from the committed (Windows) file, so the check failed in one of five runs. Each
+  shape-grid change is now held within 10⁻⁹ of its quantity's largest change along that gate (ADR 0091),
+  and a failure names every value that differs.
 - **Filed:** Phantom #69, below the compiled plungers `B_M` stops raising the interdot coupling. A comment
   on #160: `pnpm screenshots` writes its pictures and then hangs on Windows, because `backend.kill()`
   kills `uv` but not the server it launched.
+- **#152 came back, with its diagnosis.** It had been closed automatically when #156 merged, but #156 only
+  added the diagnostic. On #173 the capture end-to-end test failed once: "no 'replaying' message within
+  30 s; the strip says 'run 6a03055f completed'; … a direct replay answered in 46 ms". So the replay
+  route is fast, and the strip's run message overwrites "replaying" after the overlays click. The agent
+  could not reopen the issue (the permission was refused); the human should reopen it.
 - Checks: `uv run pytest` 543 passed, 4 skipped. `bash scripts/check_all.sh` stops on Windows at the
   provenance check's match inside the git-ignored `.ruff_cache` and at `check_vocabulary`'s backslash paths
   (#137, #125). Every remaining check passes when run by hand, and the provenance search passes with
@@ -55,6 +64,8 @@ ADR 0087, 0088). Steps 0–6 and 6b are DONE.
   (Phantom #64, still open on 0.4.0). The option is off by default, and the guide says so.
 - One noisy 64 × 64 lattice estimate scatters by about ±0.05 on dot 1's cross ratio (Phantom #50); the
   noisy tests hold only that much.
+- #152: the capture end-to-end test sometimes fails on CI waiting for "replaying" (diagnosed above). A
+  rerun of the failed job passes.
 - #166: the control end-to-end test fails on a fast machine. It passed in this session.
 - **A hazard for agents on the Mac measurement computer:** its shell sets `QDT_REGISTRY_DSN` and
   `QDT_PAYLOAD_STORE` to the lab registry. The Python server tests remove them (`conftest.py`), but the
@@ -65,10 +76,13 @@ ADR 0087, 0088). Steps 0–6 and 6b are DONE.
   pictures (#160). Everything else: `gh issue list`.
 
 ## Next action
-**Agent, next session:** go back to Step 6c: deliverable 11 (#76), then 14 (#112), then 15 (#114), on a
-branch `step-6c/<short-name>`. When a Phantom release fixes #64 or #69, adopt it in a pull request of its
-own (ADR 0087).
+**Agent, next session:** fix #152 first, on a branch `step-6c/<short-name>`, with a regression test and
+`Fixes #152`: where Flight Deck's strip writes a run's status into `#message`, a run that has already
+completed must not replace a later message such as "replaying". Then go back to Step 6c: deliverable 11
+(#76), then 14 (#112), then 15 (#114). When a Phantom release fixes #64 or #69, adopt it in a pull request
+of its own (ADR 0087).
 **Human:**
+- Reopen #152; the agent's attempt was refused by the permission check.
 - Merge this pull request (#172, Phantom 0.4.0). Then restart the simulated stand
   (`uv run python -m qdt_server`) and follow the guide's new section *Merge and separate the dots with
   the middle barrier*: set `B_M` to 0.14 V and then 0.24 V in Levels, and sweep the stability diagram each
