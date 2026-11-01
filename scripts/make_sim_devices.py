@@ -49,6 +49,18 @@ def same(a, b) -> bool:
     return a == b
 
 
+def differences(a, b, path: str = ""):
+    """Every place two parsed device files disagree by `same`, as `path: a against b`."""
+    if isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys():
+        for k in a:
+            yield from differences(a[k], b[k], f"{path}.{k}")
+    elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        for i, (x, y) in enumerate(zip(a, b)):
+            yield from differences(x, y, f"{path}[{i}]")
+    elif not same(a, b):
+        yield f"{path}: {a!r} against {b!r}"
+
+
 def set_point(text: str) -> float:
     """Where a fresh stand holds a device file's sensor gate, to 1 µV (`SENSOR_SET_V`, ADR 0090):
     `SENSOR_TAIL_V` from the wing of the sensor's peak a period above Phantom's set point."""
@@ -78,10 +90,12 @@ if __name__ == "__main__":
             )
             print(f'  SENSOR_SET_V "{name}": {set_point(text)}')
             continue
-        if not path.exists() or not same(
-            json.loads(path.read_text(encoding="utf-8")), json.loads(text)
-        ):
-            bad.append(f"{name}: the recipe compiles to other text than the committed file")
+        found = path.exists() and list(
+            differences(json.loads(path.read_text(encoding="utf-8")), json.loads(text))
+        )
+        if found is False or found:
+            where = f": {len(found)} values, first {'; '.join(found[:5])}" if found else ""
+            bad.append(f"{name}: the recipe compiles to other text than the committed file{where}")
         elif hashlib.sha256(path.read_bytes()).hexdigest() != DEVICES.get(name):
             bad.append(f"{name}: the file's SHA-256 is not the one qdt_sim.scenarios.DEVICES pins")
         elif not math.isclose(set_point(text), SENSOR_SET_V.get(name, math.nan), abs_tol=2e-6):
