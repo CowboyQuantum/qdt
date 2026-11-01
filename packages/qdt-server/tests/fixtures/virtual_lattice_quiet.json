@@ -5,7 +5,7 @@
     "scenario_id": "default-quiet",
     "description": "the default device, noise off",
     "device": "two-dot-sige-a",
-    "device_sha256": "bc0a65576fdf4f5ebad767eaf71a53929d1a0bc1449870225dcda4c911226bd2",
+    "device_sha256": "9c94f0cb3fa3f41b4fde9a75e18377385fde9a2bd79e0317b990f05326cca33d",
     "seed": 0,
     "noise": false,
     "attrs": {}
@@ -13,21 +13,21 @@
   "node_id": "virtual-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "257ec41913bf4257afe0aeae67094478",
+    "outcome_id": "472d58f7afa4491b849f3395c7566443",
     "node_id": "virtual-lattice",
-    "tuneup_id": "4b1825df5e1b41df8ef3e8bcc0b283ca",
+    "tuneup_id": "d52077c4a5d14f71999a0010f63c761f",
     "scenario_id": "default-quiet",
-    "record_id": "885ebce6bcc34b8e9717fe709dabbb24",
-    "result_id": "282e079107c14eb08e7e095a2a779edd",
+    "record_id": "7ced835fbe8647768f7391c28886824a",
+    "result_id": "870eb09df0204f30a8cfe2ab678f6566",
     "status": "accepted",
-    "message": "residual cross ratios -0.003, -0.003",
+    "message": "residual cross ratios -0.012, -0.007",
     "outputs": {
-      "residual_a": -0.0034962377620619263,
-      "residual_b": -0.0029551131858734183,
-      "l_11": 20.17403076212055,
-      "l_22": 26.083175622279654
+      "residual_a": -0.012466311066248648,
+      "residual_b": -0.006899944613822722,
+      "l_11": 20.10698307382215,
+      "l_22": 25.92770147248946
     },
-    "created_at": "2026-10-31T17:47:50.082016Z",
+    "created_at": "2026-11-01T01:22:40.574493Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.straightened"
@@ -37,51 +37,51 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 20.17403076212055,
+      "value": 20.10698307382215,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": -0.07053320816352482,
+      "value": -0.2506599056020633,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": -0.0770787362108507,
+      "value": -0.1788997041239071,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 26.083175622279654,
+      "value": 25.92770147248946,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": -0.0034962377620619263,
+      "value": -0.012466311066248648,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": -0.0029551131858734183,
+      "value": -0.006899944613822722,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "residual_a": 2.2003516961129015e-17,
-    "residual_b": 7.343671644029056e-18,
-    "l_11": 20.18264673936362,
-    "l_22": 26.07877945727835
+    "residual_a": 0.0,
+    "residual_b": -1.2348527647305944e-17,
+    "l_11": 20.182646739359377,
+    "l_22": 26.078779457282497
   },
-  "created_at": "2026-10-31T17:47:50.086162Z"
+  "created_at": "2026-11-01T01:22:40.592952Z"
 }

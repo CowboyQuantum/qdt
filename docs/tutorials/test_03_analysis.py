@@ -47,10 +47,11 @@ assert output.dataset.source.kind == "analysis" and result.output is None
 
 # 4. The numbers: electrons per volt on each dot from each plunger, and the cross-capacitance ratios
 #    a virtual-gate matrix is built from. The simulated device knows the truth (in a test only; a
-#    server never shows it).
+#    server never shows it). This ratio is dot 1's, whose lines the device's slow noise bends between
+#    rows, so one noisy map gets it only to about 0.05 (ADR 0091).
 truth = load_device().truth(("P1", "P2")).charge_lattice_e_per_v
 ratio = result.estimate("cross_ratio_a").value
-assert abs(ratio - truth[0][1] / truth[0][0]) < 0.02
+assert abs(ratio - truth[0][1] / truth[0][0]) < 0.06
 
 # 5. Keep it. The registry writes the output payload to its store and fills `result.output`; results and
 #    their outputs sync to the server with everything else. The output reads back as a Dataset, and

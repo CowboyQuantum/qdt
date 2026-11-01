@@ -11,6 +11,8 @@ from qdt_schemas.activity import SequencerParameter, SequencerProgram, Sequencer
 from qdt_sim import SimulatedDevice
 from qdt_sim.scenarios import (
     DEVICE_ID,
+    DEVICES,
+    LATTICE_SPAN_V,
     SENSOR_SET_V,
     default_device,
     default_stand,
@@ -421,6 +423,26 @@ def test_a_fresh_stand_starts_at_the_programmed_point_with_the_sensor_gate_where
     assert abs(float(current())) > 1e3 * abs(float(current(SG=programmed()["SG"])))
 
 
+def test_the_stand_starts_where_the_middle_barrier_sets_the_honeycomb():
+    """ADR 0091: on Phantom 0.4.0 the plungers move the interdot coupling as much as B_M does, so part
+    of a stability window about the start is one merged dot (Phantom's triple-point splitting near 1).
+    The stand keeps the programmed plungers, where B_M moves that part: closing it shrinks, opening it
+    grows. Below the compiled plungers B_M barely acts, which is why the start is not moved there."""
+
+    def merged(device, **moved):
+        x, at = np.linspace(-LATTICE_SPAN_V, LATTICE_SPAN_V, 41), start(device) | moved
+        v = np.tile([at[g] for g in device.gate_names], (x.size, x.size, 1))
+        v[..., device.gate_names.index("P1")] += x[:, None]
+        v[..., device.gate_names.index("P2")] += x[None, :]
+        return float((np.asarray(device.at(v).interdot_splitting) > 0.5).mean())
+
+    for name in DEVICES:
+        device = load_device(name)
+        b_m = programmed(device)["B_M"]
+        assert 0.3 < merged(device) < 0.5, name
+        assert merged(device, B_M=b_m - 0.06) < merged(device) - 0.15 < merged(device, B_M=b_m + 0.04)
+
+
 def test_the_noise_seed_replays_a_realisation_and_another_seed_draws_a_new_one():
     def read(seed):
         _, out = run(stability(3, 4, measure_ns=2000), default_device(seed=seed))
@@ -465,7 +487,7 @@ def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel(
         assert drawn.material == known["material"] == "SiGe"
         assert list(drawn.channel_nm) == list(known["channel_nm"])
         assert list(drawn.sensor_nm) == list(known["sensor_nm"])
-        assert drawn.source == f"Phantom 0.3.0, device file {name}"
+        assert drawn.source == f"Phantom 0.4.0, device file {name}"
         logical = {c.logical: c for c in default_stand().channels}
         for g in drawn.gates:
             assert logical[g.channel].quantity == "voltage"

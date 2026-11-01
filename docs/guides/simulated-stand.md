@@ -4,7 +4,7 @@ This guide starts qdt's simulated stand on your own computer and walks through c
 Deck, qdt's browser front end. By the end you will have:
 - measured a stability diagram and found its charge transitions;
 - measured the charge sensor's Coulomb diamonds;
-- moved the operating point;
+- moved the operating point, and opened and closed the middle barrier to merge and separate the dots;
 - run the four-node tune-up.
 
 Nothing here needs an instrument. The stand runs the same server, the same run queue and the same
@@ -14,11 +14,13 @@ registry as the bench, so what you learn here carries over to a real stand.
 
 The stand is one simulated instrument wired to a simulated device. The device comes from
 [Phantom](https://github.com/CowboyQuantum/phantom), a separate simulator of gate-defined quantum dots that
-qdt pins at version `v0.3.0` (ADR 0087, ADR 0088, ADR 0090). It is a silicon–germanium double dot with a
-charge sensor that is a quantum dot of its own:
+qdt pins at version `v0.4.0` (ADR 0087, ADR 0088, ADR 0090, ADR 0091). It is a silicon–germanium double
+dot with a charge sensor that is a quantum dot of its own:
 
 - **Twelve gates.** The plungers `P1` and `P2` set each dot's energy. The barriers `B_L`, `B_M` and `B_R`
   separate the dots from each other and from the leads, and they set how fast electrons tunnel through.
+  They also move and reshape the dots, and the middle barrier `B_M` sets how strongly the two dots are
+  coupled to each other.
   The reservoir gates `R_L` and `R_R` fill the leads. The sensor gate `SG` tunes the charge sensor's dot.
   The sensor barriers `SB_L` and `SB_R` sit on either side of it and set how fast electrons tunnel into
   and out of the sensor. The sensor bath gates `SR_L` and `SR_R` fill the leads the sensor draws its
@@ -35,9 +37,16 @@ each dot gains one electron for every 40 to 50 mV on its plunger. The sensor's p
 on `SG`. Each peak is a few millivolts wide, because electrons tunnel through the sensor barriers fast
 enough to broaden it, and it turns on steeply as `SG` rises. One electron on a dot moves the sensor by more
 than a peak's width. So the stand starts `SG` on the low side of a peak, about 10 mV below its steepest
-point, where the plungers' own pull on the sensor and each electron's kick keep it on one slope. The readout noise is realistic too: it falls as the square root of the integration time, so a 2 µs
-reading is mostly noise and a 1 ms reading is clean. Two devices are committed: `two-dot-sige-a`, the
-default, and `two-dot-sige-b`, a second disorder draw of the same design.
+point, where the plungers' own pull on the sensor and each electron's kick keep it on one slope. The
+readout noise is realistic too: it falls as the square root of the integration time, so a 2 µs reading is
+mostly noise and a 1 ms reading is clean. Two devices are committed: `two-dot-sige-a`, the default, and
+`two-dot-sige-b`, a second disorder draw of the same design.
+
+The coupling between the two dots follows every gate, and the plungers raise it almost as strongly as
+`B_M` does. So in a stability diagram 0.15 V either side of where the stand starts, the lower left shows
+two separate dots, and the upper right, about 40 % of the window, shows one merged dot: there the two dots
+have joined into a single larger dot. Opening `B_M` grows the merged part and closing it shrinks it
+(section 4).
 
 ## Before you start
 
@@ -143,7 +152,9 @@ the strip says `completed → record …`, the record is in the registry.
 ![The stability diagram, measured live](img/03-stability.png)
 
 The steps sit on top of a strong slope, because the plungers also move the sensor. Choose the derivative
-in the plot's ⚙ menu to make the transitions stand out.
+in the plot's ⚙ menu to make the transitions stand out. The honeycomb of charge transitions fills the
+lower left. Towards the upper right the steps turn into fainter diagonal lines, where the two dots have
+merged into one.
 
 ## 2. Find the charge transitions
 
@@ -158,8 +169,10 @@ in the plot's ⚙ menu to make the transitions stand out.
 ![The detected transitions drawn on the map](img/04-transitions.png)
 
 The estimates are electrons per volt on each dot from each plunger. On the default device they come out
-near 20.3 and 26.3 on the diagonal, which is the device's own lattice within half a percent. The result
-is stored with the record, and the method's name, version and every parameter are kept with it.
+near 20.4 and 26.3 on the diagonal, which is the device's own lattice within half a percent. The two
+cross terms come out only within about 6 %, because the merged corner makes the honeycomb uneven and the
+method assumes it repeats evenly. The result is stored with the record, and the method's name, version and every
+parameter are kept with it.
 
 ## 3. Measure the sensor's Coulomb diamonds
 
@@ -217,6 +230,21 @@ The drawing follows the stand: a level set in Levels, by a click on a map, or by
 within two seconds. It shows DC levels only, so a pulse line's offset is not drawn. A real stand has no
 layout yet, and the widget says so.
 
+### Merge and separate the dots with the middle barrier
+
+`B_M` sets how strongly the two dots are coupled. Opening it lets an electron pass between the dots more
+easily. That widens the short edges where the honeycomb's lines meet, and past a point it joins the two
+dots into one, whose transitions are diagonal lines.
+
+1. In **Levels**, set `B_M` to `0.14` and press **set**. It starts at its programmed 0.2 V.
+2. Run the stability diagram of step 1 again, with the same windows and `{"seed": 1, "noise": false}`.
+   The honeycomb now reaches further up and to the right, and only about a fifth of the window is merged.
+3. Set `B_M` to `0.24` and run it again. More than half of the window is now one merged dot.
+4. Set `B_M` back to `0.2` when you are done. **release** would leave it where it is.
+
+The sensor keeps reading across this range. `B_L` and `B_R` move and reshape the dots too, so a barrier
+gate moves the plunger lines further than its coupling to the dots alone would.
+
 ## 5. Run the tune-up
 
 The tune-up runs four calibration nodes in order on the server. Each node's sweep is an ordinary run on
@@ -230,8 +258,9 @@ the stream, so you can watch it:
 
 In **Tune-up**, leave the four nodes ticked, set **options** to `{"seed": 2, "noise": false}` and press **run
 tune-up**. The sensor nodes need noise off, because their peak fit does not survive the device's noise.
-The node windows come from the server and already suit the device. The whole tune-up takes about 20
-seconds.
+The node windows come from the server and already suit the device. The whole tune-up takes under a
+minute. Part of the lattice nodes' window is the merged corner, so the lattice comes out within about
+1 % on the diagonal and about 6 % on the cross terms.
 
 ![The tune-up's four nodes, all accepted](img/07-tuneup-result.png)
 
@@ -250,7 +279,7 @@ stand it takes:
 |---|---|
 | `seed` | The noise seed: the same seed gives the same noise, another seed a new realisation. The device's own disorder is fixed by its file. |
 | `noise` | `true` or `false`: whether the device's noise is on. |
-| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. On Phantom 0.3.0 a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. A sweep takes about ten times longer with dynamics on. |
+| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. With `B_M` open, dot 1 also fills through dot 2, so closing `B_L` alone does not isolate it: close `B_L` and `B_M` together. On Phantom 0.4.0, as on 0.3.0, a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. A sweep takes about ten times longer with dynamics on: a 48 × 48 stability diagram takes about 3 s without and 26 s with. |
 | `device` | Which committed device to load: `two-dot-sige-a` (the default) or `two-dot-sige-b`. Any other name fails the run. |
 | `campaign` | A label kept on the record, to find it later. |
 | `tau_s`, `droop_v`, `scope_noise_v` | The simulated scope's recorded droop: its time constant in seconds, its step in volts and its noise in volts. |
@@ -271,6 +300,7 @@ stand it takes:
 |---|---|
 | The map is speckled noise. | The reading is too short for the noise. Set `"noise": false`, or raise the `measure` duration in Pulse to 1 ms or more. |
 | The map is a smooth slope with no steps. | The window is away from the electrons. Type a window about the channel's level in **Levels**, such as 0.45 to 0.75 V for `P1` as in step 1. |
+| The upper right of a stability diagram has faint diagonal lines instead of a honeycomb. | There the two dots have merged into one, because the plungers raise the coupling between them. Close `B_M` a little in **Levels**, for example to 0.14 V, or move the window lower. |
 | Flight Deck shows no stand, or every command fails. | The server is not running, or it is on another port. Start `python -m qdt_server`, or pass `?api=` and `?ws=` in Flight Deck's address. |
 | `address already in use` when starting. | Another server is running. Stop it, or start this one with `--port` and `--stream-port`. |
 | A command from another computer is refused. | Commands from another computer need a token. Run `uv run python -m qdt_server --add-token "<desk>"`, start the server with `--host 0.0.0.0`, and open Flight Deck there with `?token=<token>` once. |
@@ -280,7 +310,7 @@ stand it takes:
 
 - [Tutorials](../tutorials/README.md) do the same things from Python scripts, and CI runs them.
 - [The Phantom cutover](../steps/06d-phantom-cutover.md), ADR 0087 and ADR 0088 explain how the simulator
-  is built and pinned.
+  is built and pinned. ADR 0090 and ADR 0091 explain what each Phantom release changed for the stand.
 - On the bench, the same server runs real instruments: `python -m qdt_server --stand stand.json
   --device-id <id>` (see [BENCH.md](../BENCH.md)). Flight Deck does not change.
 
@@ -296,4 +326,4 @@ corepack pnpm screenshots
 It builds Flight Deck and starts its own stand server with an empty registry on free ports. Then it drives
 a headless Chrome through steps 1 to 5 and writes the eight files in `docs/guides/img/`, reduced to 256
 colours. It prints the estimates it saw, so you can check the numbers this guide quotes. A step that
-does not complete stops it with an error, and no picture is changed. It takes about 30 seconds.
+does not complete stops it with an error, and no picture is changed. It takes about a minute.

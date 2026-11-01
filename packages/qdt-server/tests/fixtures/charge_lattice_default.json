@@ -5,7 +5,7 @@
     "scenario_id": "default-occupied-window",
     "description": "the default device with its noise, noise seed 1; the charge-lattice node's window",
     "device": "two-dot-sige-a",
-    "device_sha256": "bc0a65576fdf4f5ebad767eaf71a53929d1a0bc1449870225dcda4c911226bd2",
+    "device_sha256": "9c94f0cb3fa3f41b4fde9a75e18377385fde9a2bd79e0317b990f05326cca33d",
     "seed": 1,
     "noise": true,
     "attrs": {}
@@ -13,27 +13,27 @@
   "node_id": "charge-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "1d356cb4a68b4bc486f5822aac0e7104",
+    "outcome_id": "83b6068f9a5640daa3e8733b0f4b322d",
     "node_id": "charge-lattice",
-    "tuneup_id": "c1ffc588edf64da9829af1c3589a2a4e",
+    "tuneup_id": "39afaf0b10654c65b25b59fcf6b7f3cc",
     "scenario_id": "default-occupied-window",
-    "record_id": "31f3b88f01034a5fb6d3a8698f3b9da3",
-    "result_id": "e98dcfbf140047c28c577622e3399994",
+    "record_id": "ee5014e8743740158fcab33e3d680a59",
+    "result_id": "01c606faaff04f45b1da9ea56d0dd6ef",
     "status": "accepted",
-    "message": "lattice condition 1.37, cross ratios 0.108 and 0.063",
+    "message": "lattice condition 1.42, cross ratios 0.072 and 0.068",
     "outputs": {
-      "l_11": 20.107455395913746,
-      "l_12": 2.1725712866046507,
-      "l_21": 1.6621871219653315,
-      "l_22": 26.327288509833195,
-      "m_11": 1.0068685247382252,
-      "m_12": -0.10879017773063403,
-      "m_21": -0.06356917062336373,
-      "m_22": 1.0068685247382252,
-      "c_21": -0.06313552272367538,
-      "c_12": -0.1080480470465777
+      "l_11": 19.26912510828855,
+      "l_12": 1.3894778697352024,
+      "l_21": 1.8026055169773088,
+      "l_22": 26.57527506595021,
+      "m_11": 1.0049152089447506,
+      "m_12": -0.0724634583014068,
+      "m_21": -0.06816357291666073,
+      "m_22": 1.0049152089447508,
+      "c_21": -0.06783017344143738,
+      "c_12": -0.07210902736510455
     },
-    "created_at": "2026-10-31T17:47:45.555287Z",
+    "created_at": "2026-11-01T01:22:25.016598Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.virtual_gates"
@@ -43,57 +43,57 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 20.107455395913746,
+      "value": 19.26912510828855,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": 2.1725712866046507,
+      "value": 1.3894778697352024,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": 1.6621871219653315,
+      "value": 1.8026055169773088,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 26.327288509833195,
+      "value": 26.57527506595021,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": 0.10804804704657768,
+      "value": 0.07210902736510456,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": 0.06313552272367538,
+      "value": 0.06783017344143738,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "l_11": 20.340959021282163,
-    "l_12": 2.436244218646832,
-    "l_21": 1.707946863667374,
-    "l_22": 26.283340887642186,
-    "m_11": 1.0078439802253376,
-    "m_12": -0.12070984792570619,
-    "m_21": -0.06549182512415094,
-    "m_22": 1.0078439802253378,
-    "c_21": -0.06498210676369573,
-    "c_12": -0.1197703715000782
+    "l_11": 20.340959021277904,
+    "l_12": 2.436244218645976,
+    "l_21": 1.7079468636680408,
+    "l_22": 26.283340887646382,
+    "m_11": 1.0078439802253383,
+    "m_12": -0.1207098479256891,
+    "m_21": -0.06549182512416611,
+    "m_22": 1.0078439802253383,
+    "c_21": -0.06498210676371075,
+    "c_12": -0.1197703715000612
   },
-  "created_at": "2026-10-31T17:47:45.559646Z"
+  "created_at": "2026-11-01T01:22:25.035863Z"
 }

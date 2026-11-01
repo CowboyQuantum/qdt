@@ -27,16 +27,12 @@ FOLDER = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-sim/src/qdt
 
 REL, ABS = 1e-9, 1e-15
 """Phantom's cross-platform bound, and a floor for a value that is zero on one platform (the smallest
-computed number in a device file is about 2.5e-7)."""
+computed number outside the shape grid is about 1.5e-11)."""
 
 
-def same(a, b) -> bool:
-    """Two parsed device files agree: the same structure, strings and integers, and floats within
-    `REL` relative (or `ABS` absolute)."""
-    if isinstance(a, dict):
-        return isinstance(b, dict) and a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
-    if isinstance(a, list):
-        return isinstance(b, list) and len(a) == len(b) and all(map(same, a, b))
+def close(a, b, abs_tol: float = ABS) -> bool:
+    """Two values agree: equal strings, integers, booleans and containers, and floats within `REL`
+    relative (or `abs_tol` absolute)."""
     if isinstance(a, float) or isinstance(b, float):
         numbers = (int, float)
         if (
@@ -45,8 +41,42 @@ def same(a, b) -> bool:
             or not (isinstance(a, numbers) and isinstance(b, numbers))
         ):
             return False
-        return math.isclose(a, b, rel_tol=REL, abs_tol=ABS)
+        return math.isclose(a, b, rel_tol=REL, abs_tol=abs_tol)
     return a == b
+
+
+def same(a, b) -> bool:
+    """Two parsed device files agree: `differences` finds nothing."""
+    return next(differences(a, b), None) is None
+
+
+def differences(a, b, path: str = ""):
+    """Every place two parsed device files disagree, as `path: a against b`: the same structure,
+    strings and integers, and floats `close`, except that a shape-grid change
+    (`.shape.changes[gate][node][quantity]`) is held within `REL` of the largest change of that
+    quantity along that gate (ADR 0091). A change is a difference of compiled quantities, whose last
+    digits differ between processors by about 1e-12 of the quantity (Phantom ADR 0033); a change a
+    thousand times smaller than its quantity then differs by about 1e-9 of itself, as CI's runners
+    showed."""
+    if path == ".shape.changes" and isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        for g, (rows, others) in enumerate(zip(a, b)):
+            if [len(r) for r in rows] != [len(r) for r in others]:
+                yield f"{path}[{g}]: rows of {[len(r) for r in rows]} against {[len(r) for r in others]}"
+                continue
+            scale = [max(abs(r[q]) for r in rows) for q in range(len(rows[0]))] if rows else []
+            for i, (row, other) in enumerate(zip(rows, others)):
+                for q, (x, y) in enumerate(zip(row, other)):
+                    if not close(x, y, max(ABS, REL * scale[q])):
+                        yield f"{path}[{g}][{i}][{q}]: {x!r} against {y!r}"
+        return
+    if isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys():
+        for k in a:
+            yield from differences(a[k], b[k], f"{path}.{k}")
+    elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        for i, (x, y) in enumerate(zip(a, b)):
+            yield from differences(x, y, f"{path}[{i}]")
+    elif not close(a, b):
+        yield f"{path}: {repr(a)[:80]} against {repr(b)[:80]}"
 
 
 def set_point(text: str) -> float:
@@ -78,10 +108,12 @@ if __name__ == "__main__":
             )
             print(f'  SENSOR_SET_V "{name}": {set_point(text)}')
             continue
-        if not path.exists() or not same(
-            json.loads(path.read_text(encoding="utf-8")), json.loads(text)
-        ):
-            bad.append(f"{name}: the recipe compiles to other text than the committed file")
+        found = path.exists() and list(
+            differences(json.loads(path.read_text(encoding="utf-8")), json.loads(text))
+        )
+        if found is False or found:
+            where = f": {len(found)} values, first {'; '.join(found[:5])}" if found else ""
+            bad.append(f"{name}: the recipe compiles to other text than the committed file{where}")
         elif hashlib.sha256(path.read_bytes()).hexdigest() != DEVICES.get(name):
             bad.append(f"{name}: the file's SHA-256 is not the one qdt_sim.scenarios.DEVICES pins")
         elif not math.isclose(set_point(text), SENSOR_SET_V.get(name, math.nan), abs_tol=2e-6):

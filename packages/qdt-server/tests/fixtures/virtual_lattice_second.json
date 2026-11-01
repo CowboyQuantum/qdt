@@ -5,7 +5,7 @@
     "scenario_id": "second-device",
     "description": "a second disorder draw of the same layout, noise off: the full chain finds it (ADR 0088)",
     "device": "two-dot-sige-b",
-    "device_sha256": "033fa55e426237bbc5b9e2f3619e94996b0ca6a5faa3afbf37412fdc40fac719",
+    "device_sha256": "3861c7ac6393ccb0e6a85e016b1abcdb1d1e4ca7ef9a0442915ed3ee37c61339",
     "seed": 2,
     "noise": false,
     "attrs": {}
@@ -13,21 +13,21 @@
   "node_id": "virtual-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "1fd6e95829e4487e8ae0a17050c91a9c",
+    "outcome_id": "bc3fe97cb1a24fff92a7c7b56e0989a6",
     "node_id": "virtual-lattice",
-    "tuneup_id": "a97c4dd4021541e2a04d9ed6a191037e",
+    "tuneup_id": "ba5481b54d484a8bbc19f7948664f164",
     "scenario_id": "second-device",
-    "record_id": "a68fb87fc4f44a50ab92e344b03adf09",
-    "result_id": "ae12d60beb1240d8ac29955416665819",
+    "record_id": "d28490850975465284412989829e12fe",
+    "result_id": "852d5a9c49e2437e80f0832d47ae315b",
     "status": "accepted",
-    "message": "residual cross ratios +0.001, -0.004",
+    "message": "residual cross ratios -0.009, -0.014",
     "outputs": {
-      "residual_a": 0.0009098874370340973,
-      "residual_b": -0.004326857478638671,
-      "l_11": 19.415694675769572,
-      "l_22": 21.896320842761753
+      "residual_a": -0.00871904694541399,
+      "residual_b": -0.013568678040075676,
+      "l_11": 19.22220606702774,
+      "l_22": 21.927667895471316
     },
-    "created_at": "2026-10-31T17:47:44.238595Z",
+    "created_at": "2026-11-01T01:22:18.582100Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.straightened"
@@ -37,51 +37,51 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 19.415694675769572,
+      "value": 19.22220606702774,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": 0.017666096666772546,
+      "value": -0.1675993170928365,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": -0.0947422595931755,
+      "value": -0.29752946584335405,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 21.896320842761753,
+      "value": 21.927667895471316,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": 0.0009098874370340973,
+      "value": -0.00871904694541399,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": -0.004326857478638671,
+      "value": -0.013568678040075676,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "residual_a": 0.0,
-    "residual_b": -4.750578893535807e-19,
-    "l_11": 19.36797978511089,
-    "l_22": 21.993171056755482
+    "residual_a": -2.2929041375367452e-17,
+    "residual_b": -6.909791434594754e-18,
+    "l_11": 19.36797978510978,
+    "l_22": 21.993171056754502
   },
-  "created_at": "2026-10-31T17:47:44.243134Z"
+  "created_at": "2026-11-01T01:22:18.602266Z"
 }
