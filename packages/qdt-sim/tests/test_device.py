@@ -424,10 +424,10 @@ def test_a_fresh_stand_starts_at_the_programmed_point_with_the_sensor_gate_where
 
 
 def test_the_stand_starts_where_the_middle_barrier_sets_the_honeycomb():
-    """ADR 0091: on Phantom 0.4.0 the plungers move the interdot coupling as much as B_M does, so part
-    of a stability window about the start is one merged dot (Phantom's triple-point splitting near 1).
-    The stand keeps the programmed plungers, where B_M moves that part: closing it shrinks, opening it
-    grows. Below the compiled plungers B_M barely acts, which is why the start is not moved there."""
+    """ADR 0091, 0092: the stand starts at the programmed plungers, where B_M takes a stability window
+    from two separate dots to one merged dot (Phantom's triple-point splitting above 0.5). On Phantom
+    0.6.0 almost none of the window is merged at the start (1 %), a fifth at B_M +0.04 V, most of it
+    at +0.10 V and all of it at +0.20 V; closing B_M by 0.06 V merges nothing."""
 
     def merged(device, **moved):
         x, at = np.linspace(-LATTICE_SPAN_V, LATTICE_SPAN_V, 41), start(device) | moved
@@ -439,8 +439,11 @@ def test_the_stand_starts_where_the_middle_barrier_sets_the_honeycomb():
     for name in DEVICES:
         device = load_device(name)
         b_m = programmed(device)["B_M"]
-        assert 0.3 < merged(device) < 0.5, name
-        assert merged(device, B_M=b_m - 0.06) < merged(device) - 0.15 < merged(device, B_M=b_m + 0.04)
+        assert merged(device) < 0.05, name
+        assert merged(device, B_M=b_m - 0.06) < 0.01, name
+        assert 0.08 < merged(device, B_M=b_m + 0.04) < 0.35, name
+        assert 0.55 < merged(device, B_M=b_m + 0.10) < 0.9, name
+        assert merged(device, B_M=b_m + 0.20) > 0.95, name
 
 
 def test_the_noise_seed_replays_a_realisation_and_another_seed_draws_a_new_one():
@@ -459,10 +462,11 @@ def test_a_device_file_that_hashes_otherwise_or_is_not_committed_is_refused():
         load_device("../../etc/passwd")
 
 
-def test_qdt_sim_holds_no_physics_and_stays_under_340_lines():
+def test_qdt_sim_holds_no_physics_and_stays_under_350_lines():
     """Phantom's Step 8 exit, from qdt's side (ADR 0087): an adapter, not a model. The cap was 300
-    until the layout rename (ADR 0089) took it to 311, and 320 until the starting levels and the
-    dynamics option (ADR 0090) took it to 337."""
+    until the layout rename (ADR 0089) took it to 311, 320 until the starting levels and the
+    dynamics option (ADR 0090) took it to 337, and 340 until the lattice truth became the slope of
+    Phantom's charge (ADR 0092) and took it to 347."""
     import pathlib
 
     import qdt_sim
@@ -470,7 +474,7 @@ def test_qdt_sim_holds_no_physics_and_stays_under_340_lines():
     src = pathlib.Path(qdt_sim.__file__).parent
     modules = sorted(p.name for p in src.glob("*.py"))
     assert modules == ["__init__.py", "device.py", "scenarios.py"]
-    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 340
+    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 350
 
 
 def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel():
@@ -487,7 +491,7 @@ def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel(
         assert drawn.material == known["material"] == "SiGe"
         assert list(drawn.channel_nm) == list(known["channel_nm"])
         assert list(drawn.sensor_nm) == list(known["sensor_nm"])
-        assert drawn.source == f"Phantom 0.4.0, device file {name}"
+        assert drawn.source == f"Phantom 0.6.0, device file {name}"
         logical = {c.logical: c for c in default_stand().channels}
         for g in drawn.gates:
             assert logical[g.channel].quantity == "voltage"

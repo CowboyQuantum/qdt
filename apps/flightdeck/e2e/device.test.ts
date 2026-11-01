@@ -71,7 +71,7 @@ it("draws the device's gates at their levels and follows a level set on the stan
   expect(await pane.locator("[data-hi]").textContent()).toBe("0.700 V");
   expect(await pane.locator("[data-scale-nm]").getAttribute("data-scale-nm")).toBe("100");
   const [bar] = await pane.locator(".sbar .line").evaluate((e) => [e.getBoundingClientRect().width]);
-  expect(await pane.locator(".foot").textContent()).toContain("Phantom 0.4.0, device file two-dot-sige-a");
+  expect(await pane.locator(".foot").textContent()).toContain("Phantom 0.6.0, device file two-dot-sige-a");
 
   // to scale: P1 is 44 nm wide and 120 nm tall, R_L 218 nm wide; the drawn fills keep those ratios
   const drawn = (gate: string) => pane.locator(`path[data-gate=${gate}]`).evaluate((e) => [e.getBoundingClientRect().width, e.getBoundingClientRect().height]);

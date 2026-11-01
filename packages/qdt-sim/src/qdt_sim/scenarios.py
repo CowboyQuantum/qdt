@@ -6,6 +6,7 @@ import functools
 import hashlib
 import pathlib
 
+import numpy as np
 import phantom.api as phantom
 
 from qdt_schemas.activity import SweepDefinition
@@ -19,10 +20,10 @@ from .device import SENSOR, SimulatedDevice, roles
 DEVICE_ID = "dot"
 DEFAULT_DEVICE = "two-dot-sige-a"
 DEVICES = {
-    "two-dot-sige-a": "9c94f0cb3fa3f41b4fde9a75e18377385fde9a2bd79e0317b990f05326cca33d",
-    "two-dot-sige-b": "3861c7ac6393ccb0e6a85e016b1abcdb1d1e4ca7ef9a0442915ed3ee37c61339",
+    "two-dot-sige-a": "a37e0917ced8a3ca746a5479f9ebc1f715c9b5ace8644739dff074dba45ced67",
+    "two-dot-sige-b": "22f08d5e6f7d6ef9454b2993446d355eeadb913b5ac6f6ffd057db76dee6e806",
 }
-"""Committed device file → its SHA-256 (Phantom 0.4.0). A file that differs is refused."""
+"""Committed device file → its SHA-256 (Phantom 0.6.0). A file that differs is refused."""
 LATTICE_SPAN_V = 0.15
 """Half the plunger window of a stability sweep: about six transitions at the devices' ~20 e/V."""
 SENSOR_TAIL_V = -10e-3
@@ -210,10 +211,19 @@ def device_for(scenario: SimScenario, stand: StandConfig | None = None) -> Simul
 def lattice_truth(
     scenario: SimScenario, x_gate: str = "P1", y_gate: str = "P2"
 ) -> dict[str, float]:
-    """The charge lattice of the scenario's device (Phantom's truth), by the names the `charge-lattice`
-    node outputs (`l_ij`, electrons per volt, [dot, gate])."""
-    lattice = device_of(scenario).truth((x_gate, y_gate)).charge_lattice_e_per_v
-    return {f"l_{i + 1}{j + 1}": float(lattice[i][j]) for i in range(2) for j in range(2)}
+    """The charge lattice of the scenario's device at the start, by the names the `charge-lattice`
+    node outputs (`l_ij`, electrons per volt, [dot, gate]): the slope of Phantom's gate-induced charge
+    there. Since Phantom 0.6.0 the dots grow with their occupancy and `Device.truth` still gives the
+    compiled matrix, two thirds of the honeycomb's density at the operating point (Phantom #75)."""
+    device = device_of(scenario)
+    ci, v = device.runtime_ci(), np.array([start(device)[g] for g in device.gate_names])
+
+    def slope(gate: str) -> np.ndarray:
+        h = np.eye(v.size)[device.gate_names.index(gate)] * 1e-4
+        return (ci.induced_charge(v + h) - ci.induced_charge(v - h)) / 2e-4
+
+    lattice = np.stack([slope(x_gate), slope(y_gate)], axis=1)
+    return {f"l_{i + 1}{j + 1}": float(lattice[i, j]) for i in range(2) for j in range(2)}
 
 
 def sensor_truth(
