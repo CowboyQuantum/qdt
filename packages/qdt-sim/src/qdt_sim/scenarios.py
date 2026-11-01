@@ -19,10 +19,10 @@ from .device import SENSOR, SimulatedDevice, roles
 DEVICE_ID = "dot"
 DEFAULT_DEVICE = "two-dot-sige-a"
 DEVICES = {
-    "two-dot-sige-a": "bc0a65576fdf4f5ebad767eaf71a53929d1a0bc1449870225dcda4c911226bd2",
-    "two-dot-sige-b": "033fa55e426237bbc5b9e2f3619e94996b0ca6a5faa3afbf37412fdc40fac719",
+    "two-dot-sige-a": "9c94f0cb3fa3f41b4fde9a75e18377385fde9a2bd79e0317b990f05326cca33d",
+    "two-dot-sige-b": "3861c7ac6393ccb0e6a85e016b1abcdb1d1e4ca7ef9a0442915ed3ee37c61339",
 }
-"""Committed device file → its SHA-256 (Phantom 0.3.0). A file that differs is refused."""
+"""Committed device file → its SHA-256 (Phantom 0.4.0). A file that differs is refused."""
 LATTICE_SPAN_V = 0.15
 """Half the plunger window of a stability sweep: about six transitions at the devices' ~20 e/V."""
 SENSOR_TAIL_V = -10e-3

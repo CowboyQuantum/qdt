@@ -151,7 +151,7 @@ def test_diamonds_run_through_the_api_on_the_device_a_run_names(client):
     result = AnalysisResult.model_validate(r.json())
     assert result.status == "ok", result.message
     b = load_device("two-dot-sige-b")
-    e_c = b.truth(near_v=start(b)["SG"]).sensor.charging_energy_ev  # ~9 meV on Phantom 0.3.0
+    e_c = b.truth(near_v=start(b)["SG"]).sensor.charging_energy_ev  # ~9 meV since Phantom 0.3.0
     assert result.estimate("charging_energy").value == pytest.approx(e_c, rel=0.05)
 
 
@@ -735,7 +735,7 @@ def test_the_simulated_device_record_says_which_phantom_made_it_and_truth_stays_
 
     (device,) = client.get("/devices").json()
     attrs = device["attrs"]
-    assert attrs["phantom_version"] == "0.3.0" and attrs["device_file"] == "two-dot-sige-a"
+    assert attrs["phantom_version"] == "0.4.0" and attrs["device_file"] == "two-dot-sige-a"
     assert attrs["device_sha256"] == DEVICES["two-dot-sige-a"]
     assert attrs["phantom.charge.ci"] >= 1 and attrs["phantom.readout.sensor"] >= 1
     openapi = client.get("/openapi.json").text
