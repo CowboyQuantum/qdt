@@ -12,6 +12,9 @@ the one non-terminal protocol: it runs a compiled, self-clocked program and stre
 
     TriggeredLevelSource  a LevelSource that also steps through a loaded list of levels, one per
                           trigger (QDAC-II list mode on an external trigger input; ADR 0064)
+    BatchedLevelSense     a LevelSense that also reads a row at once: the inner axis's points set
+                          and sensed in one call (the simulated stand, ADR 0093; a real instrument
+                          whose firmware steps and reads a list)
 
 A driver implements every protocol its instrument honours (an SMU is a LevelSource and a LevelSense on
 the same terminal; `get` returns what was applied, `sense` what is measured). The physical quantity
@@ -26,7 +29,7 @@ single conformance suite in tests/.
 A backend learns its channels' declarations (quantity, integration time) once, when a `BackendFactory`
 builds it from its `InstrumentConfig` and `ChannelMap`s; the methods never carry them (ADR 0021).
 The five protocols and that construction convention are frozen by ADR 0021. `TriggeredLevelSource`
-is added beside them by ADR 0064, not edited into `LevelSource`.
+is added beside them by ADR 0064, and `BatchedLevelSense` by ADR 0093, not edited into the frozen ones.
 """
 
 from collections.abc import Mapping, Sequence
@@ -61,6 +64,21 @@ class LevelSense(Protocol):
     def sense(self, channel: str) -> float:
         """Measure the level on `channel` (SI unit of its declared quantity), honouring the channel's
         integration time; the caller honours its settle time."""
+        ...
+
+
+@runtime_checkable
+class BatchedLevelSense(LevelSense, Protocol):
+    """A `LevelSense` that also reads a row at once (ADR 0093, #179). The executor hands it the inner
+    axis's points instead of a `set` and a `sense` per point when the stepped channels and the
+    sensed one are all its own; the simulated stand answers from one batched evaluation of its
+    physics. Optional: a backend without it is sensed point by point."""
+
+    def sense_along(self, channel: str, points: Mapping[str, Sequence[float]]) -> np.ndarray:
+        """Read `channel` once at each of N points: before the i-th reading every channel in `points`
+        is set to the i-th of its N listed values, and each is left at its last. Honours the sensed
+        channel's integration time; the caller honours settle times. Point by point it is what N
+        rounds of `set` and `sense` would read, within the instrument's own noise clock."""
         ...
 
 

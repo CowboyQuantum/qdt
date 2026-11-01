@@ -31,13 +31,18 @@ def test_a_coupled_companion_keeps_its_held_level_as_the_couplings_origin():
 
 def test_the_companion_moves_from_the_held_level_on_the_stand(monkeypatch):
     seen: list[tuple[float, float]] = []
-    sense = simulated.PhantomPhysics.sense
+    sense, sense_many = simulated.PhantomPhysics.sense, simulated.PhantomPhysics.sense_many
 
     def spy(self, levels, dwell_s, samples, gap_s=0.0):
         seen.append((levels["P1"], levels["P2"]))
         return sense(self, levels, dwell_s, samples, gap_s)
 
+    def spy_many(self, levels, dwell_s, gap_s=0.0):  # a line read at once (ADR 0093)
+        seen.extend((lv["P1"], lv["P2"]) for lv in levels)
+        return sense_many(self, levels, dwell_s, gap_s)
+
     monkeypatch.setattr(simulated.PhantomPhysics, "sense", spy)
+    monkeypatch.setattr(simulated.PhantomPhysics, "sense_many", spy_many)
     held = start() | HELD
     plan = compile_sweep(with_operating_point(virtual(), held), default_stand(), {"simulated": SimulatedEmitter()})
     for _ in Executor(plan, {DEVICE_ID: default_device(noise=False)}).run().frames():

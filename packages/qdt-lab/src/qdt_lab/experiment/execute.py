@@ -45,6 +45,7 @@ from qdt_schemas.stand import StandConfig
 
 from ..protocols import (
     BackendFactory,
+    BatchedLevelSense,
     LevelSense,
     LevelSource,
     Sequencer,
@@ -163,11 +164,28 @@ class Executor:
     def run(self) -> "_PlanSource":
         return _PlanSource(self)
 
+    def _batched_inner(self, stepped) -> bool:
+        """Whether the innermost stepped axis is read in one call (ADR 0093): a sweep with sensed
+        levels and no stage or capture, whose inner channel, its companions and every sensed channel
+        resolve to one backend that is a `BatchedLevelSense`."""
+        plan, definition = self.plan, self.plan.definition
+        if not stepped or definition.stage is not None or definition.captured or not definition.sensed:
+            return False
+        inner = stepped[-1]
+        logical = (inner.channel, *inner.couplings, *(s.channel for s in definition.sensed))
+        backends = {id(self._backends[plan.channel(c).instrument]) for c in logical}
+        backend = self._backends[plan.channel(inner.channel).instrument]
+        return len(backends) == 1 and isinstance(backend, BatchedLevelSense)
+
     def _frames(self) -> Iterator[Frame]:
         plan, definition = self.plan, self.plan.definition
         triggered = plan.triggered_axis()  # how each axis advances is the plan's (ADR 0066)
         stepped = plan.software_axes()
         innermost = stepped[-1].name if stepped else None
+        # ADR 0093: the inner axis is read in one call when it, its companions and every sensed
+        # channel are one BatchedLevelSense backend and nothing else happens per point
+        batched = self._batched_inner(stepped)
+        outer = stepped[:-1] if batched else stepped
         has_repeat = definition.repeats != 1
         repeats = itertools.count() if definition.repeats is None else range(definition.repeats)
         var_dims = {v.name: v.dims for v in plan.dataset.data_vars}
@@ -216,9 +234,9 @@ class Executor:
         try:
             for k in repeats:
                 buffers: dict[str, list[float]] = {s.name: [] for s in definition.sensed}
-                for idx in itertools.product(*(range(a.num) for a in stepped)):
+                for idx in itertools.product(*(range(a.num) for a in outer)):
                     settle = 0.0
-                    for a, i in zip(stepped, idx, strict=True):
+                    for a, i in zip(outer, idx, strict=True):
                         current[a.name] = a.value(i)
                         settle = max(settle, set_level(a.channel, current[a.name]))
                         # a virtual gate (ADR 0049): companions move from their held level, or 0
@@ -235,9 +253,42 @@ class Executor:
                         *((IndexSlice(dim=REPEAT_DIM, start=k, stop=k + 1),) if has_repeat else ()),
                         *(
                             IndexSlice(dim=a.name, start=i, stop=i + 1)
-                            for a, i in zip(stepped, idx, strict=True)
+                            for a, i in zip(outer, idx, strict=True)
                         ),
                     )
+                    if batched:
+                        inner = stepped[-1]
+                        values = [inner.value(i) for i in range(inner.num)]
+                        points = {plan.channel(inner.channel).channel: values}
+                        for companion, per_volt in inner.couplings.items():
+                            points[plan.channel(companion).channel] = [
+                                held.get(companion, 0.0) + per_volt * v for v in values
+                            ]
+                        moved = max(plan.channel(c).settle_s for c in (inner.channel, *inner.couplings))
+                        if moved > 0:  # the settle every point would have had, taken together
+                            self._sleep(moved * inner.num)
+                        arrays = {}
+                        for s in definition.sensed:
+                            ch = plan.channel(s.channel)
+                            row = self._backends[ch.instrument].sense_along(ch.channel, points)
+                            shape = tuple(inner.num if d == innermost else 1 for d in var_dims[s.name])
+                            arrays[s.name] = np.asarray(row, dtype=np.float64).reshape(shape)
+                        current[inner.name] = values[-1]
+                        applied[inner.channel] = values[-1]
+                        for companion in inner.couplings:
+                            applied[companion] = points[plan.channel(companion).channel][-1]
+                        yield Frame(
+                            DatasetChunk(
+                                dataset_id=plan.dataset.dataset_id,
+                                seq=seq,
+                                region=(*prefix, IndexSlice(dim=innermost, start=0, stop=inner.num)),
+                                variables=tuple(s.name for s in definition.sensed),
+                                produced_at=datetime.now(UTC),
+                            ),
+                            arrays,
+                        )
+                        seq += 1
+                        continue
                     if definition.stage is not None:
                         if triggered is not None:
                             load_lists()
