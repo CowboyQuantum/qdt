@@ -21,8 +21,10 @@ from qdt_sim.scenarios import (
     DEVICES,
     default_stand,
     device_for,
+    device_of,
     lattice_truth,
     sensor_truth,
+    start,
 )
 from qdt_tuning import (
     charge_lattice,
@@ -89,13 +91,14 @@ SCENARIOS: dict[str, tuple[SimScenario, NodeBuilders]] = {
     "sensor_wing_second": (SECOND, [sensor_node, wing_node]),
     "virtual_lattice_second": (SECOND, FOUR_NODES),
     "charge_lattice_default": (DEFAULT, [lattice_node]),
+    "virtual_lattice_default": (DEFAULT, [lattice_node, virtual_node]),
     "charge_lattice_quiet": (QUIET, [lattice_node]),
     "virtual_lattice_quiet": (QUIET, [lattice_node, virtual_node]),
 }
 """Fixture name → (scenario, the tune-up's nodes in order); the fixture is the last node's outcome.
-`scripts/make_tuning_fixtures.py` writes one file each. No noisy virtual lattice (ADR 0091): on Phantom
-0.4.0 its gate noise (Phantom #50) leaves that node rejected for 5 of noise seeds 0–9, seed 1 among them,
-so the noisy chain is pinned through the charge-lattice node."""
+`scripts/make_tuning_fixtures.py` writes one file each. The noisy virtual lattice is back (ADR 0092): on
+Phantom 0.6.0, with the companion moving from the held level (#176), the noisy two-node chain is accepted
+for 8 of noise seeds 0–9, seed 1 among them (ADR 0091 had dropped it at 5 of 10 on 0.4.0)."""
 
 
 def truth_for(scenario: SimScenario, node_id: str) -> dict[str, float]:
@@ -147,7 +150,9 @@ def registry_for(root: pathlib.Path) -> Registry:
 
 
 def run_scenario(scenario: SimScenario, builders: NodeBuilders, root: pathlib.Path):
-    """The tune-up's outcomes; the last node's outcome, result and truth are the fixture's."""
+    """The tune-up's outcomes; the last node's outcome, result and truth are the fixture's. The nodes
+    inherit the stand's starting point as the server's would its held one (ADR 0053): a virtual gate's
+    companion moves from it (#176)."""
     registry = registry_for(root)
     nodes = [b() for b in builders]
     outcomes = run_tuneup(
@@ -158,6 +163,7 @@ def run_scenario(scenario: SimScenario, builders: NodeBuilders, root: pathlib.Pa
         root / "outbox",
         device_id=DEVICE_ID,
         scenario_id=scenario.scenario_id,
+        held=start(device_of(scenario)),
     )
     last = outcomes[-1]
     result = registry.result(last.result_id) if last.result_id else None
@@ -166,15 +172,16 @@ def run_scenario(scenario: SimScenario, builders: NodeBuilders, root: pathlib.Pa
 
 TOLERANCES = {
     # name → (relative, absolute) against the device's truth, per decided quantity; the lattice's cross
-    # terms absolutely (ADR 0088). The gate 1/f noise (Phantom #50) moves dot 1's lines between rows,
-    # which a stability sweep takes 0.64 s apart, so it bends their spacing and tilt, l_11 and l_12;
-    # dot 2's lines are crossed within a row and stay put (ADR 0091). The noisy default lands 5.3 % low
-    # on l_11, 1.05 e/V low on l_12 and 0.048 off on m_12 and c_12, so those bounds are 6 %, 1.2 e/V
-    # and 0.06, the rest 1.5 %, 0.3 e/V and 0.015 (ADR 0090). The quiet scenarios land within 0.6 %,
-    # 0.16 e/V and 0.008: on Phantom 0.4.0 about 40 % of the window is one merged dot, which reads the
-    # cross terms about 6 % high
+    # terms absolutely (ADR 0088). The truth is the slope of Phantom's charge at the start (ADR 0092);
+    # across the window the lattice grows with the occupancy (Phantom 0.6.0), about ±7 %, and the
+    # spectral estimate of that uneven honeycomb lands 1 to 2 % low on the diagonal in the quiet
+    # scenarios (l_22 −1.8 %), 4 % low in the virtual gates on the second device (l_11), whose window
+    # sits a coupling times the plungers' level from the first node's. The gate 1/f noise (Phantom #50)
+    # moves dot 1's lines between rows, which a stability sweep takes 0.64 s apart, so it bends their
+    # spacing and tilt, l_11 and l_12; dot 2's lines are crossed within a row and stay put (ADR 0091).
+    # The noisy default lands 0.5 % low on l_11, 0.13 e/V high on l_12 and 0.005 off on m_12 and c_12.
     "l_11": (0.06, 0.0),
-    "l_22": (0.015, 0.0),
+    "l_22": (0.05, 0.0),
     "l_12": (0.0, 1.2),
     "l_21": (0.0, 0.3),
     "m_11": (0.0, 0.015),
@@ -229,13 +236,13 @@ def test_the_tuneup_reproduces_its_committed_outcome_and_the_devices_truth(name,
 
 
 def test_the_virtual_lattice_straightens_what_the_charge_lattice_found(tmp_path):
-    """The DAG edge in one picture: cross ratios of ≈ 0.1 in real gates, within 0.015 of zero in the
-    virtual gates built from the first node's coefficients (residual_a is −0.0125 on Phantom 0.4.0, whose
-    merged corner of the window reads the first node's cross terms about 6 % high, ADR 0091)."""
+    """The DAG edge in one picture: cross ratios of ≈ 0.1 in real gates, within 0.01 of zero in the
+    virtual gates built from the first node's coefficients (residual_a is +0.0046 on Phantom 0.6.0 with
+    the companion moving from its held level, #176; it was +0.049 from 0 V, ADR 0092)."""
     outcomes, _, _ = run_scenario(QUIET, SCENARIOS["virtual_lattice_quiet"][1], tmp_path)
     first, second = outcomes
     assert first.outputs["l_12"] / first.outputs["l_11"] > 0.05
-    assert abs(second.outputs["residual_a"]) < 0.015 and abs(second.outputs["residual_b"]) < 0.015
+    assert abs(second.outputs["residual_a"]) < 0.01 and abs(second.outputs["residual_b"]) < 0.01
     bound = Registry(tmp_path / "registry").get(second.record_id)
     assert bound.definition_name == "virtual-gate lattice"
 

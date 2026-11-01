@@ -975,7 +975,7 @@
           },
           "source": {
             "default": "",
-            "description": "Where the layout comes from, e.g. 'Phantom 0.4.0, device file two-dot-sige-a'; shown under the diagram.",
+            "description": "Where the layout comes from, e.g. 'Phantom 0.6.0, device file two-dot-sige-a'; shown under the diagram.",
             "title": "Source",
             "type": "string"
           }

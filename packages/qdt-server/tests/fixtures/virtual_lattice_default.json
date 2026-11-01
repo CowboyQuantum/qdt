@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "schema_version": 2,
+    "scenario_id": "default-occupied-window",
+    "description": "the default device with its noise, noise seed 1; the charge-lattice node's window",
+    "device": "two-dot-sige-a",
+    "device_sha256": "a37e0917ced8a3ca746a5479f9ebc1f715c9b5ace8644739dff074dba45ced67",
+    "seed": 1,
+    "noise": true,
+    "attrs": {}
+  },
+  "node_id": "virtual-lattice",
+  "outcome": {
+    "schema_version": 1,
+    "outcome_id": "b68fce44ffa94b5da210f11a4ceaf38e",
+    "node_id": "virtual-lattice",
+    "tuneup_id": "8ecec362a3bc4b50bc6669a4daa00026",
+    "scenario_id": "default-occupied-window",
+    "record_id": "a79892ff96af47559c1cf95b778707ba",
+    "result_id": "6ee90a8c5b8a4e6998d993069de95a06",
+    "status": "accepted",
+    "message": "residual cross ratios -0.004, +0.000",
+    "outputs": {
+      "residual_a": -0.004326774337054237,
+      "residual_b": 0.00019370607162122293,
+      "l_11": 29.886439767230783,
+      "l_22": 37.841966155978426
+    },
+    "created_at": "2026-11-01T22:08:32.303332Z",
+    "attrs": {
+      "method": "qdt_analysis.transitions.detect_transitions",
+      "rule": "qdt_tuning.decisions.straightened"
+    }
+  },
+  "estimates": [
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_row",
+      "value": 29.886439767230783,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "a_per_volt_col",
+      "value": -0.12931188061077137,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_row",
+      "value": 0.007330218606497851,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "b_per_volt_col",
+      "value": 37.841966155978426,
+      "stderr": null,
+      "unit": "1/V"
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_a",
+      "value": -0.004326774337054237,
+      "stderr": null,
+      "unit": ""
+    },
+    {
+      "schema_version": 1,
+      "name": "cross_ratio_b",
+      "value": 0.00019370607162122293,
+      "stderr": null,
+      "unit": ""
+    }
+  ],
+  "truth": {
+    "residual_a": 0.0,
+    "residual_b": -6.1010722916192736e-18,
+    "l_11": 30.27425222983799,
+    "l_22": 39.1357389617899
+  },
+  "created_at": "2026-11-01T22:08:32.324023Z"
+}

@@ -14,7 +14,16 @@ from qdt_lab.experiment import Executor, RunRecorder, SimulatedEmitter, compile_
 from qdt_lab.stream import PayloadSource, StreamServer, collect
 from qdt_registry import Registry
 from qdt_schemas.identity import DeviceRecord
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_stand, load_device, stability
+from qdt_schemas.modeling import SimScenario
+from qdt_sim.scenarios import (
+    DEFAULT_DEVICE,
+    DEVICE_ID,
+    DEVICES,
+    default_device,
+    default_stand,
+    lattice_truth,
+    stability,
+)
 
 registry = Registry(Path(tempfile.mkdtemp()) / "registry")
 registry.register_device(
@@ -48,10 +57,11 @@ assert output.dataset.source.kind == "analysis" and result.output is None
 # 4. The numbers: electrons per volt on each dot from each plunger, and the cross-capacitance ratios
 #    a virtual-gate matrix is built from. The simulated device knows the truth (in a test only; a
 #    server never shows it). This ratio is dot 1's, whose lines the device's slow noise bends between
-#    rows, so one noisy map gets it only to about 0.05 (ADR 0091).
-truth = load_device().truth(("P1", "P2")).charge_lattice_e_per_v
+#    rows: with this noise seed it lands within 0.005, and within 0.01 for seven of ten seeds (ADR 0092).
+scenario = SimScenario(scenario_id="tutorial", device=DEFAULT_DEVICE, device_sha256=DEVICES[DEFAULT_DEVICE])
+truth = lattice_truth(scenario)  # the slope of the device's charge at the start, electrons per volt
 ratio = result.estimate("cross_ratio_a").value
-assert abs(ratio - truth[0][1] / truth[0][0]) < 0.06
+assert abs(ratio - truth["l_12"] / truth["l_11"]) < 0.03
 
 # 5. Keep it. The registry writes the output payload to its store and fills `result.output`; results and
 #    their outputs sync to the server with everything else. The output reads back as a Dataset, and

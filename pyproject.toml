@@ -21,7 +21,7 @@ qdt-telemetry = { workspace = true }
 qdt-frameworks = { workspace = true }
 qdt-server = { workspace = true }
 qdt-tuning = { workspace = true }
-phantom = { git = "https://github.com/CowboyQuantum/phantom", tag = "v0.4.0" }  # ADR 0087: qdt-sim only
+phantom = { git = "https://github.com/CowboyQuantum/phantom", tag = "v0.6.0" }  # ADR 0087: qdt-sim only
 
 [dependency-groups]
 dev = [

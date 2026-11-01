@@ -15,8 +15,17 @@ from qdt_lab.experiment import Executor, SimulatedEmitter, compile_sweep
 from qdt_lab.stream import assemble
 from qdt_schemas.data import Dataset, DataVariable, Dimension, LinearCoordinate, SourceDescriptor
 from qdt_schemas.envelope import MeasurementRecord, PayloadRef
+from qdt_schemas.modeling import SimScenario
 from qdt_schemas.payload_hdf5 import Payload
-from qdt_sim.scenarios import DEVICE_ID, default_device, default_stand, load_device, stability
+from qdt_sim.scenarios import (
+    DEFAULT_DEVICE,
+    DEVICE_ID,
+    DEVICES,
+    default_device,
+    default_stand,
+    lattice_truth,
+    stability,
+)
 
 
 def record_for(dataset_id: str) -> MeasurementRecord:
@@ -96,11 +105,14 @@ def test_both_families_of_a_honeycomb_with_comparable_steps_are_overlaid():
 
 @pytest.mark.parametrize("seed", [1, 2])
 def test_recovers_the_devices_charge_lattice_through_a_noisy_sweep(seed):
-    """The default window about the starting point, where both dots hold ~20 electrons, at 10 ms a
-    pixel (Phantom's readout noise is ~5 pA there, ADR 0088). Dot 2 within 2 % and 0.025 on its cross
-    ratio; dot 1 within 6 % and 0.06, because its lines are crossed between rows, 0.64 s apart, where
-    the gate 1/f noise (Phantom #50) bends their spacing and tilt: seed 1 lands 5.3 % low on l_11 and
-    0.048 low on the ratio (ADR 0091; over noise seeds 0–9 the ratio lands from −0.080 to +0.028)."""
+    """The default window about the starting point, where the dots hold 23 and 28 electrons, at 10 ms a
+    pixel (Phantom's readout noise is ~5 pA there, ADR 0088). The truth is the slope of the device's
+    charge at the start (ADR 0092); the lattice grows with the occupancy across the window, so the
+    diagonal reads 1 to 2 % low (seed 2: l_22 −2.25 %). Dot 2 within 3 % and 0.025 on its cross ratio;
+    dot 1 within 6 % and 0.06, because its lines are crossed between rows, 0.64 s apart, where the gate
+    1/f noise (Phantom #50) bends their spacing and tilt: over noise seeds 0–9 the ratio lands within
+    0.009 for seven seeds, at −0.045 and +0.026 for two, and seeds 6 and 7 misread l_11 by 35 to 40 %
+    (#177)."""
     plan = compile_sweep(
         stability(64, 64, measure_ns=10_000_000),
         default_stand(),
@@ -111,11 +123,13 @@ def test_recovers_the_devices_charge_lattice_through_a_noisy_sweep(seed):
     payload = Payload(plan.dataset, {"I_sensor": data["I_sensor"].values}, (), plan, None)
     result, output = detect_transitions(record_for(plan.dataset.dataset_id), payload)
 
-    truth = np.array(load_device().truth(("P1", "P2")).charge_lattice_e_per_v)  # e/V, [dot, gate]
+    scenario = SimScenario(scenario_id="t", device=DEFAULT_DEVICE, device_sha256=DEVICES[DEFAULT_DEVICE])
+    l = lattice_truth(scenario)  # e/V at the start, [dot, gate] (ADR 0092)
+    truth = np.array([[l["l_11"], l["l_12"]], [l["l_21"], l["l_22"]]])
     est = estimates(result)
     assert result.status == "ok", result.message
     assert est[0, 0] == pytest.approx(truth[0, 0], rel=0.06)
-    assert est[1, 1] == pytest.approx(truth[1, 1], rel=0.02)
+    assert est[1, 1] == pytest.approx(truth[1, 1], rel=0.03)
     assert abs(result.estimate("cross_ratio_a").value - truth[0, 1] / truth[0, 0]) < 0.06
     assert abs(result.estimate("cross_ratio_b").value - truth[1, 0] / truth[1, 1]) < 0.025
     assert result.annotations, "transition segments are overlaid"

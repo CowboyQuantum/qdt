@@ -74,6 +74,7 @@ async function walk(page, dir) {
   const windows = await Promise.all(["outer_start", "outer_stop", "inner_start", "inner_stop"].map((k) => sweep.locator(`input[name=${k}]`).inputValue()));
   if (windows.join(" ") !== "0.45 0.75 -0.15 0.15") throw new Error(`the Sweep form opened at ${windows.join(" ")}, not the guide's 0.45 0.75 -0.15 0.15`);
   await sweep.locator("input[name=name]").fill("first stability diagram");
+  for (const k of ["outer_num", "inner_num"]) await sweep.locator(`input[name=${k}]`).fill("96"); // nine pixels a cell (ADR 0092)
   await sweep.locator("input[name=options]").fill('{"seed": 1, "noise": false}');
   await sweep.locator("[data-compile]").click();
   await step(page, "compile the stability diagram", () => /^plan [0-9a-f]{8}$/.test(document.querySelector("#plan")?.textContent ?? ""));

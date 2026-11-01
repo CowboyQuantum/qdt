@@ -5,7 +5,7 @@
     "scenario_id": "second-device",
     "description": "a second disorder draw of the same layout, noise off: the full chain finds it (ADR 0088)",
     "device": "two-dot-sige-b",
-    "device_sha256": "3861c7ac6393ccb0e6a85e016b1abcdb1d1e4ca7ef9a0442915ed3ee37c61339",
+    "device_sha256": "22f08d5e6f7d6ef9454b2993446d355eeadb913b5ac6f6ffd057db76dee6e806",
     "seed": 2,
     "noise": false,
     "attrs": {}
@@ -13,12 +13,12 @@
   "node_id": "sensor-operating-point",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "c2f20112d5fd4da49642592e657d9f6d",
+    "outcome_id": "63a285838277449a8eb3d3a57e32f083",
     "node_id": "sensor-operating-point",
-    "tuneup_id": "6dc9208cbfa848a3bfc81b66fd917092",
+    "tuneup_id": "d5d1702649154ea9bc570ffc79c8e902",
     "scenario_id": "second-device",
-    "record_id": "a3d423826a8a46c3a68d128e7580e9fd",
-    "result_id": "cc6012217b624d83be0ec20f1081208b",
+    "record_id": "a712dee52a2a4862a3bf15c0301a88fc",
+    "result_id": "2e73e9422deb4f3998a67464d0fbc6a5",
     "status": "accepted",
     "message": "peak at +0.6571 V (of 2), operating point +0.6586 V",
     "outputs": {
@@ -28,7 +28,7 @@
       "charging_energy": 0.009374761941853754,
       "lever_arm": 0.25073880379431646
     },
-    "created_at": "2026-11-01T01:22:05.116866Z",
+    "created_at": "2026-11-01T22:07:50.654624Z",
     "attrs": {
       "method": "qdt_analysis.diamonds.detect_diamonds",
       "rule": "qdt_tuning.decisions.sensor_operating_point"
@@ -72,11 +72,11 @@
     }
   ],
   "truth": {
-    "sg_peak_v": 0.6570430516581508,
+    "sg_peak_v": 0.6570430520607816,
     "period": 0.037581142485182406,
     "charging_energy": 0.009328938300232147,
     "lever_arm": 0.24823455816731452,
-    "sg_operating_v": 0.6585430516581507
+    "sg_operating_v": 0.6585430520607816
   },
-  "created_at": "2026-11-01T01:22:05.140014Z"
+  "created_at": "2026-11-01T22:07:50.675636Z"
 }

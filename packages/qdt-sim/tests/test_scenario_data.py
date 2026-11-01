@@ -29,17 +29,20 @@ def test_a_scenario_loads_its_committed_device_and_refuses_another_hash():
         device_for(wrong)
 
 
-def test_a_realized_scenario_is_a_seeded_run_and_its_truth_is_phantoms_lattice():
+def test_a_realized_scenario_is_a_seeded_run_and_its_truth_is_the_slope_of_phantoms_charge():
+    """The lattice truth is the slope of Phantom's gate-induced charge at the start (ADR 0092): since
+    Phantom 0.6.0 the dots grow with their occupancy, so at the operating point the honeycomb is 3/2
+    as dense as the compiled matrix `Device.truth` still reports (Phantom #75)."""
     a, b = device_for(scenario(seed=4)), device_for(scenario(seed=4))
     assert a.sense("sensor") == b.sense("sensor")  # same noise seed, same draw
     quiet = device_for(scenario(seed=4, noise=False))
     assert np.isfinite(quiet.sense("sensor"))
     truth = lattice_truth(scenario())
-    lattice = load_device().truth(("P1", "P2")).charge_lattice_e_per_v
+    compiled = np.array(load_device().truth(("P1", "P2")).charge_lattice_e_per_v)
     assert set(truth) == {"l_11", "l_12", "l_21", "l_22"}
-    np.testing.assert_array_equal(
-        [[truth["l_11"], truth["l_12"]], [truth["l_21"], truth["l_22"]]], lattice
-    )
+    lattice = np.array([[truth["l_11"], truth["l_12"]], [truth["l_21"], truth["l_22"]]])
+    assert lattice[0, 0] > lattice[0, 1] > 0 and lattice[1, 1] > lattice[1, 0] > 0
+    np.testing.assert_allclose(lattice / compiled, 1.5, atol=0.06)
 
 
 def test_the_sensors_truth_is_phantoms_peak_nearest_the_starting_sensor_gate():

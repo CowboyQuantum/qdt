@@ -1441,7 +1441,7 @@ export interface DeviceLayout {
    */
   sensor_nm?: [number, number, number, number] | null;
   /**
-   * Where the layout comes from, e.g. 'Phantom 0.4.0, device file two-dot-sige-a'; shown under the diagram.
+   * Where the layout comes from, e.g. 'Phantom 0.6.0, device file two-dot-sige-a'; shown under the diagram.
    */
   source?: string;
 }

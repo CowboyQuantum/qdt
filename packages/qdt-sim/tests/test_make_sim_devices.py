@@ -39,15 +39,17 @@ def test_a_real_change_is_not_the_same_device():
 
 
 def test_a_shape_grid_change_is_held_against_its_quantitys_scale():
-    """ADR 0091: three changes near 1e-3 that one of CI's Linux runners recompiled 1.2e-9 away from
-    themselves, 1e-12 of their quantity's largest change, are the same device; a change of 1e-6 of
-    that scale, or a missing grid node, is not."""
+    """ADR 0091: on Phantom 0.4.0 one of CI's Linux runners recompiled three changes near 1e-3 of the
+    shape grid 1.2e-9 away from themselves, 1e-12 of their quantity's largest change along that gate.
+    A change moved by that much of its scale is the same device; one moved by 1e-6 of it, or a
+    missing grid node, is not."""
     ci = copy.deepcopy(DEVICE)
     changes = ci["shape"]["changes"]
-    changes[0][11][26], changes[1][2][33] = 0.0024858662080831095, 0.0006975618928191096
-    changes[1][11][34] = -0.0006211285599562189
+    for g, i, q in ((0, 11, 26), (1, 2, 33), (1, 11, 34)):
+        scale = max(abs(row[q]) for row in changes[g])
+        changes[g][i][q] += 1.2e-12 * scale
     assert same(DEVICE, ci)
-    changes[0][11][26] += 1e-6
+    changes[0][11][26] += 1e-6 * max(abs(row[26]) for row in changes[0])
     assert not same(DEVICE, ci)
     short = copy.deepcopy(DEVICE)
     short["shape"]["changes"][2].pop()

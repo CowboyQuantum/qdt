@@ -735,7 +735,7 @@ def test_the_simulated_device_record_says_which_phantom_made_it_and_truth_stays_
 
     (device,) = client.get("/devices").json()
     attrs = device["attrs"]
-    assert attrs["phantom_version"] == "0.4.0" and attrs["device_file"] == "two-dot-sige-a"
+    assert attrs["phantom_version"] == "0.6.0" and attrs["device_file"] == "two-dot-sige-a"
     assert attrs["device_sha256"] == DEVICES["two-dot-sige-a"]
     assert attrs["phantom.charge.ci"] >= 1 and attrs["phantom.readout.sensor"] >= 1
     openapi = client.get("/openapi.json").text

@@ -5,7 +5,7 @@
     "scenario_id": "default-occupied-window",
     "description": "the default device with its noise, noise seed 1; the charge-lattice node's window",
     "device": "two-dot-sige-a",
-    "device_sha256": "9c94f0cb3fa3f41b4fde9a75e18377385fde9a2bd79e0317b990f05326cca33d",
+    "device_sha256": "a37e0917ced8a3ca746a5479f9ebc1f715c9b5ace8644739dff074dba45ced67",
     "seed": 1,
     "noise": true,
     "attrs": {}
@@ -13,27 +13,27 @@
   "node_id": "charge-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "83b6068f9a5640daa3e8733b0f4b322d",
+    "outcome_id": "a168765933bd424684f31255c4510d81",
     "node_id": "charge-lattice",
-    "tuneup_id": "39afaf0b10654c65b25b59fcf6b7f3cc",
+    "tuneup_id": "6c0cc4f70fd44510af8033c832fe3a80",
     "scenario_id": "default-occupied-window",
-    "record_id": "ee5014e8743740158fcab33e3d680a59",
-    "result_id": "01c606faaff04f45b1da9ea56d0dd6ef",
+    "record_id": "f1fb9916d5d7419cbc0700db80659197",
+    "result_id": "bd9e161976f64cc68fd9179f04b307e0",
     "status": "accepted",
-    "message": "lattice condition 1.42, cross ratios 0.072 and 0.068",
+    "message": "lattice condition 1.36, cross ratios 0.122 and 0.067",
     "outputs": {
-      "l_11": 19.26912510828855,
-      "l_12": 1.3894778697352024,
-      "l_21": 1.8026055169773088,
-      "l_22": 26.57527506595021,
-      "m_11": 1.0049152089447506,
-      "m_12": -0.0724634583014068,
-      "m_21": -0.06816357291666073,
-      "m_22": 1.0049152089447508,
-      "c_21": -0.06783017344143738,
-      "c_12": -0.07210902736510455
+      "l_11": 30.35301503866269,
+      "l_12": 3.696744630383705,
+      "l_21": 2.5937050361246463,
+      "l_22": 38.77958206468746,
+      "m_11": 1.008212724395225,
+      "m_12": -0.12279191936765124,
+      "m_21": -0.06743255810201369,
+      "m_22": 1.008212724395225,
+      "c_21": -0.06688326428578158,
+      "c_12": -0.12179167788356153
     },
-    "created_at": "2026-11-01T01:22:25.016598Z",
+    "created_at": "2026-11-01T22:08:14.525889Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.virtual_gates"
@@ -43,57 +43,57 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 19.26912510828855,
+      "value": 30.35301503866269,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": 1.3894778697352024,
+      "value": 3.696744630383705,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": 1.8026055169773088,
+      "value": 2.5937050361246463,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 26.57527506595021,
+      "value": 38.77958206468746,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": 0.07210902736510456,
+      "value": 0.12179167788356152,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": 0.06783017344143738,
+      "value": 0.06688326428578156,
       "stderr": null,
       "unit": ""
     }
   ],
   "truth": {
-    "l_11": 20.340959021277904,
-    "l_12": 2.436244218645976,
-    "l_21": 1.7079468636680408,
-    "l_22": 26.283340887646382,
-    "m_11": 1.0078439802253383,
-    "m_12": -0.1207098479256891,
-    "m_21": -0.06549182512416611,
-    "m_22": 1.0078439802253383,
-    "c_21": -0.06498210676371075,
-    "c_12": -0.1197703715000612
+    "l_11": 30.51363792005546,
+    "l_12": 3.562043630740419,
+    "l_21": 2.6508982193540476,
+    "l_22": 39.44519452860007,
+    "m_11": 1.007907237093755,
+    "m_12": -0.11765917796079223,
+    "m_21": -0.06773599501831938,
+    "m_22": 1.007907237093755,
+    "c_21": -0.06720459237263976,
+    "c_12": -0.11673611779994357
   },
-  "created_at": "2026-11-01T01:22:25.035863Z"
+  "created_at": "2026-11-01T22:08:14.542820Z"
 }
