@@ -30,13 +30,9 @@ REL, ABS = 1e-9, 1e-15
 computed number outside the shape grid is about 1.5e-11)."""
 
 
-def same(a, b) -> bool:
-    """Two parsed device files agree: the same structure, strings and integers, and floats within
-    `REL` relative (or `ABS` absolute)."""
-    if isinstance(a, dict):
-        return isinstance(b, dict) and a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
-    if isinstance(a, list):
-        return isinstance(b, list) and len(a) == len(b) and all(map(same, a, b))
+def close(a, b, abs_tol: float = ABS) -> bool:
+    """Two values agree: equal strings, integers, booleans and containers, and floats within `REL`
+    relative (or `abs_tol` absolute)."""
     if isinstance(a, float) or isinstance(b, float):
         numbers = (int, float)
         if (
@@ -45,17 +41,23 @@ def same(a, b) -> bool:
             or not (isinstance(a, numbers) and isinstance(b, numbers))
         ):
             return False
-        return math.isclose(a, b, rel_tol=REL, abs_tol=ABS)
+        return math.isclose(a, b, rel_tol=REL, abs_tol=abs_tol)
     return a == b
 
 
+def same(a, b) -> bool:
+    """Two parsed device files agree: `differences` finds nothing."""
+    return next(differences(a, b), None) is None
+
+
 def differences(a, b, path: str = ""):
-    """Every place two parsed device files disagree by `same`, as `path: a against b`, except that a
-    shape-grid change (`.shape.changes[gate][node][quantity]`) is held within `REL` of the largest
-    change of that quantity along that gate (ADR 0091). A change is a difference of compiled
-    quantities, whose last digits differ between processors by about 1e-12 of the quantity (Phantom
-    ADR 0033); a change a thousand times smaller than its quantity then differs by about 1e-9 of
-    itself, as CI's runners showed."""
+    """Every place two parsed device files disagree, as `path: a against b`: the same structure,
+    strings and integers, and floats `close`, except that a shape-grid change
+    (`.shape.changes[gate][node][quantity]`) is held within `REL` of the largest change of that
+    quantity along that gate (ADR 0091). A change is a difference of compiled quantities, whose last
+    digits differ between processors by about 1e-12 of the quantity (Phantom ADR 0033); a change a
+    thousand times smaller than its quantity then differs by about 1e-9 of itself, as CI's runners
+    showed."""
     if path == ".shape.changes" and isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
         for g, (rows, others) in enumerate(zip(a, b)):
             if [len(r) for r in rows] != [len(r) for r in others]:
@@ -64,7 +66,7 @@ def differences(a, b, path: str = ""):
             scale = [max(abs(r[q]) for r in rows) for q in range(len(rows[0]))] if rows else []
             for i, (row, other) in enumerate(zip(rows, others)):
                 for q, (x, y) in enumerate(zip(row, other)):
-                    if not math.isclose(x, y, rel_tol=REL, abs_tol=max(ABS, REL * scale[q])):
+                    if not close(x, y, max(ABS, REL * scale[q])):
                         yield f"{path}[{g}][{i}][{q}]: {x!r} against {y!r}"
         return
     if isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys():
@@ -73,8 +75,8 @@ def differences(a, b, path: str = ""):
     elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
         for i, (x, y) in enumerate(zip(a, b)):
             yield from differences(x, y, f"{path}[{i}]")
-    elif not same(a, b):
-        yield f"{path}: {a!r} against {b!r}"
+    elif not close(a, b):
+        yield f"{path}: {repr(a)[:80]} against {repr(b)[:80]}"
 
 
 def set_point(text: str) -> float:
