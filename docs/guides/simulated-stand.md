@@ -14,7 +14,7 @@ registry as the bench, so what you learn here carries over to a real stand.
 
 The stand is one simulated instrument wired to a simulated device. The device comes from
 [Phantom](https://github.com/CowboyQuantum/phantom), a separate simulator of gate-defined quantum dots that
-qdt pins at version `v0.4.0` (ADR 0087, ADR 0088, ADR 0090, ADR 0091). It is a silicon–germanium double
+qdt pins at version `v0.6.0` (ADR 0087, ADR 0088, ADR 0090, ADR 0091, ADR 0092). It is a silicon–germanium double
 dot with a charge sensor that is a quantum dot of its own:
 
 - **Twelve gates.** The plungers `P1` and `P2` set each dot's energy. The barriers `B_L`, `B_M` and `B_R`
@@ -32,8 +32,10 @@ dot with a charge sensor that is a quantum dot of its own:
 - **The sensor,** whose current (in amperes) is what every measurement reads.
 - **A simulated oscilloscope,** `scope` on channel `scope1`, for time-resolved captures.
 
-The device is physical rather than a toy. About 20 electrons sit on each dot at the programmed point, and
-each dot gains one electron for every 40 to 50 mV on its plunger. The sensor's peaks are about 35 mV apart
+The device is physical rather than a toy. About 23 and 28 electrons sit on the two dots at the programmed
+point, and each dot gains one electron for every 25 to 33 mV on its plunger. The dots grow as they fill, so
+the honeycomb's cells are smaller towards high plunger voltages and larger towards low ones; near the
+first electrons the cells are about three times the size they have here. The sensor's peaks are about 35 mV apart
 on `SG`. Each peak is a few millivolts wide, because electrons tunnel through the sensor barriers fast
 enough to broaden it, and it turns on steeply as `SG` rises. One electron on a dot moves the sensor by more
 than a peak's width. So the stand starts `SG` on the low side of a peak, about 10 mV below its steepest
@@ -42,11 +44,12 @@ readout noise is realistic too: it falls as the square root of the integration t
 mostly noise and a 1 ms reading is clean. Two devices are committed: `two-dot-sige-a`, the default, and
 `two-dot-sige-b`, a second disorder draw of the same design.
 
-The coupling between the two dots follows every gate, and the plungers raise it almost as strongly as
-`B_M` does. So in a stability diagram 0.15 V either side of where the stand starts, the lower left shows
-two separate dots, and the upper right, about 40 % of the window, shows one merged dot: there the two dots
-have joined into a single larger dot. Opening `B_M` grows the merged part and closing it shrinks it
-(section 4).
+The coupling between the two dots follows every gate. The middle barrier `B_M` sets it most strongly,
+and the plungers raise it too, about a quarter as much, so the coupling is largest at high occupancy.
+Where the stand starts, a stability diagram 0.15 V either side on both plungers shows two separate dots
+across almost the whole window, with the merged dot just entering its upper-right corner. Opening `B_M`
+by 0.1 V merges most of the window, and by 0.2 V all of it; closing it by 0.06 V separates the dots
+everywhere (section 4).
 
 ## Before you start
 
@@ -134,10 +137,11 @@ changes in a step each time a dot gains an electron, which draws the honeycomb o
 
 In **Sweep**:
 1. Leave **kind** at `stage: inner axis pulsed`, and name the sweep.
-2. Check that the **outer** axis is `P1` from `0.45` to `0.75` with `48` points. The form opened it
-   0.15 V either side of `P1`'s 0.6 V.
-3. Check that the **inner** axis is `P2_pulse` from `-0.15` to `0.15` with `48` points. These are
-   offsets, because the pulse adds to `P2`'s 0.6 V DC level.
+2. Check that the **outer** axis is `P1` from `0.45` to `0.75`, and set its points to `96`. The form
+   opened it 0.15 V either side of `P1`'s 0.6 V with 48 points; the honeycomb's cells are about 30 mV, so
+   96 points give each cell nine or ten pixels, enough for the transition analysis to draw its segments.
+3. Check that the **inner** axis is `P2_pulse` from `-0.15` to `0.15`, and set its points to `96` too.
+   These are offsets, because the pulse adds to `P2`'s 0.6 V DC level.
 4. Set **options** to `{"seed": 1, "noise": false}`. With noise off, the template's 2 µs reading is
    enough. To measure with noise on, change the `measure` row's **duration** in **Pulse** to `1000000`
    (1 ms) or more.
@@ -153,8 +157,9 @@ the strip says `completed → record …`, the record is in the registry.
 
 The steps sit on top of a strong slope, because the plungers also move the sensor. Choose the derivative
 in the plot's ⚙ menu to make the transitions stand out. The honeycomb of charge transitions fills the
-lower left. Towards the upper right the steps turn into fainter diagonal lines, where the two dots have
-merged into one.
+window, its cells a little smaller towards the upper right, where the dots hold more electrons and have
+grown. In the top-right corner the steps begin to turn into fainter diagonal lines, where the two dots
+merge into one.
 
 ## 2. Find the charge transitions
 
@@ -169,10 +174,11 @@ merged into one.
 ![The detected transitions drawn on the map](img/04-transitions.png)
 
 The estimates are electrons per volt on each dot from each plunger. On the default device they come out
-near 20.4 and 26.3 on the diagonal, which is the device's own lattice within half a percent. The two
-cross terms come out only within about 6 %, because the merged corner makes the honeycomb uneven and the
-method assumes it repeats evenly. The result is stored with the record, and the method's name, version and every
-parameter are kept with it.
+near 30.2 and 38.7 on the diagonal, which is the device's own lattice at the starting point within 2 %.
+The honeycomb's cells shrink by about 15 % from the lower left of the window to the upper right, because
+the dots grow as they fill, and the method assumes the cells repeat evenly, so it reads the window's
+average, a little below the value at the centre. The result is stored with the record, and the method's
+name, version and every parameter are kept with it.
 
 ## 3. Measure the sensor's Coulomb diamonds
 
@@ -234,16 +240,27 @@ layout yet, and the widget says so.
 
 `B_M` sets how strongly the two dots are coupled. Opening it lets an electron pass between the dots more
 easily. That widens the short edges where the honeycomb's lines meet, and past a point it joins the two
-dots into one, whose transitions are diagonal lines.
+dots into one, whose transitions are diagonal lines. The change starts at the highest occupancy, the
+upper right of the window, and moves down and left as `B_M` opens, because the dots grow with their
+electrons and the barrier between them is thinner where they are large. On the default device the
+transition takes about 65 mV of `B_M` at any one place in the window, and about 0.25 V of `B_M` to
+sweep from the window's upper right to its lower left.
 
-1. In **Levels**, set `B_M` to `0.14` and press **set**. It starts at its programmed 0.2 V.
+1. In **Levels**, set `B_M` to `0.24` and press **set**. It starts at its programmed 0.2 V.
 2. Run the stability diagram of step 1 again, with the same windows and `{"seed": 1, "noise": false}`.
-   The honeycomb now reaches further up and to the right, and only about a fifth of the window is merged.
-3. Set `B_M` to `0.24` and run it again. More than half of the window is now one merged dot.
-4. Set `B_M` back to `0.2` when you are done. **release** would leave it where it is.
+   About a fifth of the window, its upper right, is now one merged dot, and the honeycomb's short edges
+   have widened below it.
+3. Set `B_M` to `0.30` and run it again. Three quarters of the window is now one merged dot, and the
+   honeycomb survives only in the lower left.
+4. Set `B_M` to `0.40` and run it again. The whole window is one dot: diagonal lines everywhere.
+5. Set `B_M` to `0.14` and run it again. The two dots are separate everywhere, with the sharpest corners.
+6. Set `B_M` back to `0.2` when you are done. **release** would leave it where it is.
 
-The sensor keeps reading across this range. `B_L` and `B_R` move and reshape the dots too, so a barrier
-gate moves the plunger lines further than its coupling to the dots alone would.
+The sensor keeps reading across this range. Past about 0.4 V the window stays one dot however far `B_M`
+opens; to see two dots again at a wide-open `B_M`, move the window down and left, towards the first
+electrons, where the dots are small and the barrier between them is thick. `B_L` and `B_R` move and
+reshape the dots too, so a barrier gate moves the plunger lines further than its coupling to the dots
+alone would.
 
 ## 5. Run the tune-up
 
@@ -259,8 +276,8 @@ the stream, so you can watch it:
 In **Tune-up**, leave the four nodes ticked, set **options** to `{"seed": 2, "noise": false}` and press **run
 tune-up**. The sensor nodes need noise off, because their peak fit does not survive the device's noise.
 The node windows come from the server and already suit the device. The whole tune-up takes under a
-minute. Part of the lattice nodes' window is the merged corner, so the lattice comes out within about
-1 % on the diagonal and about 6 % on the cross terms.
+minute. The lattice comes out within about 2 % on the diagonal and within 0.005 on the cross-capacitance
+ratios, and the virtual-gate map's residual ratios are within 0.01 of zero.
 
 ![The tune-up's four nodes, all accepted](img/07-tuneup-result.png)
 
@@ -279,7 +296,7 @@ stand it takes:
 |---|---|
 | `seed` | The noise seed: the same seed gives the same noise, another seed a new realisation. The device's own disorder is fixed by its file. |
 | `noise` | `true` or `false`: whether the device's noise is on. |
-| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. With `B_M` open, dot 1 also fills through dot 2, so closing `B_L` alone does not isolate it: close `B_L` and `B_M` together. On Phantom 0.4.0, as on 0.3.0, a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. A sweep takes about ten times longer with dynamics on: a 48 × 48 stability diagram takes about 3 s without and 26 s with. |
+| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. With `B_M` open, dot 1 also fills through dot 2, so closing `B_L` alone does not isolate it: close `B_L` and `B_M` together. On Phantom 0.6.0, as before, a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. A sweep takes about ten times longer with dynamics on: a 48 × 48 stability diagram takes about 3 s without and 26 s with. |
 | `device` | Which committed device to load: `two-dot-sige-a` (the default) or `two-dot-sige-b`. Any other name fails the run. |
 | `campaign` | A label kept on the record, to find it later. |
 | `tau_s`, `droop_v`, `scope_noise_v` | The simulated scope's recorded droop: its time constant in seconds, its step in volts and its noise in volts. |
@@ -300,7 +317,8 @@ stand it takes:
 |---|---|
 | The map is speckled noise. | The reading is too short for the noise. Set `"noise": false`, or raise the `measure` duration in Pulse to 1 ms or more. |
 | The map is a smooth slope with no steps. | The window is away from the electrons. Type a window about the channel's level in **Levels**, such as 0.45 to 0.75 V for `P1` as in step 1. |
-| The upper right of a stability diagram has faint diagonal lines instead of a honeycomb. | There the two dots have merged into one, because the plungers raise the coupling between them. Close `B_M` a little in **Levels**, for example to 0.14 V, or move the window lower. |
+| The upper right of a stability diagram has faint diagonal lines instead of a honeycomb. | There the two dots have merged into one. The coupling between them grows with `B_M` and with the dots' occupancy. Close `B_M` in **Levels** (0.14 V separates them across the default window), or move the window lower, towards the first electrons. |
+| The honeycomb's cells are not all the same size. | They are not meant to be: the dots grow as they fill, so the cells shrink towards high plunger voltages. The transition analysis reads the window's average spacing. |
 | Flight Deck shows no stand, or every command fails. | The server is not running, or it is on another port. Start `python -m qdt_server`, or pass `?api=` and `?ws=` in Flight Deck's address. |
 | `address already in use` when starting. | Another server is running. Stop it, or start this one with `--port` and `--stream-port`. |
 | A command from another computer is refused. | Commands from another computer need a token. Run `uv run python -m qdt_server --add-token "<desk>"`, start the server with `--host 0.0.0.0`, and open Flight Deck there with `?token=<token>` once. |
@@ -310,7 +328,7 @@ stand it takes:
 
 - [Tutorials](../tutorials/README.md) do the same things from Python scripts, and CI runs them.
 - [The Phantom cutover](../steps/06d-phantom-cutover.md), ADR 0087 and ADR 0088 explain how the simulator
-  is built and pinned. ADR 0090 and ADR 0091 explain what each Phantom release changed for the stand.
+  is built and pinned. ADR 0090, ADR 0091 and ADR 0092 explain what each Phantom release changed for the stand.
 - On the bench, the same server runs real instruments: `python -m qdt_server --stand stand.json
   --device-id <id>` (see [BENCH.md](../BENCH.md)). Flight Deck does not change.
 
