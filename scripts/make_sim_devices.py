@@ -27,7 +27,7 @@ FOLDER = pathlib.Path(__file__).resolve().parents[1] / "packages/qdt-sim/src/qdt
 
 REL, ABS = 1e-9, 1e-15
 """Phantom's cross-platform bound, and a floor for a value that is zero on one platform (the smallest
-computed number in a device file is about 2.5e-7)."""
+computed number outside the shape grid is about 1.5e-11)."""
 
 
 def same(a, b) -> bool:
@@ -50,7 +50,23 @@ def same(a, b) -> bool:
 
 
 def differences(a, b, path: str = ""):
-    """Every place two parsed device files disagree by `same`, as `path: a against b`."""
+    """Every place two parsed device files disagree by `same`, as `path: a against b`, except that a
+    shape-grid change (`.shape.changes[gate][node][quantity]`) is held within `REL` of the largest
+    change of that quantity along that gate (ADR 0091). A change is a difference of compiled
+    quantities, whose last digits differ between processors by about 1e-12 of the quantity (Phantom
+    ADR 0033); a change a thousand times smaller than its quantity then differs by about 1e-9 of
+    itself, as CI's runners showed."""
+    if path == ".shape.changes" and isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        for g, (rows, others) in enumerate(zip(a, b)):
+            if [len(r) for r in rows] != [len(r) for r in others]:
+                yield f"{path}[{g}]: rows of {[len(r) for r in rows]} against {[len(r) for r in others]}"
+                continue
+            scale = [max(abs(r[q]) for r in rows) for q in range(len(rows[0]))] if rows else []
+            for i, (row, other) in enumerate(zip(rows, others)):
+                for q, (x, y) in enumerate(zip(row, other)):
+                    if not math.isclose(x, y, rel_tol=REL, abs_tol=max(ABS, REL * scale[q])):
+                        yield f"{path}[{g}][{i}][{q}]: {x!r} against {y!r}"
+        return
     if isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys():
         for k in a:
             yield from differences(a[k], b[k], f"{path}.{k}")

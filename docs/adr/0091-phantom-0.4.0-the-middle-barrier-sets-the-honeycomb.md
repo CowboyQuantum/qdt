@@ -83,6 +83,13 @@ virtual-lattice tune-up scenario.
   end-to-end tests run longer, and a sweep with dynamics on takes about ten times longer than without.
 - **Must now:** a person who wants two separate dots across the whole window closes `B_M` (at 0.14 V,
   20 % of the window is still merged) or moves the window lower. The guide says so.
+- **Must now:** `make_sim_devices.py --check` holds each change in the device file's new shape grid
+  within 10⁻⁹ of the largest change of the same quantity along the same gate, and everything else
+  within 10⁻⁹ of itself, as before (#154). A change is a difference of compiled quantities, whose last
+  digits differ between processors by about 10⁻¹² of the quantity (Phantom ADR 0033). One of CI's Linux
+  runners recompiled three changes near 10⁻³ that differed from Windows by 1.1 to 1.2·10⁻⁹ of
+  themselves, which is 1 to 7·10⁻¹² of their quantity's scale. On a failure the check now names every
+  value that differs.
 - **Must now:** the guide's dynamics row keeps the Phantom #64 warning, and says that with dynamics on,
   closing `B_L` alone no longer isolates dot 1: `B_L` and `B_M` must close together.
 
