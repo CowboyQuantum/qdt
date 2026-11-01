@@ -275,8 +275,8 @@ the stream, so you can watch it:
 
 In **Tune-up**, leave the four nodes ticked, set **options** to `{"seed": 2, "noise": false}` and press **run
 tune-up**. The sensor nodes need noise off, because their peak fit does not survive the device's noise.
-The node windows come from the server and already suit the device. The whole tune-up takes under a
-minute. The lattice comes out within about 2 % on the diagonal and within 0.005 on the cross-capacitance
+The node windows come from the server and already suit the device. The whole tune-up takes a few
+seconds. The lattice comes out within about 2 % on the diagonal and within 0.005 on the cross-capacitance
 ratios, and the virtual-gate map's residual ratios are within 0.01 of zero.
 
 ![The tune-up's four nodes, all accepted](img/07-tuneup-result.png)
@@ -296,7 +296,7 @@ stand it takes:
 |---|---|
 | `seed` | The noise seed: the same seed gives the same noise, another seed a new realisation. The device's own disorder is fixed by its file. |
 | `noise` | `true` or `false`: whether the device's noise is on. |
-| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. With `B_M` open, dot 1 also fills through dot 2, so closing `B_L` alone does not isolate it: close `B_L` and `B_M` together. On Phantom 0.6.0, as before, a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. A sweep takes about ten times longer with dynamics on: a 48 × 48 stability diagram takes about 3 s without and 26 s with. |
+| `dynamics` | `true` or `false` (the default): whether Phantom's charge dynamics are on. Off, each reading's charge is an independent draw from the thermal distribution at that point. On, the dots' charge and the sensor's own charge evolve in time with tunnel rates that follow the gates. Closing a barrier such as `B_L`, or a sensor barrier such as `SB_L`, then slows tunnelling until a sweep lags behind the gates, a parked reading switches between two charge states, and the sensor reads in single-electron bursts. With `B_M` open, dot 1 also fills through dot 2, so closing `B_L` alone does not isolate it: close `B_L` and `B_M` together. On Phantom 0.6.0, as before, a dot that must lose two or more electrons at once keeps one too many (Phantom issue #64). A stability diagram, whose rows start low, is then wrong over much of the map, so try dynamics on short windows and parked readings for now. With dynamics on the simulator must follow every point in turn, so a sweep takes far longer: a 48 × 48 stability diagram takes about 0.2 s without and 26 s with (ADR 0093). |
 | `device` | Which committed device to load: `two-dot-sige-a` (the default) or `two-dot-sige-b`. Any other name fails the run. |
 | `campaign` | A label kept on the record, to find it later. |
 | `tau_s`, `droop_v`, `scope_noise_v` | The simulated scope's recorded droop: its time constant in seconds, its step in volts and its noise in volts. |
@@ -344,4 +344,4 @@ corepack pnpm screenshots
 It builds Flight Deck and starts its own stand server with an empty registry on free ports. Then it drives
 a headless Chrome through steps 1 to 5 and writes the eight files in `docs/guides/img/`, reduced to 256
 colours. It prints the estimates it saw, so you can check the numbers this guide quotes. A step that
-does not complete stops it with an error, and no picture is changed. It takes about a minute.
+does not complete stops it with an error, and no picture is changed. It takes under a minute.
