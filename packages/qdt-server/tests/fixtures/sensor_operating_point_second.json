@@ -13,12 +13,12 @@
   "node_id": "sensor-operating-point",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "63a285838277449a8eb3d3a57e32f083",
+    "outcome_id": "9ea0162bde36465485a67a48de438c57",
     "node_id": "sensor-operating-point",
-    "tuneup_id": "d5d1702649154ea9bc570ffc79c8e902",
+    "tuneup_id": "3ac449aeaa4d4b2491b2b8b5e229d376",
     "scenario_id": "second-device",
-    "record_id": "a712dee52a2a4862a3bf15c0301a88fc",
-    "result_id": "2e73e9422deb4f3998a67464d0fbc6a5",
+    "record_id": "8e7cb90b8171438fa31fcbbcc47c6891",
+    "result_id": "2deed71ab1414534b70c259866c5e888",
     "status": "accepted",
     "message": "peak at +0.6571 V (of 2), operating point +0.6586 V",
     "outputs": {
@@ -28,7 +28,7 @@
       "charging_energy": 0.009374761941853754,
       "lever_arm": 0.25073880379431646
     },
-    "created_at": "2026-11-01T22:07:50.654624Z",
+    "created_at": "2026-11-01T23:10:54.563664Z",
     "attrs": {
       "method": "qdt_analysis.diamonds.detect_diamonds",
       "rule": "qdt_tuning.decisions.sensor_operating_point"
@@ -78,5 +78,5 @@
     "lever_arm": 0.24823455816731452,
     "sg_operating_v": 0.6585430520607816
   },
-  "created_at": "2026-11-01T22:07:50.675636Z"
+  "created_at": "2026-11-01T23:10:54.584666Z"
 }

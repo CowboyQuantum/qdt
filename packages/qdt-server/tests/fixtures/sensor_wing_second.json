@@ -13,21 +13,21 @@
   "node_id": "sensor-wing",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "7ec91baa7c2c4e67b504986dcee99eac",
+    "outcome_id": "13473daa0959465492b72887b80f7c61",
     "node_id": "sensor-wing",
-    "tuneup_id": "efeb914c69eb4534a0caca319359a702",
+    "tuneup_id": "aac16ceaf3aa4a94abc435600901e5b1",
     "scenario_id": "second-device",
-    "record_id": "848e9b050c4147bda21c0b3451542a18",
-    "result_id": "5675f0bb9a2a4804817df9ed17a0694a",
+    "record_id": "4d5021d1b5374a498bfd5559c1c65c60",
+    "result_id": "aa38b66fae0a41faaf402420960edf6b",
     "status": "accepted",
     "message": "peak at +0.6570 V, width 0.0022 V; wing at +0.6585 ± 2.5e-05 V",
     "outputs": {
       "sg_peak_v": 0.6570455354945146,
       "sg_width_v": 0.0021784179016444754,
       "sg_operating_v": 0.6584799778237012,
-      "sensitivity_a_per_v": 9.57140424363301e-8
+      "sensitivity_a_per_v": 9.571404243632384e-8
     },
-    "created_at": "2026-11-01T22:07:52.535695Z",
+    "created_at": "2026-11-01T23:10:55.289824Z",
     "attrs": {
       "method": "qdt_analysis.sensor_peak.fit_sensor_peak",
       "rule": "qdt_tuning.decisions.sensor_wing"
@@ -38,55 +38,55 @@
       "schema_version": 1,
       "name": "peak_v",
       "value": 0.6570455354945146,
-      "stderr": 9.663750640407148e-6,
+      "stderr": 9.66375064038545e-6,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "width_v",
       "value": 0.0021784179016444754,
-      "stderr": 0.00003513859056284434,
+      "stderr": 0.00003513859071944841,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "height_a",
-      "value": 2.708561785742998e-10,
-      "stderr": 2.830641963602844e-12,
+      "value": 2.708561785742821e-10,
+      "stderr": 2.8306419663992337e-12,
       "unit": "A"
     },
     {
       "schema_version": 1,
       "name": "background_a",
-      "value": 1.2078435664612864e-10,
-      "stderr": 3.088196361187364e-12,
+      "value": 1.2078435664614635e-10,
+      "stderr": 3.0881963655567583e-12,
       "unit": "A"
     },
     {
       "schema_version": 1,
       "name": "wing_v",
       "value": 0.6584799778237012,
-      "stderr": 0.000025075010391111534,
+      "stderr": 0.000025075010486257827,
       "unit": "V"
     },
     {
       "schema_version": 1,
       "name": "sensitivity_a_per_v",
-      "value": 9.57140424363301e-8,
+      "value": 9.571404243632384e-8,
       "stderr": null,
       "unit": "A/V"
     },
     {
       "schema_version": 1,
       "name": "r2",
-      "value": 0.989871910840502,
+      "value": 0.9898719108404843,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "residual_rms",
-      "value": 8.99132859163972e-12,
+      "value": 8.991328591647546e-12,
       "stderr": null,
       "unit": "A"
     }
@@ -97,5 +97,5 @@
     "sg_operating_v": 0.6585698052429826,
     "sensitivity_a_per_v": 9.524348135997235e-8
   },
-  "created_at": "2026-11-01T22:07:52.558487Z"
+  "created_at": "2026-11-01T23:10:55.310122Z"
 }

@@ -462,11 +462,12 @@ def test_a_device_file_that_hashes_otherwise_or_is_not_committed_is_refused():
         load_device("../../etc/passwd")
 
 
-def test_qdt_sim_holds_no_physics_and_stays_under_350_lines():
+def test_qdt_sim_holds_no_physics_and_stays_under_370_lines():
     """Phantom's Step 8 exit, from qdt's side (ADR 0087): an adapter, not a model. The cap was 300
     until the layout rename (ADR 0089) took it to 311, 320 until the starting levels and the
-    dynamics option (ADR 0090) took it to 337, and 340 until the lattice truth became the slope of
-    Phantom's charge (ADR 0092) and took it to 347."""
+    dynamics option (ADR 0090) took it to 337, 340 until the lattice truth became the slope of
+    Phantom's charge (ADR 0092) and took it to 347, and 350 until the batched read (ADR 0093) took
+    it to 360."""
     import pathlib
 
     import qdt_sim
@@ -474,7 +475,7 @@ def test_qdt_sim_holds_no_physics_and_stays_under_350_lines():
     src = pathlib.Path(qdt_sim.__file__).parent
     modules = sorted(p.name for p in src.glob("*.py"))
     assert modules == ["__init__.py", "device.py", "scenarios.py"]
-    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 350
+    assert sum(len(p.read_text(encoding="utf-8").splitlines()) for p in src.glob("*.py")) < 370
 
 
 def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel():
@@ -496,3 +497,23 @@ def test_layout_is_phantoms_knowable_layout_with_each_gate_on_its_stand_channel(
         for g in drawn.gates:
             assert logical[g.channel].quantity == "voltage"
             assert logical[g.channel].channel == g.name
+
+
+def test_a_sweep_reads_each_line_from_one_phantom_call_and_matches_point_by_point_reads():
+    """ADR 0093 (#179): Phantom's cost is per call, so the stand reads a line at a time. With noise
+    off the map is the point-by-point map to 12 digits; with noise on it is another realisation of
+    the same seed (the noise clock within a line is Phantom's batch clock). With charge dynamics on
+    the physics has no batched read and the clock runs point by point, as before."""
+    definition = stability(12, 16, measure_ns=2000)
+    _, batched = run(definition, default_device(noise=False))
+    single = default_device(noise=False)
+    single.physics.sense_many = None
+    _, one_by_one = run(definition, single)
+    np.testing.assert_allclose(
+        batched["I_sensor"].values, one_by_one["I_sensor"].values, rtol=1e-11, atol=0
+    )
+    assert default_device(dynamics=True).physics.sense_many is None
+    np.testing.assert_array_equal(
+        run(definition, default_device(seed=3))[1]["I_sensor"].values,
+        run(definition, default_device(seed=3))[1]["I_sensor"].values,
+    )

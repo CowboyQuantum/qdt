@@ -1291,3 +1291,75 @@ def test_every_shot_capture_is_armed_before_any_is_drained_and_the_records_share
     assert scope.events[:2] == [("arm", "1"), ("arm", "3")]
     assert sorted(scope.events[2:]) == [("read", "1"), ("read", "3")]
     assert sorted(f.chunk.variables for f in frames) == [("a",), ("a",), ("b",), ("b",)]
+
+
+# --- a DC sweep's inner axis read in one call (ADR 0093, #179) -------------------------------------
+
+
+def one_backend_stand() -> StandConfig:
+    """One simulated instrument that sets and senses: the executor may read its inner axis at once."""
+    return StandConfig(
+        stand_id="one",
+        instruments=(
+            InstrumentConfig(
+                id="sim", backend="simulated", capabilities=("level_source", "level_sense")
+            ),
+        ),
+        channels=(
+            ChannelMap(logical="gate_R", instrument="sim", channel="a", quantity="voltage"),
+            ChannelMap(logical="gate_L_dc", instrument="sim", channel="b", quantity="voltage"),
+            ChannelMap(logical="sensor_dc", instrument="sim", channel="out", quantity="current"),
+        ),
+    )
+
+
+def one_backend(batched: bool = True):
+    from qdt_lab.simulated import LinearPhysics, SimulatedInstrument
+
+    inst = SimulatedInstrument(
+        LinearPhysics({"a": 1.0, "b": 2.0}), {"a": "a", "b": "b", "out": "out"}
+    )
+    if not batched:
+        inst.physics.sense_many = None
+    return inst
+
+
+def test_the_inner_axis_of_a_dc_sweep_is_read_in_one_call_on_a_batched_backend():
+    definition = stepped_definition()
+    plan = compile_sweep(definition, one_backend_stand(), EMITTERS)
+    inst = one_backend()
+    frames = list(Executor(plan, {"sim": inst}).run().frames())
+    assert len(frames) == 4 and all(
+        f.chunk.region[-1].stop - f.chunk.region[-1].start == 5 for f in frames
+    ), "one frame per row of the inner axis"
+    batched = assemble(plan.dataset, frames)["I_dc"].values
+    single = assemble(
+        plan.dataset, Executor(plan, {"sim": one_backend(batched=False)}).run().frames()
+    )["I_dc"].values
+    np.testing.assert_array_equal(batched, single)
+    r = np.linspace(-0.5, 0.5, 4)[:, None]
+    ldc = np.linspace(-1.0, 0.0, 5)[None, :]
+    np.testing.assert_allclose(batched, r + 2 * ldc)
+    assert (inst.get("a"), inst.get("b")) == (0.5, 0.0), "the last point holds (ADR 0038)"
+
+
+def test_a_coupled_companion_follows_the_batched_inner_axis_from_its_held_level():
+    definition = SweepDefinition(
+        name="virtual row",
+        axes=(
+            SweepAxis(
+                name="gate_L_dc",
+                channel="gate_L_dc",
+                start=0.0,
+                stop=1.0,
+                num=3,
+                couplings={"gate_R": -0.5},
+            ),
+        ),
+        sensed=(SensedLevel(name="I_dc", channel="sensor_dc"),),
+        levels=(FixedLevel(channel="gate_R", value=0.2),),
+    )
+    plan = compile_sweep(definition, one_backend_stand(), EMITTERS)
+    out = assemble(plan.dataset, Executor(plan, {"sim": one_backend()}).run().frames())
+    ldc = np.linspace(0.0, 1.0, 3)
+    np.testing.assert_allclose(out["I_dc"].values, (0.2 - 0.5 * ldc) + 2 * ldc)

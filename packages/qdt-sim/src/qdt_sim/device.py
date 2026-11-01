@@ -52,6 +52,8 @@ class PhantomPhysics:
         self.defaults = programmed | dict(levels or {}) | {BIAS: DEFAULT_BIAS_V}
         charge = "sampled" if sample_charge else "mean"
         self.session = device.session(noise, dynamics, charge, noise_seed=seed)
+        if dynamics:  # the charge evolves through every hold and dwell: point by point (ADR 0093)
+            self.sense_many = None  # type: ignore[method-assign]
 
     @property
     def clock_s(self) -> float:
@@ -72,6 +74,16 @@ class PhantomPhysics:
         for k in range(samples):  # a shot's overhead passes at its levels before the shot is read
             self.session.hold(v, gap_s)
             out[k] = self.session.sense(v, dwell_s, 1, v_sd=bias).current_a[0]
+        return out
+
+    def sense_many(self, levels, dwell_s: float, gap_s: float = 0.0) -> np.ndarray:
+        """One reading per entry of `levels` from one Phantom call (ADR 0093, #179): the session reads
+        the points in order, `dwell_s` of clock each, then the shots' overheads pass together."""
+        v = np.array([self._gates(lv) for lv in levels])
+        bias = np.array([lv[BIAS] for lv in levels])
+        out = np.asarray(self.session.sense(v, dwell_s, v_sd=bias).current_a, dtype=float)
+        if gap_s > 0:
+            self.session.hold(v[-1], gap_s * len(levels))
         return out
 
 

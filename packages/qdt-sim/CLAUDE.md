@@ -41,8 +41,10 @@ qdt_sim/
   advance the clock, is the interpreter's in qdt-lab. Charge dynamics are off by default: a sample's
   charge is an independent Boltzmann draw (or the mean with `sample_charge=False`). `dynamics=True`
   turns Phantom's on (the server's run option `dynamics`); a dot that must lose two or more electrons at
-  once keeps one too many on 0.3.0 to 0.6.0 (Phantom #64). A 48 × 48 stability diagram takes about 3.7 s,
-  26 s with dynamics.
+  once keeps one too many on 0.3.0 to 0.6.0 (Phantom #64). The stand reads a line at a time (ADR 0093):
+  `PhantomPhysics.sense_many` is one Phantom call per line, None with dynamics on. A 48 × 48 stability
+  diagram takes about 0.2 s (201 × 201 DC about 3 s), 26 s with dynamics. With noise on, a line read in
+  one call is another realisation of the same seed than the points read one by one.
 - Phantom's readout noise is physical: its white floor scales as √(1 ms / dwell). A sweep that must see
   transitions integrates for milliseconds (`MEASURE_NS`, the server's `SIMULATED_NODES`).
 - A test that needs the truth gets it from the device (`Device.truth`, through `lattice_truth`,

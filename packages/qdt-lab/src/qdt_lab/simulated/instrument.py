@@ -57,6 +57,15 @@ class SimulatedPhysics(Protocol):
         (one addition) and taken at the clock after it."""
         ...
 
+    def sense_many(
+        self, levels: Sequence[Mapping[str, float]], dwell_s: float, gap_s: float = 0.0
+    ) -> np.ndarray:
+        """Optional (ADR 0093): one reading per entry of `levels`, what `sense(entry, dwell_s, 1,
+        gap_s)` of each in turn would read, with the clock advanced by the same total. A physics
+        whose clock must run point by point (charge dynamics on) leaves it None, and the instrument
+        reads point by point."""
+        ...
+
 
 class LinearPhysics:
     """The simplest `SimulatedPhysics`, for testing the instrument: each reading is a fixed weighted
@@ -83,6 +92,12 @@ class LinearPhysics:
         self.clock_s += samples * (dwell_s + gap_s)
         value = sum(w * levels[i] for i, w in self.weights.items())
         return np.full(samples, value)
+
+    def sense_many(
+        self, levels: Sequence[Mapping[str, float]], dwell_s: float, gap_s: float = 0.0
+    ) -> np.ndarray:
+        self.clock_s += len(levels) * (dwell_s + gap_s)
+        return np.array([sum(w * lv[i] for i, w in self.weights.items()) for lv in levels])
 
 
 class CompiledInstrumentProgram(NamedTuple):
@@ -246,6 +261,39 @@ class SimulatedInstrument:
         aperture = self.integration_s.get(channel, self.sense_integration_s)
         return float(self.physics.sense(self.levels(), aperture, 1, self.shot_overhead_s)[0])
 
+    # --- BatchedLevelSense (ADR 0093) ------------------------------------------------------------
+
+    def sense_along(self, channel: str, points: Mapping[str, Sequence[float]]) -> np.ndarray:
+        self._check(channel)
+        output = self.physics.output
+        if self.channels[channel] != output:
+            raise ValueError(
+                f"channel {channel!r} is an input ({self.channels[channel]}); sense the {output}"
+            )
+        for ch in points:
+            self._check(ch)
+            if self.channels[ch] == output:
+                raise ValueError(f"channel {ch!r} is the {output}; it cannot be stepped")
+        counts = {len(v) for v in points.values()}
+        if len(counts) != 1:
+            raise ValueError(f"every stepped channel needs the same number of points, got {counts}")
+        aperture = self.integration_s.get(channel, self.sense_integration_s)
+        levels = []
+        for i in range(counts.pop()):
+            for ch, values in points.items():
+                self._dc[ch] = float(values[i])
+            levels.append(self.levels())
+        return self._sense_many(levels, aperture, self.shot_overhead_s)
+
+    def _sense_many(
+        self, levels: Sequence[Mapping[str, float]], dwell_s: float, gap_s: float
+    ) -> np.ndarray:
+        """The physics' batched read when it has one, else its point-by-point reads."""
+        batched = getattr(self.physics, "sense_many", None)
+        if callable(batched):
+            return np.asarray(batched(levels, dwell_s, gap_s), dtype=float)
+        return np.array([float(self.physics.sense(lv, dwell_s, 1, gap_s)[0]) for lv in levels])
+
     # --- Sequencer ------------------------------------------------------------------------------
 
     def compile(self, program: SequencerProgram) -> CompiledInstrumentProgram:
@@ -325,6 +373,14 @@ class _InstrumentRun:
         )
         self._shape = tuple(parameters[a] for a in self._axes)
         self._shots = parameters.get("shots", 1)
+        # a line of pixels is read in one batch (ADR 0093) when the physics reads batches, nothing is
+        # captured (a record per pixel keeps its own clock) and every measure's dwell is the same at
+        # every pixel; otherwise pixel by pixel
+        ops = compiled.sequence.expand()
+        self._batched = callable(getattr(instrument.physics, "sense_many", None)) and all(
+            op.op != "capture" and not (op.op == "measure" and isinstance(op.duration, Symbol | Affine))
+            for op in ops
+        )
 
     def _symbol_values(self, index: tuple[int, ...]) -> dict[str, float]:
         program, params = self._compiled.program, self._params
@@ -408,6 +464,58 @@ class _InstrumentRun:
                 physics.hold(instrument.levels(pulse), duration_ns * 1e-9)
         return {k: np.asarray(v) for k, v in samples.items()}
 
+    def _line(self, indices: Sequence[tuple[int, ...]]) -> dict[str, np.ndarray]:
+        """Run the sequence `shots` times at every pixel of a line, each measure as one batched read
+        over the pixels (ADR 0093); result name → (pixels, shots). The holds of a shot are taken once
+        for the line, at the last pixel's levels, since the physics that batches has no charge
+        dynamics to run during them; the clock advances by what the pixels would have taken."""
+        instrument, ops = self._instrument, self._compiled.sequence.expand()
+        physics, triggered = instrument.physics, self._compiled.triggered
+        values = [self._symbol_values(idx) for idx in indices]
+
+        def val(x, v):
+            if isinstance(x, Symbol):
+                return v[x.name]
+            if isinstance(x, Affine):
+                return x.of(v[x.symbol.name])
+            return x
+
+        def levels_at(pulses, at=indices):
+            out = []
+            for idx, pulse in zip(at, pulses, strict=True):
+                if triggered is not None:
+                    i = idx[self._axes.index(f"n_{triggered}")]
+                    for ch in list(instrument._lists):
+                        instrument._play_point(ch, i)
+                out.append(instrument.levels(pulse))
+            return out
+
+        samples: dict[str, list[np.ndarray]] = {}
+        for _ in range(self._shots):
+            pulses: list[dict[str, float]] = [{} for _ in indices]
+            shot: dict[str, np.ndarray] = {}
+            for op in ops:
+                if op.op == "difference":
+                    shot[op.result] = shot[op.a] - shot[op.b]
+                    samples.setdefault(op.result, []).append(shot[op.result])
+                    continue
+                if op.op == "step":
+                    for pulse, v in zip(pulses, values, strict=True):
+                        pulse[op.channel] = val(op.level, v)
+                elif op.op == "ramp":
+                    for pulse, v in zip(pulses, values, strict=True):
+                        pulse[op.channel] = val(op.stop, v)
+                elif op.op == "measure":
+                    reading = instrument._sense_many(
+                        levels_at(pulses), op.duration * 1e-9, instrument.shot_overhead_s
+                    )
+                    shot[op.result] = reading
+                    samples.setdefault(op.result, []).append(reading)
+                    continue
+                total_s = sum(val(op.duration, v) for v in values) * 1e-9
+                physics.hold(levels_at(pulses[-1:], indices[-1:])[0], total_s)
+        return {k: np.stack(v, axis=1) for k, v in samples.items()}
+
     def _reduce(self, name: str, shots: np.ndarray) -> np.ndarray:
         """Reduce the shots axis (axis 1 of (pixels, shots[, samples])) as the stage says."""
         how = self._compiled.reduce.get(name, "keep")
@@ -434,18 +542,22 @@ class _InstrumentRun:
                 indices = [(line, *idx) for idx in np.ndindex(*rest)]
             else:
                 indices = [idx for idx in np.ndindex(*self._shape)] or [()]
-            raw = {r: [] for r in results}
-            for idx in indices:
-                px = self._pixel(idx)
-                for r in results:
-                    raw[r].append(px[r])
+            if self._batched:
+                stacked = self._line(indices)
+            else:
+                raw = {r: [] for r in results}
+                for idx in indices:
+                    px = self._pixel(idx)
+                    for r in results:
+                        raw[r].append(px[r])
+                stacked = {r: np.stack(raw[r]) for r in results}
             done += len(indices) * self._shots
             if self._instrument.points_per_second:
                 delay = t0 + done / self._instrument.points_per_second - time.perf_counter()
                 if delay > 0:
                     time.sleep(delay)
             for r in results:
-                shots = np.stack(raw[r])  # (pixels in this frame, shots[, samples of a record])
+                shots = stacked[r]  # (pixels in this frame, shots[, samples of a record])
                 values = self._reduce(r, shots)
                 keep = self._compiled.reduce.get(r, "keep") == "keep" and self._shots > 1
                 tail = (

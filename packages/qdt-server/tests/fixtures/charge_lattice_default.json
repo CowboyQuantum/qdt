@@ -13,27 +13,27 @@
   "node_id": "charge-lattice",
   "outcome": {
     "schema_version": 1,
-    "outcome_id": "a168765933bd424684f31255c4510d81",
+    "outcome_id": "2b0ce8e5dc64408ab42cf850788ef395",
     "node_id": "charge-lattice",
-    "tuneup_id": "6c0cc4f70fd44510af8033c832fe3a80",
+    "tuneup_id": "60a3bf38f3304abc85afc8181d216fc6",
     "scenario_id": "default-occupied-window",
-    "record_id": "f1fb9916d5d7419cbc0700db80659197",
-    "result_id": "bd9e161976f64cc68fd9179f04b307e0",
+    "record_id": "1120693c58d94516bfb8389e4a4e93f6",
+    "result_id": "02324ddda1b04e5d8a0aa9946aa938cb",
     "status": "accepted",
     "message": "lattice condition 1.36, cross ratios 0.122 and 0.067",
     "outputs": {
-      "l_11": 30.35301503866269,
-      "l_12": 3.696744630383705,
-      "l_21": 2.5937050361246463,
-      "l_22": 38.77958206468746,
-      "m_11": 1.008212724395225,
-      "m_12": -0.12279191936765124,
-      "m_21": -0.06743255810201369,
-      "m_22": 1.008212724395225,
-      "c_21": -0.06688326428578158,
-      "c_12": -0.12179167788356153
+      "l_11": 30.35858044993803,
+      "l_12": 3.696263907324294,
+      "l_21": 2.5934241491971477,
+      "l_22": 38.779737137855605,
+      "m_11": 1.008209200390064,
+      "m_12": -0.12275301490395235,
+      "m_21": -0.06742475015855467,
+      "m_22": 1.008209200390064,
+      "c_21": -0.06687575369523394,
+      "c_12": -0.12175351589378543
     },
-    "created_at": "2026-11-01T22:08:14.525889Z",
+    "created_at": "2026-11-01T23:10:57.511362Z",
     "attrs": {
       "method": "qdt_analysis.transitions.detect_transitions",
       "rule": "qdt_tuning.decisions.virtual_gates"
@@ -43,42 +43,42 @@
     {
       "schema_version": 1,
       "name": "a_per_volt_row",
-      "value": 30.35301503866269,
+      "value": 30.35858044993803,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "a_per_volt_col",
-      "value": 3.696744630383705,
+      "value": 3.696263907324294,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_row",
-      "value": 2.5937050361246463,
+      "value": 2.5934241491971477,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "b_per_volt_col",
-      "value": 38.77958206468746,
+      "value": 38.779737137855605,
       "stderr": null,
       "unit": "1/V"
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_a",
-      "value": 0.12179167788356152,
+      "value": 0.12175351589378544,
       "stderr": null,
       "unit": ""
     },
     {
       "schema_version": 1,
       "name": "cross_ratio_b",
-      "value": 0.06688326428578156,
+      "value": 0.06687575369523394,
       "stderr": null,
       "unit": ""
     }
@@ -95,5 +95,5 @@
     "c_21": -0.06720459237263976,
     "c_12": -0.11673611779994357
   },
-  "created_at": "2026-11-01T22:08:14.542820Z"
+  "created_at": "2026-11-01T23:10:57.527940Z"
 }
