@@ -27,7 +27,7 @@ from qdt_schemas.stand import StandConfig
 from qdt_tuning import TEMPLATES, apply, bind, order
 
 from . import catalogue
-from .runs import TERMINAL, RunManager
+from .runs import TERMINAL, RunManager, with_operating_point
 
 EMITTERS = {"simulated": SimulatedEmitter(), "qua": QuaEmitter()}
 
@@ -111,15 +111,18 @@ def run_node(
     scenario_id: str | None = None,
     tuneup_id: str | None = None,
     campaign: str | None = None,
+    held: Mapping[str, float] | None = None,
 ) -> tuple[NodeOutcome, AnalysisResult | None]:
-    """Run `node` on `backends` wired by `stand`, recording into `registry`. Returns the outcome and the
+    """Run `node` on `backends` wired by `stand`, recording into `registry`, with `held` (logical
+    channel → level) merged in as the operating point the sweep inherits, as the stand server merges
+    its own (ADR 0053; a virtual gate's companion moves from it). Returns the outcome and the
     method's result (None when the experiment or the method did not complete). Raises for a node whose
     method is not in the catalogue or whose rule is unknown: those are definition errors, not outcomes."""
     if node.method.name not in catalogue.METHODS:
         raise KeyError(f"node {node.node_id!r}: no method {node.method.name!r} in the catalogue")
     outcome_id = uuid.uuid4().hex
     try:
-        plan = compile_sweep(node.definition, stand, EMITTERS)
+        plan = compile_sweep(with_operating_point(node.definition, held or {}), stand, EMITTERS)
         recorder = RunRecorder(plan, stand, device_id, campaign=campaign)
         for _ in recorder.wrap(Executor(plan, backends).run()).frames():
             pass
@@ -154,9 +157,11 @@ def run_tuneup(
     device_id: str,
     scenario_id: str | None = None,
     campaign: str | None = None,
+    held: Mapping[str, float] | None = None,
 ) -> list[NodeOutcome]:
     """Run `nodes` in topological order (ADR 0049, 0050): each node's `inputs` are bound from the
-    accepted outcomes before it, then it runs; the tune-up stops at the first outcome that is not
+    accepted outcomes before it (or from `held`, the operating point every node inherits, for a
+    binding with a held fallback), then it runs; the tune-up stops at the first outcome that is not
     `accepted` and returns the outcomes so far, that one last. Raises ValueError for a missing
     dependency or a cycle."""
     tuneup_id = uuid.uuid4().hex
@@ -164,7 +169,7 @@ def run_tuneup(
     out: list[NodeOutcome] = []
     for node in order(nodes):
         try:
-            bound = bind(node, outcomes)
+            bound = bind(node, outcomes, held)
         except (KeyError, ValueError) as e:
             failed = _failed(
                 node.node_id,
@@ -185,6 +190,7 @@ def run_tuneup(
             scenario_id=scenario_id,
             tuneup_id=tuneup_id,
             campaign=campaign,
+            held=held,
         )
         out.append(outcome)
         if outcome.status != "accepted":

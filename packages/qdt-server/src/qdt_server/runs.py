@@ -65,6 +65,29 @@ class _Stoppable:
                 close()  # stop the executor's generator now, not at garbage collection
 
 
+
+def with_operating_point(
+    definition: SweepDefinition, held: Mapping[str, float]
+) -> SweepDefinition:
+    """`definition` with the held levels added for every channel it does not set, sweep, sense or
+    capture itself (ADR 0053). A coupled companion (a virtual gate, ADR 0049) keeps its held level: it
+    is the origin the companion moves from, `held + coupling × the axis value`; without it the companion
+    would move from 0 V (#176)."""
+    if not held:
+        return definition
+    touched = (
+        {a.channel for a in definition.axes}
+        | {s.channel for s in definition.sensed}
+        | {c.channel for c in definition.captured}
+        | {lv.channel for lv in definition.levels}
+    )
+    extra = tuple(
+        FixedLevel(channel=c, value=v) for c, v in sorted(held.items()) if c not in touched
+    )
+    if not extra:
+        return definition
+    return definition.model_copy(update={"levels": (*definition.levels, *extra)})
+
 class RunManager:
     """Compiles and executes sweeps against `backends(options)`, streaming to `stream` and recording
     into `registry`. One run at a time per manager (the stream server holds one live history)."""
@@ -261,23 +284,32 @@ class RunManager:
         return self.book.write(by=by, reason=reason, limits=limits, couplings=couplings)
 
     def with_operating_point(self, definition: SweepDefinition) -> SweepDefinition:
-        """`definition` with the held levels added for every channel it does not touch itself."""
-        held = self.book.held
-        if not held:
-            return definition
-        touched = (
-            {a.channel for a in definition.axes}
-            | set(definition.coupled_channels())
-            | {s.channel for s in definition.sensed}
-            | {c.channel for c in definition.captured}
-            | {lv.channel for lv in definition.levels}
-        )
-        extra = tuple(
-            FixedLevel(channel=c, value=v) for c, v in sorted(held.items()) if c not in touched
-        )
-        if not extra:
-            return definition
-        return definition.model_copy(update={"levels": (*definition.levels, *extra)})
+        """`definition` with the held operating point merged in (`with_operating_point`). A coupled
+        companion that nothing holds moves from the level the stand is at, its live setpoint (ADR
+        0057), which the record then carries as its origin (#176, ADR 0092)."""
+        origins = dict(self.book.held)
+        in_levels = {lv.channel for lv in definition.levels}
+        for logical in definition.coupled_channels():
+            if logical in origins or logical in in_levels:
+                continue
+            setpoint = self.setpoint(logical)
+            if setpoint is not None:
+                origins[logical] = setpoint
+        return with_operating_point(definition, origins)
+
+    def setpoint(self, logical: str) -> float | None:
+        """The level the stand's standing instrument last applied on `logical`, None when the channel
+        is unknown or its instrument sets no levels or refuses it."""
+        channel = next((c for c in self.stand.channels if c.logical == logical), None)
+        if channel is None:
+            return None
+        backend = self.live_backends().get(channel.instrument)
+        if backend is None or not hasattr(backend, "get"):
+            return None
+        try:
+            return float(backend.get(channel.channel))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return None
 
     def compile(self, definition: SweepDefinition) -> ExecutionPlan:
         """Raises ValueError for a definition the stand cannot run, `LimitError` for one beyond the
